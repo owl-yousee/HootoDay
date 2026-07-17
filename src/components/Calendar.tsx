@@ -1,8 +1,8 @@
 import type { CSSProperties } from 'react'
-import { categoryColors } from '../data/calendarData'
+import { getEventCategoryDisplay } from '../data/eventCategoryDisplay'
 import type { CalendarEvent, DayMemoIndicator } from '../types/calendar'
 import { toDateKey } from '../utils/date'
-import { sortCalendarEvents } from '../utils/event'
+import { formatTimeForDisplay, getCalendarEventTitle, sortCalendarEvents } from '../utils/event'
 
 interface CalendarProps {
   displayMonth: Date
@@ -82,16 +82,25 @@ export function Calendar({
                 {hasMemo && <span className="memo-indicator" title="メモあり" aria-label="メモあり">●</span>}
               </span>
               <span className="event-list-compact" aria-hidden="true">
-                {dayEvents.slice(0, 2).map((event) => (
-                  <span
-                    key={event.id}
-                    className="event-chip"
-                    style={{ '--event-color': categoryColors[event.category] } as CSSProperties}
-                  >
-                    <span className="event-time">{event.isAllDay ? '終日' : event.startTime}</span>
-                    {event.title}
-                  </span>
-                ))}
+                {dayEvents.slice(0, 2).map((event) => {
+                  const categoryDisplay = getEventCategoryDisplay(event.category)
+                  const CategoryIcon = categoryDisplay.icon
+                  const displayedTitle = getCalendarEventTitle(event)
+                  const displayedTime = event.isAllDay ? '終日' : formatTimeForDisplay(event.startTime)
+
+                  return (
+                    <span
+                      key={event.id}
+                      className="event-chip"
+                      style={{ '--event-color': categoryDisplay.color } as CSSProperties}
+                      title={`${categoryDisplay.name}・${displayedTime}・${event.title}`}
+                    >
+                      <CategoryIcon className="event-category-icon" size={14} weight="bold" aria-hidden="true" />
+                      <span className="event-time">{displayedTime}</span>
+                      <span className="event-title-compact">{displayedTitle}</span>
+                    </span>
+                  )
+                })}
                 {dayEvents.length > 2 && <span className="more-events">ほか{dayEvents.length - 2}件</span>}
               </span>
             </button>

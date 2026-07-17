@@ -1,8 +1,8 @@
 import type {
   CalendarEvent,
   DayMemoIndicator,
-  EventCategory,
 } from '../types/calendar'
+export { eventCategories } from './eventCategoryDisplay'
 
 export const calendarEvents: CalendarEvent[] = [
   { id: 'event-0703', date: '2026-07-03', title: '歯医者', category: '歯医者', isAllDay: false, startTime: '11:30', endTime: null, memo: '' },
@@ -14,26 +14,8 @@ export const calendarEvents: CalendarEvent[] = [
   { id: 'event-0729', date: '2026-07-29', title: 'ライブ', category: 'ライブ', isAllDay: false, startTime: '19:00', endTime: null, memo: '' },
 ]
 
-export const eventCategories: EventCategory[] = [
-  '収録', 'ライブ', 'リハ', '配信', '歌枠', '歯医者', '整体', '通院', 'おでかけ', '映', 'その他',
-]
-
 export const memoIndicators: DayMemoIndicator[] = [
   { date: '2026-07-05', hasMemo: true },
   { date: '2026-07-17', hasMemo: true },
   { date: '2026-07-23', hasMemo: true },
 ]
-
-export const categoryColors: Record<EventCategory, string> = {
-  収録: '#c65a4e',
-  ライブ: '#d76645',
-  リハ: '#6f8a77',
-  配信: '#e17a2b',
-  歌枠: '#ec9142',
-  歯医者: '#348783',
-  整体: '#4f9460',
-  通院: '#43867f',
-  おでかけ: '#d79b3d',
-  映: '#5f7b71',
-  その他: '#7b817c',
-}

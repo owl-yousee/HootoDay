@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react'
 import { PencilSimpleIcon } from '@phosphor-icons/react/PencilSimple'
-import { categoryColors } from '../data/calendarData'
+import { getEventCategoryDisplay } from '../data/eventCategoryDisplay'
 import type { CalendarEvent, DayMemoIndicator } from '../types/calendar'
 import { toDateKey } from '../utils/date'
 import { formatEventTime, sortCalendarEvents } from '../utils/event'
@@ -32,23 +32,30 @@ export function DayDetails({ selectedDate, events, memos, onAddEvent, onEditEven
         <h4>この日の予定</h4>
         {dayEvents.length > 0 ? (
           <ul className="detail-event-list">
-            {dayEvents.map((event) => (
-              <li key={event.id} className="detail-event">
-                <span
-                  className="event-dot"
-                  style={{ '--event-color': categoryColors[event.category] } as CSSProperties}
-                  aria-hidden="true"
-                />
-                <div className="detail-event-copy">
-                  <strong>{event.title}</strong>
-                  <span>{formatEventTime(event)}・{event.category}</span>
-                  {event.memo && <small>{event.memo}</small>}
-                </div>
-                <button type="button" className="edit-event-button" onClick={() => onEditEvent(event)} aria-label={`${event.title}を編集`}>
-                  <PencilSimpleIcon size={18} weight="bold" aria-hidden="true" />
-                </button>
-              </li>
-            ))}
+            {dayEvents.map((event) => {
+              const categoryDisplay = getEventCategoryDisplay(event.category)
+              const CategoryIcon = categoryDisplay.icon
+
+              return (
+                <li key={event.id} className="detail-event">
+                  <span
+                    className="detail-category-icon"
+                    style={{ '--event-color': categoryDisplay.color } as CSSProperties}
+                    aria-hidden="true"
+                  >
+                    <CategoryIcon size={20} weight="bold" />
+                  </span>
+                  <div className="detail-event-copy">
+                    <strong>{event.title}</strong>
+                    <span>{formatEventTime(event)}・{categoryDisplay.name}</span>
+                    {event.memo && <small>{event.memo}</small>}
+                  </div>
+                  <button type="button" className="edit-event-button" onClick={() => onEditEvent(event)} aria-label={`${event.title}を編集`}>
+                    <PencilSimpleIcon size={18} weight="bold" aria-hidden="true" />
+                  </button>
+                </li>
+              )
+            })}
           </ul>
         ) : (
           <p className="empty-message">予定はありません</p>
