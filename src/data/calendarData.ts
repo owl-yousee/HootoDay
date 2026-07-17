@@ -1,7 +1,4 @@
-import type {
-  CalendarEvent,
-  DayMemoIndicator,
-} from '../types/calendar'
+import type { CalendarEvent } from '../types/calendar'
 export { eventCategories } from './eventCategoryDisplay'
 
 export const calendarEvents: CalendarEvent[] = [
@@ -12,10 +9,4 @@ export const calendarEvents: CalendarEvent[] = [
   { id: 'event-0717-2', date: '2026-07-17', title: '配信', category: '配信', isAllDay: false, startTime: '21:00', endTime: null, memo: '' },
   { id: 'event-0724', date: '2026-07-24', title: '収録', category: '収録', isAllDay: true, startTime: null, endTime: null, memo: '' },
   { id: 'event-0729', date: '2026-07-29', title: 'ライブ', category: 'ライブ', isAllDay: false, startTime: '19:00', endTime: null, memo: '' },
-]
-
-export const memoIndicators: DayMemoIndicator[] = [
-  { date: '2026-07-05', hasMemo: true },
-  { date: '2026-07-17', hasMemo: true },
-  { date: '2026-07-23', hasMemo: true },
 ]

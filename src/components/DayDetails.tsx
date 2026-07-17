@@ -1,24 +1,26 @@
 import type { CSSProperties } from 'react'
 import { PencilSimpleIcon } from '@phosphor-icons/react/PencilSimple'
 import { getEventCategoryDisplay } from '../data/eventCategoryDisplay'
-import type { CalendarEvent, DayMemoIndicator } from '../types/calendar'
+import type { CalendarEvent } from '../types/calendar'
+import type { DayMemo } from '../types/dayMemo'
 import { toDateKey } from '../utils/date'
 import { formatEventTime, sortCalendarEvents } from '../utils/event'
 
 interface DayDetailsProps {
   selectedDate: Date
   events: CalendarEvent[]
-  memos: DayMemoIndicator[]
+  memos: DayMemo[]
   onAddEvent: () => void
   onEditEvent: (event: CalendarEvent) => void
+  onOpenMemo: () => void
 }
 
 const weekdayLabels = ['日曜日', '月曜日', '火曜日', '水曜日', '木曜日', '金曜日', '土曜日']
 
-export function DayDetails({ selectedDate, events, memos, onAddEvent, onEditEvent }: DayDetailsProps) {
+export function DayDetails({ selectedDate, events, memos, onAddEvent, onEditEvent, onOpenMemo }: DayDetailsProps) {
   const dateKey = toDateKey(selectedDate)
   const dayEvents = sortCalendarEvents(events.filter((event) => event.date === dateKey))
-  const hasMemo = memos.some((memo) => memo.date === dateKey && memo.hasMemo)
+  const dayMemo = memos.find((memo) => memo.date === dateKey)
 
   return (
     <aside className="day-details" aria-live="polite" aria-label="選択日の詳細">
@@ -64,17 +66,21 @@ export function DayDetails({ selectedDate, events, memos, onAddEvent, onEditEven
 
       <section className="detail-section">
         <h4>日記・メモ</h4>
-        <p className={`memo-status${hasMemo ? ' has-memo' : ''}`}>
-          {hasMemo ? '● メモがあります' : 'メモはありません'}
-        </p>
+        {dayMemo ? (
+          <p className="memo-preview has-memo" aria-label="保存済みの日記・メモ">
+            <span className="memo-preview-mark" aria-hidden="true">●</span>
+            <span>{dayMemo.content}</span>
+          </p>
+        ) : (
+          <p className="memo-status">メモはありません</p>
+        )}
       </section>
 
       <section className="detail-section">
         <div className="detail-actions">
           <button type="button" className="detail-button" onClick={onAddEvent}>予定を追加</button>
-          <button type="button" className="detail-button secondary">記録を開く</button>
+          <button type="button" className="detail-button secondary" onClick={onOpenMemo}>記録を開く</button>
         </div>
-        <p className="phase-note">記録機能は今後のPhaseで実装予定です</p>
       </section>
     </aside>
   )

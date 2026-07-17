@@ -1,6 +1,8 @@
 import type { CSSProperties } from 'react'
+import { PencilSimpleIcon } from '@phosphor-icons/react/PencilSimple'
 import { getEventCategoryDisplay } from '../data/eventCategoryDisplay'
-import type { CalendarEvent, DayMemoIndicator } from '../types/calendar'
+import type { CalendarEvent } from '../types/calendar'
+import type { DayMemo } from '../types/dayMemo'
 import { toDateKey } from '../utils/date'
 import { formatTimeForDisplay, getCalendarEventTitle, sortCalendarEvents } from '../utils/event'
 
@@ -8,7 +10,7 @@ interface CalendarProps {
   displayMonth: Date
   selectedDate: Date
   events: CalendarEvent[]
-  memos: DayMemoIndicator[]
+  memos: DayMemo[]
   onSelectDate: (date: Date) => void
 }
 
@@ -56,7 +58,7 @@ export function Calendar({
         {days.map((date) => {
           const dateKey = toDateKey(date)
           const dayEvents = sortCalendarEvents(events.filter((event) => event.date === dateKey))
-          const hasMemo = memos.some((memo) => memo.date === dateKey && memo.hasMemo)
+          const hasMemo = memos.some((memo) => memo.date === dateKey && memo.content.trim().length > 0)
           const isOutside = date.getMonth() !== displayMonth.getMonth()
           const isSelected = isSameDate(date, selectedDate)
           const isToday = isSameDate(date, today)
@@ -79,7 +81,11 @@ export function Calendar({
             >
               <span className="day-topline">
                 <span className="day-number">{date.getDate()}</span>
-                {hasMemo && <span className="memo-indicator" title="メモあり" aria-label="メモあり">●</span>}
+                {hasMemo && (
+                  <span className="memo-indicator" title="メモあり" aria-hidden="true">
+                    <PencilSimpleIcon size={13} weight="bold" aria-hidden="true" />
+                  </span>
+                )}
               </span>
               <span className="event-list-compact" aria-hidden="true">
                 {dayEvents.slice(0, 2).map((event) => {

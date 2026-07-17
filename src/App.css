@@ -383,9 +383,10 @@
 .memo-indicator {
   flex: 0 0 auto;
   margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   color: var(--color-accent);
-  font-size: clamp(0.7rem, 0.85vw, 0.86rem);
-  font-weight: 800;
 }
 
 .event-list-compact {
@@ -558,6 +559,31 @@
 .memo-status.has-memo {
   color: var(--color-accent-dark);
   font-weight: 700;
+}
+
+.memo-preview {
+  margin: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  color: var(--color-text);
+  font-size: clamp(0.7rem, 0.78vw, 0.8rem);
+  line-height: 1.6;
+}
+
+.memo-preview > span:last-child {
+  display: -webkit-box;
+  overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.memo-preview-mark {
+  flex: 0 0 auto;
+  color: var(--color-accent);
+  font-weight: 800;
 }
 
 .detail-actions {
@@ -754,7 +780,8 @@
   text-align: center;
 }
 
-.event-editor-dialog {
+.event-editor-dialog,
+.day-memo-dialog {
   width: min(620px, calc(100vw - 24px));
   max-height: calc(100vh - 24px);
   padding: 0;
@@ -764,11 +791,13 @@
   background: transparent;
 }
 
-.event-editor-dialog::backdrop {
+.event-editor-dialog::backdrop,
+.day-memo-dialog::backdrop {
   background: var(--color-dialog-backdrop);
 }
 
-.event-editor-panel {
+.event-editor-panel,
+.day-memo-panel {
   max-height: calc(100vh - 24px);
   padding: clamp(18px, 3vw, 26px);
   overflow: auto;
@@ -779,7 +808,8 @@
   box-shadow: var(--shadow-soft);
 }
 
-.event-editor-header {
+.event-editor-header,
+.day-memo-header {
   margin-bottom: 20px;
   display: flex;
   align-items: flex-start;
@@ -787,7 +817,8 @@
   gap: 16px;
 }
 
-.event-editor-eyebrow {
+.event-editor-eyebrow,
+.day-memo-eyebrow {
   margin: 0 0 3px;
   color: var(--color-primary);
   font-size: 0.7rem;
@@ -796,9 +827,25 @@
   text-transform: uppercase;
 }
 
-.event-editor-header h2 {
+.event-editor-header h2,
+.day-memo-header h2 {
   margin: 0;
   font-size: 1.3rem;
+}
+
+.day-memo-dialog {
+  width: min(680px, calc(100vw - 24px));
+}
+
+.day-memo-target-date {
+  margin: 5px 0 0;
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+}
+
+.day-memo-panel .form-field textarea {
+  min-height: clamp(220px, 42vh, 380px);
+  line-height: 1.7;
 }
 
 .event-form-grid {
@@ -1103,7 +1150,13 @@ body,
   }
 
   .memo-indicator {
-    font-size: 0.7rem;
+    width: 12px;
+    height: 12px;
+  }
+
+  .memo-indicator svg {
+    width: 12px;
+    height: 12px;
   }
 
   .event-chip {

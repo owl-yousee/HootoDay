@@ -21,8 +21,3 @@ export interface CalendarEvent {
   endTime: string | null
   memo: string
 }
-
-export interface DayMemoIndicator {
-  date: string
-  hasMemo: boolean
-}

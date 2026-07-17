@@ -2,10 +2,11 @@ import { useState } from 'react'
 import { AppHeader } from './components/AppHeader'
 import { Calendar } from './components/Calendar'
 import { DayDetails } from './components/DayDetails'
+import { DayMemoDialog } from './components/DayMemoDialog'
 import { EventEditorDialog } from './components/EventEditorDialog'
 import { Sidebar } from './components/Sidebar'
 import { ThemeSettings } from './components/ThemeSettings'
-import { memoIndicators } from './data/calendarData'
+import { useDayMemos } from './hooks/useDayMemos'
 import { useEvents } from './hooks/useEvents'
 import { useTheme } from './hooks/useTheme'
 import type { CalendarEvent } from './types/calendar'
@@ -20,8 +21,10 @@ function App() {
   const [selectedDate, setSelectedDate] = useState(INITIAL_SELECTED_DATE)
   const [isThemeSettingsOpen, setIsThemeSettingsOpen] = useState(false)
   const [isEventEditorOpen, setIsEventEditorOpen] = useState(false)
+  const [isDayMemoDialogOpen, setIsDayMemoDialogOpen] = useState(false)
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null)
   const { events, saveEvent, deleteEvent } = useEvents()
+  const { dayMemos, saveDayMemo, deleteDayMemo } = useDayMemos()
   const { preference, appliedTheme, setPreference } = useTheme()
 
   const moveMonth = (amount: number) => {
@@ -74,15 +77,16 @@ function App() {
               displayMonth={displayMonth}
               selectedDate={selectedDate}
               events={events}
-              memos={memoIndicators}
+              memos={dayMemos}
               onSelectDate={setSelectedDate}
             />
             <DayDetails
               selectedDate={selectedDate}
               events={events}
-              memos={memoIndicators}
+              memos={dayMemos}
               onAddEvent={openNewEvent}
               onEditEvent={openEventEditor}
+              onOpenMemo={() => setIsDayMemoDialogOpen(true)}
             />
           </div>
         </main>
@@ -104,6 +108,17 @@ function App() {
           onSave={saveEvent}
           onDelete={deleteEvent}
           onClose={() => setIsEventEditorOpen(false)}
+        />
+      )}
+
+      {isDayMemoDialogOpen && (
+        <DayMemoDialog
+          date={toDateKey(selectedDate)}
+          weekday={['日曜日', '月曜日', '火曜日', '水曜日', '木曜日', '金曜日', '土曜日'][selectedDate.getDay()]}
+          memo={dayMemos.find((memo) => memo.date === toDateKey(selectedDate)) ?? null}
+          onSave={saveDayMemo}
+          onDelete={deleteDayMemo}
+          onClose={() => setIsDayMemoDialogOpen(false)}
         />
       )}
     </div>
