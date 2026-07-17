@@ -1268,13 +1268,28 @@
   background: var(--color-accent);
 }
 
-.memo-indicator {
+.day-indicators {
   flex: 0 0 auto;
   margin-left: auto;
   display: inline-flex;
   align-items: center;
+  gap: 3px;
+}
+
+.memo-indicator,
+.health-record-indicator {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
   justify-content: center;
+}
+
+.memo-indicator {
   color: var(--color-accent);
+}
+
+.health-record-indicator {
+  color: var(--color-saturday);
 }
 
 .event-list-compact {
@@ -1479,6 +1494,27 @@
 .detail-actions {
   display: grid;
   gap: 9px;
+}
+
+.health-summary-list {
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  list-style: none;
+}
+
+.health-summary-list li {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--color-text);
+  font-size: clamp(0.68rem, 0.75vw, 0.77rem);
+  line-height: 1.45;
+}
+
+.health-detail-button {
+  width: 100%;
+  margin-top: 12px;
 }
 
 .detail-button {
@@ -2523,7 +2559,12 @@ body,
     font-size: 0.72rem;
   }
 
-  .memo-indicator {
+  .day-indicators {
+    gap: 2px;
+  }
+
+  .memo-indicator,
+  .health-record-indicator {
     width: 12px;
     height: 12px;
   }
@@ -2531,6 +2572,11 @@ body,
   .memo-indicator svg {
     width: 12px;
     height: 12px;
+  }
+
+  .health-record-indicator svg {
+    width: 11px;
+    height: 11px;
   }
 
   .event-chip {

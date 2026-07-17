@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react'
 import { PencilSimpleIcon } from '@phosphor-icons/react/PencilSimple'
+import { HeartbeatIcon } from '@phosphor-icons/react/Heartbeat'
 import { getEventCategoryDisplay } from '../data/eventCategoryDisplay'
 import type { CalendarEvent } from '../types/calendar'
 import type { DayMemo } from '../types/dayMemo'
@@ -11,6 +12,7 @@ interface CalendarProps {
   selectedDate: Date
   events: CalendarEvent[]
   memos: DayMemo[]
+  healthRecordDates: Set<string>
   onSelectDate: (date: Date) => void
 }
 
@@ -37,6 +39,7 @@ export function Calendar({
   selectedDate,
   events,
   memos,
+  healthRecordDates,
   onSelectDate,
 }: CalendarProps) {
   const today = new Date()
@@ -59,6 +62,7 @@ export function Calendar({
           const dateKey = toDateKey(date)
           const dayEvents = sortCalendarEvents(events.filter((event) => event.date === dateKey))
           const hasMemo = memos.some((memo) => memo.date === dateKey && memo.content.trim().length > 0)
+          const hasHealthRecord = healthRecordDates.has(dateKey)
           const isOutside = date.getMonth() !== displayMonth.getMonth()
           const isSelected = isSameDate(date, selectedDate)
           const isToday = isSameDate(date, today)
@@ -68,6 +72,7 @@ export function Calendar({
             isSelected ? '選択中' : '',
             dayEvents.length > 0 ? `予定${dayEvents.length}件` : '予定なし',
             hasMemo ? 'メモあり' : '',
+            hasHealthRecord ? '健康記録あり' : '',
           ].filter(Boolean).join('、')
 
           return (
@@ -81,9 +86,18 @@ export function Calendar({
             >
               <span className="day-topline">
                 <span className="day-number">{date.getDate()}</span>
-                {hasMemo && (
-                  <span className="memo-indicator" title="メモあり" aria-hidden="true">
-                    <PencilSimpleIcon size={13} weight="bold" aria-hidden="true" />
+                {(hasHealthRecord || hasMemo) && (
+                  <span className="day-indicators" aria-hidden="true">
+                    {hasHealthRecord && (
+                      <span className="health-record-indicator" title="健康記録あり" aria-hidden="true">
+                        <HeartbeatIcon size={13} weight="bold" aria-hidden="true" />
+                      </span>
+                    )}
+                    {hasMemo && (
+                      <span className="memo-indicator" title="メモあり" aria-hidden="true">
+                        <PencilSimpleIcon size={13} weight="bold" aria-hidden="true" />
+                      </span>
+                    )}
                   </span>
                 )}
               </span>

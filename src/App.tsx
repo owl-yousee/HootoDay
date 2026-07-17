@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { AppHeader } from './components/AppHeader'
 import { Calendar } from './components/Calendar'
 import { DayDetails } from './components/DayDetails'
@@ -26,6 +26,7 @@ import { useWeightRecords } from './hooks/useWeightRecords'
 import type { CalendarEvent } from './types/calendar'
 import type { ExerciseSession } from './types/health'
 import { fromDateKey, toDateKey } from './utils/date'
+import { getDailyHealthSummary, getHealthRecordDates } from './utils/healthSummary'
 import './App.css'
 
 const INITIAL_MONTH = new Date(2026, 6, 1)
@@ -56,6 +57,18 @@ function App() {
   const { mealTemplates, saveMealTemplate, deleteMealTemplate, moveMealTemplate } = useMealTemplates()
   const { exerciseSessions, saveExerciseSession, deleteExerciseSession } = useExerciseSessions()
   const { conditionRecords, saveConditionRecord, deleteConditionRecord } = useConditionRecords()
+  const healthSummarySource = useMemo(() => ({
+    weightRecords,
+    sleepRecords,
+    mealRecords,
+    exerciseSessions,
+    conditionRecords,
+  }), [weightRecords, sleepRecords, mealRecords, exerciseSessions, conditionRecords])
+  const healthRecordDates = useMemo(() => getHealthRecordDates(healthSummarySource), [healthSummarySource])
+  const selectedHealthSummary = useMemo(
+    () => getDailyHealthSummary(toDateKey(selectedDate), healthSummarySource),
+    [selectedDate, healthSummarySource],
+  )
 
   const selectDate = (date: Date) => {
     setSelectedDate(date)
@@ -111,6 +124,11 @@ function App() {
     setIsExerciseDialogOpen(true)
   }
 
+  const openSelectedDateHealth = () => {
+    setActiveView('health')
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
   return (
     <div className="app-shell">
       <AppHeader
@@ -136,8 +154,8 @@ function App() {
                 <p className="content-note">予定と毎日の記録を、ひと目で。</p>
               </div>
               <div className="calendar-layout">
-                <Calendar displayMonth={displayMonth} selectedDate={selectedDate} events={events} memos={dayMemos} onSelectDate={selectDate} />
-                <DayDetails selectedDate={selectedDate} events={events} memos={dayMemos} onAddEvent={openNewEvent} onEditEvent={openEventEditor} onOpenMemo={() => setIsDayMemoDialogOpen(true)} />
+                <Calendar displayMonth={displayMonth} selectedDate={selectedDate} events={events} memos={dayMemos} healthRecordDates={healthRecordDates} onSelectDate={selectDate} />
+                <DayDetails selectedDate={selectedDate} events={events} memos={dayMemos} healthSummary={selectedHealthSummary} onAddEvent={openNewEvent} onEditEvent={openEventEditor} onOpenMemo={() => setIsDayMemoDialogOpen(true)} onOpenHealth={openSelectedDateHealth} />
               </div>
             </>
           ) : (
