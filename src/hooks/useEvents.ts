@@ -1,11 +1,16 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { calendarEvents } from '../data/calendarData'
 import type { CalendarEvent } from '../types/calendar'
+import { loadStoredEvents, saveStoredEvents } from '../utils/eventStorage'
 
 export function useEvents() {
   const [events, setEvents] = useState<CalendarEvent[]>(() =>
-    calendarEvents.map((event) => ({ ...event })),
+    loadStoredEvents(calendarEvents),
   )
+
+  useEffect(() => {
+    saveStoredEvents(events)
+  }, [events])
 
   const saveEvent = (event: CalendarEvent) => {
     setEvents((current) => {
