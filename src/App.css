@@ -703,8 +703,7 @@
 .sleep-card,
 .meal-card,
 .exercise-card,
-.condition-card,
-.upcoming-health-card {
+.condition-card {
   width: 100%;
   max-width: 100%;
   min-width: 0;
@@ -873,8 +872,7 @@
 
 .health-date-card h3,
 .health-date-card p,
-.weight-card h3,
-.upcoming-health-card h3 {
+.weight-card h3 {
   margin-top: 0;
 }
 
@@ -963,8 +961,7 @@
 .sleep-card,
 .meal-card,
 .exercise-card,
-.condition-card,
-.upcoming-health-card {
+.condition-card {
   padding: clamp(17px, 2vw, 24px);
 }
 
@@ -980,8 +977,7 @@
 .sleep-card h3,
 .meal-card h3,
 .exercise-card h3,
-.condition-card h3,
-.upcoming-health-card h3 {
+.condition-card h3 {
   margin-bottom: 0;
   font-size: 1.05rem;
 }
@@ -1080,8 +1076,12 @@
 
 .weight-memo {
   margin: 14px 0 0;
+  display: -webkit-box;
+  overflow: hidden;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
 }
 
 .sleep-value-label {
@@ -1111,12 +1111,12 @@
 
 .sleep-card-memo {
   padding-top: 11px;
+  display: -webkit-box;
+  overflow: hidden;
   border-top: 1px solid var(--color-border);
   white-space: pre-wrap;
-}
-
-.upcoming-health-card {
-  grid-column: 1 / -1;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
 }
 
 .health-primary-button {
@@ -1142,31 +1142,6 @@
   padding-top: 14px;
   border-top: 1px solid var(--color-border);
   font-size: 0.7rem;
-}
-
-.upcoming-health-card ul {
-  margin: 16px 0 0;
-  padding: 0;
-  display: grid;
-  gap: 8px;
-  list-style: none;
-}
-
-.upcoming-health-card li {
-  min-width: 0;
-  padding: 9px 10px;
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  border-radius: 10px;
-  color: var(--color-text);
-  background: var(--color-surface-soft);
-  font-size: 0.78rem;
-}
-
-.upcoming-health-card li span {
-  color: var(--color-text-muted);
-  font-size: 0.68rem;
 }
 
 .calendar-card,
@@ -2413,8 +2388,7 @@ body,
   .sleep-card,
   .meal-card,
   .exercise-card,
-  .condition-card,
-  .upcoming-health-card {
+  .condition-card {
     padding: 15px;
   }
 

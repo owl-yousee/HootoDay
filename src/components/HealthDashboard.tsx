@@ -30,8 +30,6 @@ interface HealthDashboardProps {
 }
 
 const weekdayLabels = ['日曜日', '月曜日', '火曜日', '水曜日', '木曜日', '金曜日', '土曜日']
-const upcomingItems = ['記録の出力']
-
 export function HealthDashboard({
   selectedDate,
   records,
@@ -206,13 +204,6 @@ export function HealthDashboard({
           )}
         </section>
 
-        <section className="upcoming-health-card">
-          <p className="health-card-kicker">Coming later</p>
-          <h3>今後追加予定</h3>
-          <ul>
-            {upcomingItems.map((item) => <li key={item}>{item}<span>未実装</span></li>)}
-          </ul>
-        </section>
         </div>
       </> : activeSection === 'weight' ? (
         <WeightDashboard records={records} profile={profile} onOpenProfile={onOpenProfile} />

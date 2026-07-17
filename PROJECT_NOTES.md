@@ -811,3 +811,37 @@
 - Phase 4の主要な日付別入力項目が一通り完成したことを記録
 - Phase 4Fを完了とする
 - 次工程は健康記録全体の確認、運動まとめ、体調まとめ、または出力機能の優先順位を整理する
+
+### Health Review Phase（完了）
+
+- Phase 4で実装した健康プロフィール、体重、睡眠、食事、食事定型、運動、体調の入力・表示・保存を統合確認
+- 日付別健康カードの正式順序を、体重、睡眠、食事、運動、体調メモの順に統一
+- 日付別画面を圧迫していた未実装の「今後追加予定」カードを削除し、将来機能はPROJECT_NOTES.mdで管理する
+- 各カードは左側に共通見出し、右側または狭幅時の下段に共通`HealthDateNavigator`、本文下部に主要操作を配置する
+- 未記録時は「この日の○○記録はありません」と「○○を記録」ボタンを共通の空状態で表示し、0kg、0時間、0kcal等へ置き換えない
+- 記録済みカードは日常的な概要だけを表示し、食事・運動・体調に加えて体重・睡眠メモも最大3行程度へ省略、全文は各dialogで確認する
+- 1日1件の体重、睡眠、食事、体調は記録済み時に「編集」、1日複数件の運動は「運動を追加」と各セッションの「編集」を使用する
+- 全健康カードはAppの同じ`selectedDate`を操作し、カード別の日付stateを持たない
+- カード内日付は共通`HealthDateNavigator`で、現在年は「7月17日」、異なる年は「2027年1月1日」形式に統一
+- 日付別画面では前日・次日・今日・日付直接選択を共有し、まとめ画面の集計基準日は従来どおり最新記録日とする
+- 健康プロフィールは設定dialog内で管理し、日付別健康画面へ大きなプロフィールカードを戻さない
+- 体重まとめのプロフィール編集入口と、設定dialogを閉じてからHealthProfileDialogを開く構造を維持
+- 健康入力dialogは保存、キャンセル、右上の閉じる、Escape、削除完了で閉じ、backdropクリックでは閉じない安全方針を確認
+- ThemeSettingsだけは従来どおりbackdropクリックで閉じる
+- localStorageキーは`hootoDay.theme`、`hootoDay.events`、`hootoDay.dayMemos`、`hootoDay.healthProfile`、`hootoDay.weightRecords`、`hootoDay.sleepRecords`、`hootoDay.mealRecords`、`hootoDay.mealTemplates`、`hootoDay.exerciseSessions`、`hootoDay.conditionRecords`
+- テーマ以外の保存データはversion 1で管理し、各キーのラッパー形式、空配列または`profile: null`の有効状態、unknownからの検証、try/catchを確認
+- 各データは独立したlocalStorageキーとReact stateで管理され、1種類の保存・編集・削除が他種類を変更しない構造を確認
+- 保存失敗時もReact state上の操作を継続し、日記本文、食事、運動、体調、生理・周期メモ等をconsoleへ出力しない
+- 次のHealth Export Phaseで、日付ごとに日記・メモ、体重とメモ、睡眠と途中覚醒、食事、運動セッション、体調の全保存項目を取得可能であることを確認
+- TXT・Markdown出力に必要な保存項目の不足は現時点で確認されなかったため、型と保存形式は変更しない
+- 920px以下の1列カード、820px以下の上部ナビ、560px以下のフォーム・日付操作、320px以上のviewport追従を維持
+- ライトは緑主体、ダークはオレンジ主体の既存CSS変数を使用し、状態表示は色だけでなく文言を併記する
+- 見出し、button、label、aria-label、aria-pressed、aria-invalid、aria-describedby、role="alert"、aria-live、dialog見出し関連付けを確認
+- 実機確認日：2026年7月17日
+- 健康記録の正式な5カード順、各カードの見出し、日付操作、空状態、ボタン文言の統一を実機確認
+- 体重・睡眠メモの3行省略と、不要な「今後追加予定」カードの削除を正式採用
+- すべての健康カードが同じ`selectedDate`を共有し、健康プロフィールを設定で管理する構成を確認
+- 健康入力dialogの終了条件、localStorageキーとversion 1形式、健康データ間の独立性を確認
+- Health Export Phaseに必要な保存項目が揃っており、保存形式の変更が不要であることを確認
+- ライト・ダークテーマ、レスポンシブ表示、アクセシビリティを確認し、Health Review Phaseを完了とする
+- 次はHealth Export Phase「健康記録TXT・Markdown出力」へ進む
