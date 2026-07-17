@@ -4,6 +4,7 @@ import { Calendar } from './components/Calendar'
 import { DayDetails } from './components/DayDetails'
 import { DayMemoDialog } from './components/DayMemoDialog'
 import { EventEditorDialog } from './components/EventEditorDialog'
+import { ExerciseSessionDialog } from './components/ExerciseSessionDialog'
 import { HealthDashboard } from './components/HealthDashboard'
 import { HealthProfileDialog } from './components/HealthProfileDialog'
 import { MealRecordDialog } from './components/MealRecordDialog'
@@ -13,6 +14,7 @@ import { ThemeSettings } from './components/ThemeSettings'
 import { WeightRecordDialog } from './components/WeightRecordDialog'
 import { useDayMemos } from './hooks/useDayMemos'
 import { useEvents } from './hooks/useEvents'
+import { useExerciseSessions } from './hooks/useExerciseSessions'
 import { useHealthProfile } from './hooks/useHealthProfile'
 import { useMealRecords } from './hooks/useMealRecords'
 import { useMealTemplates } from './hooks/useMealTemplates'
@@ -20,6 +22,7 @@ import { useSleepRecords } from './hooks/useSleepRecords'
 import { useTheme } from './hooks/useTheme'
 import { useWeightRecords } from './hooks/useWeightRecords'
 import type { CalendarEvent } from './types/calendar'
+import type { ExerciseSession } from './types/health'
 import { fromDateKey, toDateKey } from './utils/date'
 import './App.css'
 
@@ -37,7 +40,9 @@ function App() {
   const [isHealthProfileDialogOpen, setIsHealthProfileDialogOpen] = useState(false)
   const [isSleepDialogOpen, setIsSleepDialogOpen] = useState(false)
   const [isMealDialogOpen, setIsMealDialogOpen] = useState(false)
+  const [isExerciseDialogOpen, setIsExerciseDialogOpen] = useState(false)
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null)
+  const [editingExerciseSession, setEditingExerciseSession] = useState<ExerciseSession | null>(null)
   const { events, saveEvent, deleteEvent } = useEvents()
   const { dayMemos, saveDayMemo, deleteDayMemo } = useDayMemos()
   const { preference, appliedTheme, setPreference } = useTheme()
@@ -46,6 +51,7 @@ function App() {
   const { sleepRecords, saveSleepRecord, deleteSleepRecord } = useSleepRecords()
   const { mealRecords, saveMealRecord, deleteMealRecord } = useMealRecords()
   const { mealTemplates, saveMealTemplate, deleteMealTemplate, moveMealTemplate } = useMealTemplates()
+  const { exerciseSessions, saveExerciseSession, deleteExerciseSession } = useExerciseSessions()
 
   const selectDate = (date: Date) => {
     setSelectedDate(date)
@@ -96,6 +102,11 @@ function App() {
     setIsHealthProfileDialogOpen(true)
   }
 
+  const openExerciseDialog = (session: ExerciseSession | null) => {
+    setEditingExerciseSession(session)
+    setIsExerciseDialogOpen(true)
+  }
+
   return (
     <div className="app-shell">
       <AppHeader
@@ -131,6 +142,7 @@ function App() {
               records={weightRecords}
               sleepRecords={sleepRecords}
               mealRecords={mealRecords}
+              exerciseSessions={exerciseSessions}
               profile={healthProfile}
               onPreviousDay={() => moveSelectedDay(-1)}
               onNextDay={() => moveSelectedDay(1)}
@@ -140,6 +152,7 @@ function App() {
               onOpenProfile={() => setIsHealthProfileDialogOpen(true)}
               onOpenSleep={() => setIsSleepDialogOpen(true)}
               onOpenMeal={() => setIsMealDialogOpen(true)}
+              onOpenExercise={openExerciseDialog}
             />
           )}
         </main>
@@ -217,6 +230,20 @@ function App() {
           onSave={saveMealRecord}
           onDelete={deleteMealRecord}
           onClose={() => setIsMealDialogOpen(false)}
+        />
+      )}
+
+      {isExerciseDialogOpen && (
+        <ExerciseSessionDialog
+          date={toDateKey(selectedDate)}
+          session={editingExerciseSession}
+          weightRecords={weightRecords}
+          onSave={saveExerciseSession}
+          onDelete={deleteExerciseSession}
+          onClose={() => {
+            setIsExerciseDialogOpen(false)
+            setEditingExerciseSession(null)
+          }}
         />
       )}
     </div>

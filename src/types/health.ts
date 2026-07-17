@@ -63,3 +63,25 @@ export interface MealTemplate {
   createdAt: string
   updatedAt: string
 }
+
+export type ExerciseType =
+  | 'treadmill'
+  | 'exerciseBike'
+  | 'beatSaber'
+  | 'stretching'
+  | 'other'
+
+export interface ExerciseSession {
+  id: string
+  date: string
+  exerciseType: ExerciseType
+  customName: string
+  durationMinutes: number
+  averageHeartRate: number | null
+  mets: number
+  weightKgUsed: number | null
+  estimatedCaloriesKcal: number | null
+  memo: string
+  createdAt: string
+  updatedAt: string
+}
