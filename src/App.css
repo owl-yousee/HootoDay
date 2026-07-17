@@ -37,6 +37,37 @@
   --radius-medium: 14px;
 }
 
+.records-placeholder {
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: clamp(12px, 2vw, 18px);
+  max-width: 620px;
+  padding: clamp(18px, 3vw, 30px);
+  border: 1px solid var(--color-border);
+  border-radius: 18px;
+  background: var(--color-surface);
+}
+
+.records-placeholder-icon {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  color: var(--color-primary);
+  background: var(--color-primary-soft);
+}
+
+.records-placeholder h1 { margin: 2px 0 8px; font-size: clamp(1.35rem, 3vw, 1.8rem); }
+.records-placeholder p:last-child { margin: 0; color: var(--color-text-muted); line-height: 1.7; }
+
+@media (max-width: 560px) {
+  .records-placeholder { padding: 16px; }
+  .records-placeholder-icon { width: 42px; height: 42px; }
+}
+
 /* Condition summary */
 .condition-dashboard {
   min-width: 0;
@@ -4005,6 +4036,8 @@ body,
 
   .monthly-best-compact-button,
   .monthly-achievement-open-button {
+    flex: 0 0 auto;
+    align-self: stretch;
     width: 100%;
     max-width: 100%;
     text-align: left;

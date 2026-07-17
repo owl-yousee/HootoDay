@@ -12,6 +12,7 @@ import { HealthProfileDialog } from './components/HealthProfileDialog'
 import { MealRecordDialog } from './components/MealRecordDialog'
 import { MonthlyAchievementHighlight } from './components/MonthlyAchievementHighlight'
 import { MonthlyAchievementsDialog } from './components/MonthlyAchievementsDialog'
+import { RecordsPlaceholder } from './components/RecordsPlaceholder'
 import { Sidebar, type AppView } from './components/Sidebar'
 import { SleepRecordDialog } from './components/SleepRecordDialog'
 import { ThemeSettings } from './components/ThemeSettings'
@@ -231,6 +232,8 @@ function App() {
               onOpenExercise={openExerciseDialog}
               onOpenCondition={() => setIsConditionDialogOpen(true)}
             />
+          ) : activeView === 'records' ? (
+            <RecordsPlaceholder />
           ) : (
             <HealthExportPage
               initialDate={selectedDateKey}

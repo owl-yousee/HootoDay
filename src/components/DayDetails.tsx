@@ -113,7 +113,7 @@ export function DayDetails({ selectedDate, events, memos, healthSummary, achieve
       <section className="detail-section">
         <div className="detail-actions">
           <button type="button" className="detail-button" onClick={onAddEvent}>予定を追加</button>
-          <button type="button" className="detail-button secondary" onClick={onOpenMemo}>日記・メモを開く</button>
+          <button type="button" className="detail-button secondary" onClick={onOpenMemo}>{dayMemo ? '日記・メモを編集' : '日記・メモを書く'}</button>
         </div>
       </section>
 
@@ -140,7 +140,7 @@ export function DayDetails({ selectedDate, events, memos, healthSummary, achieve
             ) : (
               <p className="empty-message">健康記録はありません</p>
             )}
-            <button type="button" className="detail-button health-detail-button" onClick={onOpenHealth}>健康記録を開く</button>
+            <button type="button" className="detail-button health-detail-button" onClick={onOpenHealth}>この日の健康記録を見る</button>
           </div>
         )}
       </section>
