@@ -3,7 +3,9 @@ import { AppHeader } from './components/AppHeader'
 import { Calendar } from './components/Calendar'
 import { DayDetails } from './components/DayDetails'
 import { Sidebar } from './components/Sidebar'
+import { ThemeSettings } from './components/ThemeSettings'
 import { calendarEvents, memoIndicators } from './data/calendarData'
+import { useTheme } from './hooks/useTheme'
 import './App.css'
 
 const INITIAL_MONTH = new Date(2026, 6, 1)
@@ -12,6 +14,8 @@ const INITIAL_SELECTED_DATE = new Date(2026, 6, 17)
 function App() {
   const [displayMonth, setDisplayMonth] = useState(INITIAL_MONTH)
   const [selectedDate, setSelectedDate] = useState(INITIAL_SELECTED_DATE)
+  const [isThemeSettingsOpen, setIsThemeSettingsOpen] = useState(false)
+  const { preference, appliedTheme, setPreference } = useTheme()
 
   const moveMonth = (amount: number) => {
     setDisplayMonth(
@@ -35,7 +39,10 @@ function App() {
       />
 
       <div className="app-body">
-        <Sidebar />
+        <Sidebar
+          isSettingsOpen={isThemeSettingsOpen}
+          onSettingsClick={() => setIsThemeSettingsOpen((current) => !current)}
+        />
         <main className="main-content">
           <div className="content-heading">
             <div>
@@ -61,6 +68,15 @@ function App() {
           </div>
         </main>
       </div>
+
+      {isThemeSettingsOpen && (
+        <ThemeSettings
+          preference={preference}
+          appliedTheme={appliedTheme}
+          onChange={setPreference}
+          onClose={() => setIsThemeSettingsOpen(false)}
+        />
+      )}
     </div>
   )
 }

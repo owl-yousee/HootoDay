@@ -31,7 +31,7 @@ button {
 }
 
 button:focus-visible {
-  outline: 3px solid color-mix(in srgb, var(--color-primary, #397552) 38%, transparent);
+  outline: 3px solid color-mix(in srgb, var(--color-focus, #397552) 38%, transparent);
   outline-offset: 2px;
 }
 

@@ -1,4 +1,5 @@
-:root {
+:root,
+:root[data-theme="light"] {
   --color-background: #f1f8f2;
   --color-surface: #ffffff;
   --color-surface-soft: #f5f7f4;
@@ -20,9 +21,49 @@
   --color-saturday: #358077;
   --color-saturday-soft: #edf8f6;
   --color-outside: #9ba39d;
+  --color-on-primary: #ffffff;
+  --color-event-chip-base: #ffffff;
+  --color-dialog-backdrop: rgba(27, 43, 33, 0.28);
+  --color-focus: #397552;
   --shadow-soft: 0 14px 40px rgba(51, 92, 65, 0.07);
   --radius-large: 22px;
   --radius-medium: 14px;
+}
+
+:root[data-theme="dark"] {
+  --color-background: #211d19;
+  --color-surface: #2d2823;
+  --color-surface-soft: #27221e;
+  --color-sidebar: #2a251f;
+  --color-ivory-hover: #3a3027;
+  --color-text: #f5efe8;
+  --color-text-muted: #c0b5aa;
+  --color-border: #4b4036;
+  --color-primary: #f08a35;
+  --color-primary-hover: #ff9d4b;
+  --color-primary-dark: #ffc078;
+  --color-primary-soft: #4a3020;
+  --color-accent: #f5a04d;
+  --color-accent-hover: #ffb15f;
+  --color-accent-dark: #ffc98f;
+  --color-accent-soft: #493321;
+  --color-support: #68a77a;
+  --color-support-hover: #78b88a;
+  --color-danger: #ef8c91;
+  --color-danger-soft: #42282b;
+  --color-saturday: #78c0b6;
+  --color-saturday-soft: #243937;
+  --color-outside: #8f857c;
+  --color-on-primary: #29170a;
+  --color-event-chip-base: #2d2823;
+  --color-dialog-backdrop: rgba(15, 11, 8, 0.68);
+  --color-focus: #f5a04d;
+  --shadow-soft: 0 14px 40px rgba(10, 7, 5, 0.24);
+}
+
+:root[data-theme="dark"] .brand-mark {
+  background: var(--color-support);
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--color-support) 18%, transparent);
 }
 
 .app-shell {
@@ -55,7 +96,7 @@
   display: grid;
   place-items: center;
   border-radius: 13px;
-  color: white;
+  color: var(--color-on-primary);
   background: var(--color-primary);
   font-weight: 800;
   box-shadow: 0 6px 16px color-mix(in srgb, var(--color-primary) 20%, transparent);
@@ -335,7 +376,7 @@
 }
 
 .is-today .day-number {
-  color: white;
+  color: var(--color-on-primary);
   background: var(--color-accent);
 }
 
@@ -364,7 +405,7 @@
   border-left: 3px solid var(--event-color);
   border-radius: 4px;
   color: var(--color-text);
-  background: color-mix(in srgb, var(--event-color) 12%, white);
+  background: color-mix(in srgb, var(--event-color) 18%, var(--color-event-chip-base));
   font-size: clamp(0.58rem, 0.65vw, 0.68rem);
   line-height: 1.25;
   text-overflow: ellipsis;
@@ -481,7 +522,7 @@
   min-height: 44px;
   padding: 0 14px;
   border-radius: 12px;
-  color: white;
+  color: var(--color-on-primary);
   background: var(--color-primary);
   font-weight: 700;
 }
@@ -504,6 +545,193 @@
 .phase-note {
   margin: 10px 0 0;
   text-align: center;
+}
+
+.theme-dialog {
+  width: min(420px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  color: var(--color-text);
+  background: transparent;
+}
+
+.theme-dialog::backdrop {
+  background: var(--color-dialog-backdrop);
+}
+
+.theme-panel {
+  max-height: calc(100vh - 32px);
+  padding: 22px;
+  overflow: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-large);
+  color: var(--color-text);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-soft);
+}
+
+.theme-panel-header {
+  margin-bottom: 18px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.theme-panel-eyebrow {
+  margin: 0 0 3px;
+  color: var(--color-primary);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.theme-panel-header h2 {
+  margin: 0;
+  color: var(--color-text);
+  font-size: 1.25rem;
+}
+
+.theme-close-button {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  color: var(--color-text);
+  background: var(--color-surface-soft);
+  cursor: pointer;
+}
+
+.theme-close-button:hover {
+  color: var(--color-accent-dark);
+  background: var(--color-accent-soft);
+}
+
+.theme-options {
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 9px;
+  border: 0;
+}
+
+.theme-options legend {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+.theme-option {
+  min-height: 64px;
+  padding: 10px 12px;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) 20px;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  color: var(--color-text);
+  background: var(--color-surface-soft);
+  cursor: pointer;
+}
+
+.theme-option:hover {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+
+.theme-option.is-selected {
+  border: 2px solid var(--color-primary);
+  background: var(--color-primary-soft);
+}
+
+.theme-option:has(input:focus-visible) {
+  outline: 3px solid color-mix(in srgb, var(--color-focus) 38%, transparent);
+  outline-offset: 2px;
+}
+
+.theme-option input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.theme-option-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-primary-dark);
+}
+
+.theme-option-copy strong,
+.theme-option-copy small {
+  display: block;
+}
+
+.theme-option-copy strong {
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.theme-option-copy small {
+  margin-top: 2px;
+  color: var(--color-text-muted);
+  font-size: 0.72rem;
+}
+
+.theme-radio-mark {
+  width: 17px;
+  height: 17px;
+  border: 2px solid var(--color-border);
+  border-radius: 50%;
+}
+
+.theme-option.is-selected .theme-radio-mark {
+  border: 5px solid var(--color-primary);
+  background: var(--color-surface);
+}
+
+.applied-theme-note {
+  margin: 15px 0 0;
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+  text-align: center;
+}
+
+body,
+.app-shell,
+.app-header,
+.sidebar,
+.calendar-card,
+.calendar-day,
+.day-details,
+.theme-panel {
+  transition:
+    color 140ms ease,
+    background-color 140ms ease,
+    border-color 140ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body,
+  .app-shell,
+  .app-header,
+  .sidebar,
+  .calendar-card,
+  .calendar-day,
+  .day-details,
+  .theme-panel {
+    transition: none;
+  }
 }
 
 @media (max-width: 920px) {

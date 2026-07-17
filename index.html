@@ -10,6 +10,31 @@
       rel="stylesheet"
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      (() => {
+        const storageKey = 'hootoDay.theme'
+        const validPreferences = ['light', 'dark', 'system']
+
+        try {
+          const savedPreference = localStorage.getItem(storageKey)
+          const preference = validPreferences.includes(savedPreference)
+            ? savedPreference
+            : 'system'
+          const theme =
+            preference === 'system'
+              ? matchMedia('(prefers-color-scheme: dark)').matches
+                ? 'dark'
+                : 'light'
+              : preference
+
+          document.documentElement.dataset.theme = theme
+          document.documentElement.style.colorScheme = theme
+        } catch {
+          document.documentElement.dataset.theme = 'light'
+          document.documentElement.style.colorScheme = 'light'
+        }
+      })()
+    </script>
     <title>HootoDay</title>
   </head>
   <body>
