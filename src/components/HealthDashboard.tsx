@@ -1,12 +1,14 @@
+import { useState } from 'react'
 import { CaretLeftIcon } from '@phosphor-icons/react/CaretLeft'
 import { CaretRightIcon } from '@phosphor-icons/react/CaretRight'
 import type { HealthProfile, WeightRecord } from '../types/health'
 import { toDateKey } from '../utils/date'
 import { calculateAge, formatCalculationSex } from '../utils/healthProfile'
+import { WeightDashboard } from './WeightDashboard'
 
 interface HealthDashboardProps {
   selectedDate: Date
-  record: WeightRecord | null
+  records: WeightRecord[]
   profile: HealthProfile | null
   onPreviousDay: () => void
   onNextDay: () => void
@@ -21,7 +23,7 @@ const upcomingItems = ['睡眠', '食事', '運動', '体調メモ']
 
 export function HealthDashboard({
   selectedDate,
-  record,
+  records,
   profile,
   onPreviousDay,
   onNextDay,
@@ -30,7 +32,9 @@ export function HealthDashboard({
   onOpenWeight,
   onOpenProfile,
 }: HealthDashboardProps) {
+  const [activeSection, setActiveSection] = useState<'daily' | 'summary'>('daily')
   const dateKey = toDateKey(selectedDate)
+  const record = records.find((item) => item.date === dateKey) ?? null
   const dateLabel = `${selectedDate.getFullYear()}年${selectedDate.getMonth() + 1}月${selectedDate.getDate()}日`
   const age = profile?.birthDate ? calculateAge(profile.birthDate) : null
 
@@ -44,7 +48,13 @@ export function HealthDashboard({
         <p className="content-note">毎日の変化を、無理なく記録。</p>
       </div>
 
-      <section className="health-date-card" aria-label="健康記録の日付選択">
+      <div className="health-view-tabs" role="group" aria-label="健康記録の表示切り替え">
+        <button type="button" className={activeSection === 'daily' ? 'is-active' : ''} aria-pressed={activeSection === 'daily'} onClick={() => setActiveSection('daily')}>日付別記録</button>
+        <button type="button" className={activeSection === 'summary' ? 'is-active' : ''} aria-pressed={activeSection === 'summary'} onClick={() => setActiveSection('summary')}>体重まとめ</button>
+      </div>
+
+      {activeSection === 'daily' ? <>
+        <section className="health-date-card" aria-label="健康記録の日付選択">
         <div>
           <p className="health-date-label">選択中の日付</p>
           <h3>{dateLabel}</h3>
@@ -63,9 +73,9 @@ export function HealthDashboard({
           </button>
           <button type="button" className="health-date-button" onClick={onToday} aria-label="今日の健康記録を表示">今日</button>
         </div>
-      </section>
+        </section>
 
-      <section className="health-profile-card" aria-labelledby="health-profile-heading">
+        <section className="health-profile-card" aria-labelledby="health-profile-heading">
         <div className="health-card-header">
           <div>
             <p className="health-card-kicker">Profile</p>
@@ -90,9 +100,9 @@ export function HealthDashboard({
           </div>
         )}
         <p className="health-profile-note">身長・生年月日・計算用の性別・目標体重は、今後の体重集計や運動消費カロリーの概算に使用します。</p>
-      </section>
+        </section>
 
-      <div className="health-card-grid">
+        <div className="health-card-grid">
         <section className="weight-card">
           <div className="health-card-header">
             <div>
@@ -125,7 +135,10 @@ export function HealthDashboard({
             {upcomingItems.map((item) => <li key={item}>{item}<span>未実装</span></li>)}
           </ul>
         </section>
-      </div>
+        </div>
+      </> : (
+        <WeightDashboard records={records} profile={profile} onOpenProfile={onOpenProfile} />
+      )}
     </div>
   )
 }

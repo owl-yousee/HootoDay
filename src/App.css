@@ -300,6 +300,297 @@
   align-items: end;
 }
 
+.health-view-tabs {
+  width: fit-content;
+  max-width: 100%;
+  margin-bottom: clamp(12px, 1.4vw, 18px);
+  padding: 4px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  border: 1px solid var(--color-border);
+  border-radius: 13px;
+  background: var(--color-surface);
+}
+
+.health-view-tabs button {
+  min-height: 40px;
+  padding: 0 17px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  color: var(--color-text-muted);
+  background: transparent;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.health-view-tabs button:hover {
+  background: var(--color-accent-soft);
+}
+
+.health-view-tabs button.is-active {
+  border-color: var(--color-primary);
+  color: var(--color-on-primary);
+  background: var(--color-primary);
+}
+
+.weight-dashboard {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  display: grid;
+  gap: clamp(14px, 1.6vw, 22px);
+}
+
+.weight-summary-heading,
+.weight-section-heading {
+  min-width: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.weight-summary-heading h3,
+.weight-section-heading h3 {
+  margin: 0;
+  color: var(--color-text);
+  font-size: clamp(1.05rem, 1.4vw, 1.25rem);
+}
+
+.weight-summary-heading > p,
+.weight-section-heading > p {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.72rem;
+}
+
+.weight-metric-grid {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: clamp(10px, 1.2vw, 15px);
+}
+
+.weight-metric-card,
+.weight-average-section,
+.weight-chart-section {
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-large);
+  color: var(--color-text);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-soft);
+}
+
+.weight-metric-card {
+  padding: clamp(15px, 1.6vw, 20px);
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  overflow-wrap: break-word;
+}
+
+.weight-metric-card.is-primary {
+  border-color: color-mix(in srgb, var(--color-primary) 45%, var(--color-border));
+  background: color-mix(in srgb, var(--color-primary-soft) 55%, var(--color-surface));
+}
+
+.weight-metric-card > p {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.weight-metric-card > strong {
+  color: var(--color-text);
+  font-size: clamp(1.25rem, 2vw, 1.8rem);
+  line-height: 1.25;
+}
+
+.weight-metric-card > strong small {
+  font-size: 0.78rem;
+}
+
+.weight-metric-card > span,
+.weight-metric-card > small {
+  color: var(--color-text-muted);
+  font-size: 0.7rem;
+  line-height: 1.5;
+}
+
+.weight-target-card {
+  grid-column: span 2;
+}
+
+.weight-inline-button {
+  width: fit-content;
+  max-width: 100%;
+  min-height: 36px;
+  margin-top: auto;
+  padding: 0 12px;
+  border: 1px solid var(--color-accent);
+  border-radius: 9px;
+  color: var(--color-accent-dark);
+  background: var(--color-accent-soft);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.weight-average-section,
+.weight-chart-section {
+  padding: clamp(16px, 2vw, 24px);
+}
+
+.weight-average-grid {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.weight-average-card {
+  min-width: 0;
+  padding: 14px;
+  display: grid;
+  gap: 6px;
+  border-radius: 12px;
+  background: var(--color-surface-soft);
+}
+
+.weight-average-card h4 {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.74rem;
+}
+
+.weight-average-card strong {
+  overflow-wrap: break-word;
+  font-size: clamp(0.9rem, 1.5vw, 1.25rem);
+}
+
+.weight-average-card strong small,
+.weight-average-card span,
+.weight-average-card > small {
+  color: var(--color-text-muted);
+  font-size: 0.66rem;
+  line-height: 1.45;
+}
+
+.weight-period-controls {
+  max-width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 5px;
+}
+
+.weight-period-controls button {
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 9px;
+  color: var(--color-text-muted);
+  background: var(--color-surface-soft);
+  font: inherit;
+  font-size: 0.68rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.weight-period-controls button.is-active {
+  border-color: var(--color-primary);
+  color: var(--color-on-primary);
+  background: var(--color-primary);
+}
+
+.weight-chart-summary {
+  margin: 16px 0 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.weight-chart-summary span {
+  padding: 5px 8px;
+  border-radius: 8px;
+  color: var(--color-text-muted);
+  background: var(--color-surface-soft);
+  font-size: 0.66rem;
+}
+
+.weight-chart-svg {
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  display: block;
+  overflow: visible;
+}
+
+.weight-chart-grid-line {
+  stroke: var(--color-border);
+  stroke-width: 1;
+}
+
+.weight-chart-line {
+  stroke: var(--color-primary);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.weight-chart-point {
+  fill: var(--color-surface);
+  stroke: var(--color-primary);
+  stroke-width: 3;
+}
+
+.weight-chart-point.is-latest {
+  fill: var(--color-accent);
+  stroke: var(--color-accent-dark);
+}
+
+.weight-chart-target-line {
+  stroke: var(--color-accent);
+  stroke-width: 2;
+  stroke-dasharray: 8 6;
+}
+
+.weight-chart-axis-label,
+.weight-chart-unit,
+.weight-chart-target-label {
+  fill: var(--color-text-muted);
+  font-family: inherit;
+  font-size: 11px;
+}
+
+.weight-chart-target-label {
+  fill: var(--color-accent-dark);
+  font-weight: 700;
+}
+
+.weight-chart-empty {
+  min-height: 190px;
+  display: grid;
+  place-items: center;
+  border-radius: 13px;
+  color: var(--color-text-muted);
+  background: var(--color-surface-soft);
+  text-align: center;
+}
+
+.weight-medical-note {
+  margin: 0;
+  padding: 0 4px;
+  color: var(--color-text-muted);
+  font-size: 0.68rem;
+  line-height: 1.65;
+}
+
 .health-date-card,
 .health-profile-card,
 .weight-card,
@@ -1412,6 +1703,11 @@ body,
 }
 
 @media (max-width: 920px) {
+  .weight-metric-grid,
+  .weight-average-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .health-profile-list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1512,6 +1808,43 @@ body,
 }
 
 @media (max-width: 560px) {
+  .health-view-tabs {
+    width: 100%;
+  }
+
+  .health-view-tabs button {
+    flex: 1 1 calc(50% - 2px);
+    padding-inline: 9px;
+  }
+
+  .weight-summary-heading,
+  .weight-section-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .weight-metric-grid,
+  .weight-average-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .weight-target-card {
+    grid-column: auto;
+  }
+
+  .weight-period-controls {
+    justify-content: flex-start;
+  }
+
+  .weight-average-section,
+  .weight-chart-section {
+    padding: 14px;
+  }
+
+  .weight-chart-svg {
+    min-height: 210px;
+  }
+
   .health-profile-list,
   .health-profile-form {
     grid-template-columns: 1fr;

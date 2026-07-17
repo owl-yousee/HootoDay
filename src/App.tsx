@@ -113,7 +113,7 @@ function App() {
           ) : (
             <HealthDashboard
               selectedDate={selectedDate}
-              record={weightRecords.find((record) => record.date === toDateKey(selectedDate)) ?? null}
+              records={weightRecords}
               profile={healthProfile}
               onPreviousDay={() => moveSelectedDay(-1)}
               onNextDay={() => moveSelectedDay(1)}
