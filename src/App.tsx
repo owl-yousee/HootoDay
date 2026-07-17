@@ -2,10 +2,14 @@ import { useState } from 'react'
 import { AppHeader } from './components/AppHeader'
 import { Calendar } from './components/Calendar'
 import { DayDetails } from './components/DayDetails'
+import { EventEditorDialog } from './components/EventEditorDialog'
 import { Sidebar } from './components/Sidebar'
 import { ThemeSettings } from './components/ThemeSettings'
-import { calendarEvents, memoIndicators } from './data/calendarData'
+import { memoIndicators } from './data/calendarData'
+import { useEvents } from './hooks/useEvents'
 import { useTheme } from './hooks/useTheme'
+import type { CalendarEvent } from './types/calendar'
+import { toDateKey } from './utils/date'
 import './App.css'
 
 const INITIAL_MONTH = new Date(2026, 6, 1)
@@ -15,6 +19,9 @@ function App() {
   const [displayMonth, setDisplayMonth] = useState(INITIAL_MONTH)
   const [selectedDate, setSelectedDate] = useState(INITIAL_SELECTED_DATE)
   const [isThemeSettingsOpen, setIsThemeSettingsOpen] = useState(false)
+  const [isEventEditorOpen, setIsEventEditorOpen] = useState(false)
+  const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null)
+  const { events, saveEvent, deleteEvent } = useEvents()
   const { preference, appliedTheme, setPreference } = useTheme()
 
   const moveMonth = (amount: number) => {
@@ -27,6 +34,16 @@ function App() {
     const today = new Date()
     setDisplayMonth(new Date(today.getFullYear(), today.getMonth(), 1))
     setSelectedDate(today)
+  }
+
+  const openNewEvent = () => {
+    setEditingEvent(null)
+    setIsEventEditorOpen(true)
+  }
+
+  const openEventEditor = (event: CalendarEvent) => {
+    setEditingEvent(event)
+    setIsEventEditorOpen(true)
   }
 
   return (
@@ -56,14 +73,16 @@ function App() {
             <Calendar
               displayMonth={displayMonth}
               selectedDate={selectedDate}
-              events={calendarEvents}
+              events={events}
               memos={memoIndicators}
               onSelectDate={setSelectedDate}
             />
             <DayDetails
               selectedDate={selectedDate}
-              events={calendarEvents}
+              events={events}
               memos={memoIndicators}
+              onAddEvent={openNewEvent}
+              onEditEvent={openEventEditor}
             />
           </div>
         </main>
@@ -75,6 +94,16 @@ function App() {
           appliedTheme={appliedTheme}
           onChange={setPreference}
           onClose={() => setIsThemeSettingsOpen(false)}
+        />
+      )}
+
+      {isEventEditorOpen && (
+        <EventEditorDialog
+          initialDate={toDateKey(selectedDate)}
+          event={editingEvent}
+          onSave={saveEvent}
+          onDelete={deleteEvent}
+          onClose={() => setIsEventEditorOpen(false)}
         />
       )}
     </div>

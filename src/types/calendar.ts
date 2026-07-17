@@ -16,8 +16,10 @@ export interface CalendarEvent {
   date: string
   title: string
   category: EventCategory
-  time?: string
-  isAllDay?: boolean
+  isAllDay: boolean
+  startTime: string | null
+  endTime: string | null
+  memo: string
 }
 
 export interface DayMemoIndicator {

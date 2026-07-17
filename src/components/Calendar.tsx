@@ -2,6 +2,7 @@ import type { CSSProperties } from 'react'
 import { categoryColors } from '../data/calendarData'
 import type { CalendarEvent, DayMemoIndicator } from '../types/calendar'
 import { toDateKey } from '../utils/date'
+import { sortCalendarEvents } from '../utils/event'
 
 interface CalendarProps {
   displayMonth: Date
@@ -54,7 +55,7 @@ export function Calendar({
       <div className="calendar-grid">
         {days.map((date) => {
           const dateKey = toDateKey(date)
-          const dayEvents = events.filter((event) => event.date === dateKey)
+          const dayEvents = sortCalendarEvents(events.filter((event) => event.date === dateKey))
           const hasMemo = memos.some((memo) => memo.date === dateKey && memo.hasMemo)
           const isOutside = date.getMonth() !== displayMonth.getMonth()
           const isSelected = isSameDate(date, selectedDate)
@@ -87,7 +88,7 @@ export function Calendar({
                     className="event-chip"
                     style={{ '--event-color': categoryColors[event.category] } as CSSProperties}
                   >
-                    <span className="event-time">{event.isAllDay ? '終日' : event.time}</span>
+                    <span className="event-time">{event.isAllDay ? '終日' : event.startTime}</span>
                     {event.title}
                   </span>
                 ))}

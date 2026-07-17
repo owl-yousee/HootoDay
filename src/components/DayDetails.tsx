@@ -1,19 +1,23 @@
 import type { CSSProperties } from 'react'
+import { PencilSimpleIcon } from '@phosphor-icons/react/PencilSimple'
 import { categoryColors } from '../data/calendarData'
 import type { CalendarEvent, DayMemoIndicator } from '../types/calendar'
 import { toDateKey } from '../utils/date'
+import { formatEventTime, sortCalendarEvents } from '../utils/event'
 
 interface DayDetailsProps {
   selectedDate: Date
   events: CalendarEvent[]
   memos: DayMemoIndicator[]
+  onAddEvent: () => void
+  onEditEvent: (event: CalendarEvent) => void
 }
 
 const weekdayLabels = ['日曜日', '月曜日', '火曜日', '水曜日', '木曜日', '金曜日', '土曜日']
 
-export function DayDetails({ selectedDate, events, memos }: DayDetailsProps) {
+export function DayDetails({ selectedDate, events, memos, onAddEvent, onEditEvent }: DayDetailsProps) {
   const dateKey = toDateKey(selectedDate)
-  const dayEvents = events.filter((event) => event.date === dateKey)
+  const dayEvents = sortCalendarEvents(events.filter((event) => event.date === dateKey))
   const hasMemo = memos.some((memo) => memo.date === dateKey && memo.hasMemo)
 
   return (
@@ -35,10 +39,14 @@ export function DayDetails({ selectedDate, events, memos }: DayDetailsProps) {
                   style={{ '--event-color': categoryColors[event.category] } as CSSProperties}
                   aria-hidden="true"
                 />
-                <div>
+                <div className="detail-event-copy">
                   <strong>{event.title}</strong>
-                  <span>{event.isAllDay ? '終日' : event.time ?? '時刻未設定'}・{event.category}</span>
+                  <span>{formatEventTime(event)}・{event.category}</span>
+                  {event.memo && <small>{event.memo}</small>}
                 </div>
+                <button type="button" className="edit-event-button" onClick={() => onEditEvent(event)} aria-label={`${event.title}を編集`}>
+                  <PencilSimpleIcon size={18} weight="bold" aria-hidden="true" />
+                </button>
               </li>
             ))}
           </ul>
@@ -56,10 +64,10 @@ export function DayDetails({ selectedDate, events, memos }: DayDetailsProps) {
 
       <section className="detail-section">
         <div className="detail-actions">
-          <button type="button" className="detail-button">予定を追加</button>
+          <button type="button" className="detail-button" onClick={onAddEvent}>予定を追加</button>
           <button type="button" className="detail-button secondary">記録を開く</button>
         </div>
-        <p className="phase-note">ボタンの機能は次のPhaseで実装予定です</p>
+        <p className="phase-note">記録機能は今後のPhaseで実装予定です</p>
       </section>
     </aside>
   )
