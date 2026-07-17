@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import type { ExerciseSession, HealthProfile, MealRecord, SleepRecord, WeightRecord } from '../types/health'
+import type { DailyConditionRecord, ExerciseSession, HealthProfile, MealRecord, SleepRecord, WeightRecord } from '../types/health'
+import { bodyPartConditionLabels, conditionLevelLabels, getConditionTone } from '../data/conditionOptions'
 import { getExerciseDisplayName } from '../data/exerciseTypes'
 import { toDateKey } from '../utils/date'
 import { calculateDailyExerciseSummary, formatExerciseDuration } from '../utils/exerciseMetrics'
@@ -14,6 +15,7 @@ interface HealthDashboardProps {
   sleepRecords: SleepRecord[]
   mealRecords: MealRecord[]
   exerciseSessions: ExerciseSession[]
+  conditionRecords: DailyConditionRecord[]
   profile: HealthProfile | null
   onPreviousDay: () => void
   onNextDay: () => void
@@ -24,10 +26,11 @@ interface HealthDashboardProps {
   onOpenSleep: () => void
   onOpenMeal: () => void
   onOpenExercise: (session: ExerciseSession | null) => void
+  onOpenCondition: () => void
 }
 
 const weekdayLabels = ['日曜日', '月曜日', '火曜日', '水曜日', '木曜日', '金曜日', '土曜日']
-const upcomingItems = ['体調メモ']
+const upcomingItems = ['記録の出力']
 
 export function HealthDashboard({
   selectedDate,
@@ -35,6 +38,7 @@ export function HealthDashboard({
   sleepRecords,
   mealRecords,
   exerciseSessions,
+  conditionRecords,
   profile,
   onPreviousDay,
   onNextDay,
@@ -45,6 +49,7 @@ export function HealthDashboard({
   onOpenSleep,
   onOpenMeal,
   onOpenExercise,
+  onOpenCondition,
 }: HealthDashboardProps) {
   const [activeSection, setActiveSection] = useState<'daily' | 'weight' | 'sleep'>('daily')
   const dateKey = toDateKey(selectedDate)
@@ -55,6 +60,7 @@ export function HealthDashboard({
     .filter((item) => item.date === dateKey)
     .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
   const exerciseSummary = calculateDailyExerciseSummary(dailyExerciseSessions)
+  const conditionRecord = conditionRecords.find((item) => item.date === dateKey) ?? null
 
   return (
     <div className="health-dashboard">
@@ -172,6 +178,31 @@ export function HealthDashboard({
               <button type="button" className="health-primary-button" onClick={() => onOpenExercise(null)}>運動を追加</button>
               <p className="exercise-estimate-note">推定消費カロリーはMETs・体重・時間から算出した概算です。</p>
             </div>
+          )}
+        </section>
+
+        <section className="condition-card">
+          <div className="health-card-header">
+            <div><p className="health-card-kicker">Condition</p><h3>体調メモ</h3></div>
+            <HealthDateNavigator date={selectedDate} onPreviousDay={onPreviousDay} onNextDay={onNextDay} onToday={onToday} onDateChange={onDateChange} compact label="体調記録" />
+          </div>
+          {conditionRecord ? (
+            <div className="condition-record-summary">
+              <dl className="condition-status-list" aria-label="保存済みの体調状態">
+                {conditionRecord.overallCondition !== 'unset' && <div><dt>全体</dt><dd className={`condition-badge is-${getConditionTone(conditionRecord.overallCondition)}`}>{conditionLevelLabels[conditionRecord.overallCondition]}</dd></div>}
+                {conditionRecord.kneeCondition !== 'unset' && <div><dt>膝</dt><dd className={`condition-badge is-${getConditionTone(conditionRecord.kneeCondition)}`}>{bodyPartConditionLabels[conditionRecord.kneeCondition]}</dd></div>}
+                {conditionRecord.lowerBackCondition !== 'unset' && <div><dt>腰</dt><dd className={`condition-badge is-${getConditionTone(conditionRecord.lowerBackCondition)}`}>{bodyPartConditionLabels[conditionRecord.lowerBackCondition]}</dd></div>}
+              </dl>
+              <div className="condition-text-list">
+                {conditionRecord.menstrualNote && <div><h4>生理・周期メモ</h4><p>{conditionRecord.menstrualNote}</p></div>}
+                {conditionRecord.concerns && <div><h4>気になること</h4><p>{conditionRecord.concerns}</p></div>}
+                {conditionRecord.memo && <div><h4>メモ</h4><p>{conditionRecord.memo}</p></div>}
+              </div>
+              <button type="button" className="health-primary-button" onClick={onOpenCondition}>編集</button>
+              <p className="condition-privacy-note">本人の振り返り用です。状態の自動評価や診断は行いません。</p>
+            </div>
+          ) : (
+            <div className="weight-empty-state"><p>この日の体調記録はありません</p><button type="button" className="health-primary-button" onClick={onOpenCondition}>体調を記録</button></div>
           )}
         </section>
 

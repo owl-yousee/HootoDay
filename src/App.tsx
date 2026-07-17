@@ -3,6 +3,7 @@ import { AppHeader } from './components/AppHeader'
 import { Calendar } from './components/Calendar'
 import { DayDetails } from './components/DayDetails'
 import { DayMemoDialog } from './components/DayMemoDialog'
+import { DailyConditionDialog } from './components/DailyConditionDialog'
 import { EventEditorDialog } from './components/EventEditorDialog'
 import { ExerciseSessionDialog } from './components/ExerciseSessionDialog'
 import { HealthDashboard } from './components/HealthDashboard'
@@ -13,6 +14,7 @@ import { SleepRecordDialog } from './components/SleepRecordDialog'
 import { ThemeSettings } from './components/ThemeSettings'
 import { WeightRecordDialog } from './components/WeightRecordDialog'
 import { useDayMemos } from './hooks/useDayMemos'
+import { useConditionRecords } from './hooks/useConditionRecords'
 import { useEvents } from './hooks/useEvents'
 import { useExerciseSessions } from './hooks/useExerciseSessions'
 import { useHealthProfile } from './hooks/useHealthProfile'
@@ -41,6 +43,7 @@ function App() {
   const [isSleepDialogOpen, setIsSleepDialogOpen] = useState(false)
   const [isMealDialogOpen, setIsMealDialogOpen] = useState(false)
   const [isExerciseDialogOpen, setIsExerciseDialogOpen] = useState(false)
+  const [isConditionDialogOpen, setIsConditionDialogOpen] = useState(false)
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null)
   const [editingExerciseSession, setEditingExerciseSession] = useState<ExerciseSession | null>(null)
   const { events, saveEvent, deleteEvent } = useEvents()
@@ -52,6 +55,7 @@ function App() {
   const { mealRecords, saveMealRecord, deleteMealRecord } = useMealRecords()
   const { mealTemplates, saveMealTemplate, deleteMealTemplate, moveMealTemplate } = useMealTemplates()
   const { exerciseSessions, saveExerciseSession, deleteExerciseSession } = useExerciseSessions()
+  const { conditionRecords, saveConditionRecord, deleteConditionRecord } = useConditionRecords()
 
   const selectDate = (date: Date) => {
     setSelectedDate(date)
@@ -143,6 +147,7 @@ function App() {
               sleepRecords={sleepRecords}
               mealRecords={mealRecords}
               exerciseSessions={exerciseSessions}
+              conditionRecords={conditionRecords}
               profile={healthProfile}
               onPreviousDay={() => moveSelectedDay(-1)}
               onNextDay={() => moveSelectedDay(1)}
@@ -153,6 +158,7 @@ function App() {
               onOpenSleep={() => setIsSleepDialogOpen(true)}
               onOpenMeal={() => setIsMealDialogOpen(true)}
               onOpenExercise={openExerciseDialog}
+              onOpenCondition={() => setIsConditionDialogOpen(true)}
             />
           )}
         </main>
@@ -244,6 +250,16 @@ function App() {
             setIsExerciseDialogOpen(false)
             setEditingExerciseSession(null)
           }}
+        />
+      )}
+
+      {isConditionDialogOpen && (
+        <DailyConditionDialog
+          date={toDateKey(selectedDate)}
+          record={conditionRecords.find((record) => record.date === toDateKey(selectedDate)) ?? null}
+          onSave={saveConditionRecord}
+          onDelete={deleteConditionRecord}
+          onClose={() => setIsConditionDialogOpen(false)}
         />
       )}
     </div>

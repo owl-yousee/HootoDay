@@ -703,6 +703,7 @@
 .sleep-card,
 .meal-card,
 .exercise-card,
+.condition-card,
 .upcoming-health-card {
   width: 100%;
   max-width: 100%;
@@ -962,6 +963,7 @@
 .sleep-card,
 .meal-card,
 .exercise-card,
+.condition-card,
 .upcoming-health-card {
   padding: clamp(17px, 2vw, 24px);
 }
@@ -978,6 +980,7 @@
 .sleep-card h3,
 .meal-card h3,
 .exercise-card h3,
+.condition-card h3,
 .upcoming-health-card h3 {
   margin-bottom: 0;
   font-size: 1.05rem;
@@ -996,6 +999,7 @@
 .sleep-record-summary,
 .meal-record-summary,
 .exercise-record-summary,
+.condition-record-summary,
 .weight-empty-state {
   margin-top: 22px;
 }
@@ -1030,6 +1034,22 @@
 .exercise-session-item .exercise-session-memo { display: -webkit-box; overflow: hidden; color: var(--color-text); white-space: pre-wrap; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .health-secondary-button { min-height: 36px; padding: 7px 12px; flex: 0 0 auto; border: 1px solid var(--color-border); border-radius: 10px; color: var(--color-primary-dark); background: var(--color-surface); font: inherit; font-size: .72rem; font-weight: 700; cursor: pointer; }
 .health-secondary-button:hover { border-color: var(--color-accent); background: var(--color-accent-soft); }
+
+.condition-record-summary { display: grid; gap: 12px; }
+.condition-status-list { margin: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.condition-status-list > div { min-width: 0; display: flex; align-items: center; gap: 6px; }
+.condition-status-list dt { color: var(--color-text-muted); font-size: .68rem; font-weight: 700; }
+.condition-status-list dd { margin: 0; }
+.condition-badge { padding: 4px 8px; border: 1px solid var(--color-border); border-radius: 999px; font-size: .68rem; font-weight: 700; }
+.condition-badge.is-positive { color: var(--color-primary-dark); background: var(--color-primary-soft); }
+.condition-badge.is-neutral { color: var(--color-text); background: var(--color-surface-soft); }
+.condition-badge.is-caution { color: var(--color-accent-dark); background: var(--color-accent-soft); }
+.condition-badge.is-danger { color: var(--color-danger); background: var(--color-danger-soft); }
+.condition-text-list { display: grid; gap: 8px; }
+.condition-text-list > div { min-width: 0; padding: 10px 11px; border-radius: 10px; background: var(--color-surface-soft); }
+.condition-text-list h4 { margin: 0 0 4px; color: var(--color-primary-dark); font-size: .7rem; }
+.condition-text-list p { margin: 0; display: -webkit-box; overflow: hidden; overflow-wrap: anywhere; color: var(--color-text); font-size: .74rem; line-height: 1.55; white-space: pre-wrap; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
+.condition-privacy-note { margin: 0; color: var(--color-text-muted); font-size: .68rem; line-height: 1.6; }
 
 .weight-value {
   margin: 0;
@@ -1702,7 +1722,8 @@
 .health-profile-dialog,
 .sleep-record-dialog,
 .meal-record-dialog,
-.exercise-session-dialog {
+.exercise-session-dialog,
+.daily-condition-dialog {
   width: min(620px, calc(100vw - 24px));
   max-width: calc(100vw - 24px);
   max-height: calc(100vh - 24px);
@@ -1719,7 +1740,8 @@
 .health-profile-dialog::backdrop,
 .sleep-record-dialog::backdrop,
 .meal-record-dialog::backdrop,
-.exercise-session-dialog::backdrop {
+.exercise-session-dialog::backdrop,
+.daily-condition-dialog::backdrop {
   background: var(--color-dialog-backdrop);
 }
 
@@ -1729,7 +1751,8 @@
 .health-profile-panel,
 .sleep-record-panel,
 .meal-record-panel,
-.exercise-session-panel {
+.exercise-session-panel,
+.daily-condition-panel {
   width: 100%;
   max-width: 100%;
   max-height: calc(100vh - 24px);
@@ -1745,7 +1768,8 @@
 .event-editor-header,
 .day-memo-header,
 .weight-record-header,
-.exercise-session-header {
+.exercise-session-header,
+.daily-condition-header {
   margin-bottom: 20px;
   display: flex;
   align-items: flex-start;
@@ -1767,7 +1791,8 @@
 .event-editor-header h2,
 .day-memo-header h2,
 .weight-record-header h2,
-.exercise-session-header h2 {
+.exercise-session-header h2,
+.daily-condition-header h2 {
   margin: 0;
   font-size: 1.3rem;
 }
@@ -1790,7 +1815,9 @@
 
 .meal-record-dialog { width: min(760px, calc(100vw - 24px)); }
 .exercise-session-dialog { width: min(760px, calc(100vw - 24px)); }
+.daily-condition-dialog { width: min(760px, calc(100vw - 24px)); }
 .exercise-session-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.daily-condition-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .exercise-calorie-preview { padding: 14px; border: 1px solid var(--color-border); border-radius: 12px; background: var(--color-surface-soft); }
 .exercise-calorie-preview p, .exercise-calorie-preview strong, .exercise-calorie-preview span { display: block; }
 .exercise-calorie-preview p { margin: 0; color: var(--color-text-muted); font-size: .7rem; font-weight: 700; }
@@ -2386,6 +2413,7 @@ body,
   .sleep-card,
   .meal-card,
   .exercise-card,
+  .condition-card,
   .upcoming-health-card {
     padding: 15px;
   }
@@ -2421,6 +2449,7 @@ body,
   .sleep-time-grid,
   .meal-record-form,
   .exercise-session-form,
+  .daily-condition-form,
   .sleep-calculation-preview dl {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -2445,7 +2474,8 @@ body,
   .health-profile-dialog,
   .sleep-record-dialog,
   .meal-record-dialog,
-  .exercise-session-dialog {
+  .exercise-session-dialog,
+  .daily-condition-dialog {
     width: calc(100vw - 16px);
     max-width: calc(100vw - 16px);
     max-height: calc(100vh - 16px);
@@ -2457,7 +2487,8 @@ body,
   .health-profile-panel,
   .sleep-record-panel,
   .meal-record-panel,
-  .exercise-session-panel {
+  .exercise-session-panel,
+  .daily-condition-panel {
     max-height: calc(100vh - 16px);
     padding: 16px;
   }

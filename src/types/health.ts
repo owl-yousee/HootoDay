@@ -85,3 +85,18 @@ export interface ExerciseSession {
   createdAt: string
   updatedAt: string
 }
+
+export type ConditionLevel = 'good' | 'normal' | 'poor' | 'unset'
+
+export type BodyPartCondition = 'none' | 'mild' | 'painful' | 'severe' | 'unset'
+
+export interface DailyConditionRecord {
+  date: string
+  overallCondition: ConditionLevel
+  kneeCondition: BodyPartCondition
+  lowerBackCondition: BodyPartCondition
+  menstrualNote: string
+  concerns: string
+  memo: string
+  updatedAt: string
+}
