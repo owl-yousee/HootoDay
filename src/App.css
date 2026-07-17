@@ -701,6 +701,7 @@
 .health-profile-card,
 .weight-card,
 .sleep-card,
+.meal-card,
 .upcoming-health-card {
   width: 100%;
   max-width: 100%;
@@ -958,6 +959,7 @@
 
 .weight-card,
 .sleep-card,
+.meal-card,
 .upcoming-health-card {
   padding: clamp(17px, 2vw, 24px);
 }
@@ -972,6 +974,7 @@
 
 .health-card-header h3,
 .sleep-card h3,
+.meal-card h3,
 .upcoming-health-card h3 {
   margin-bottom: 0;
   font-size: 1.05rem;
@@ -988,8 +991,25 @@
 
 .weight-record-summary,
 .sleep-record-summary,
+.meal-record-summary,
 .weight-empty-state {
   margin-top: 22px;
+}
+
+.meal-record-summary { display: grid; gap: 10px; }
+.meal-summary-item { min-width: 0; padding: 10px 11px; border-radius: 10px; background: var(--color-surface-soft); }
+.meal-summary-item h4 { margin: 0 0 4px; color: var(--color-primary-dark); font-size: 0.7rem; }
+.meal-summary-item p {
+  margin: 0;
+  display: -webkit-box;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  color: var(--color-text);
+  font-size: 0.76rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
 }
 
 .weight-value {
@@ -1661,7 +1681,8 @@
 .day-memo-dialog,
 .weight-record-dialog,
 .health-profile-dialog,
-.sleep-record-dialog {
+.sleep-record-dialog,
+.meal-record-dialog {
   width: min(620px, calc(100vw - 24px));
   max-width: calc(100vw - 24px);
   max-height: calc(100vh - 24px);
@@ -1676,7 +1697,8 @@
 .day-memo-dialog::backdrop,
 .weight-record-dialog::backdrop,
 .health-profile-dialog::backdrop,
-.sleep-record-dialog::backdrop {
+.sleep-record-dialog::backdrop,
+.meal-record-dialog::backdrop {
   background: var(--color-dialog-backdrop);
 }
 
@@ -1684,7 +1706,8 @@
 .day-memo-panel,
 .weight-record-panel,
 .health-profile-panel,
-.sleep-record-panel {
+.sleep-record-panel,
+.meal-record-panel {
   width: 100%;
   max-width: 100%;
   max-height: calc(100vh - 24px);
@@ -1740,6 +1763,11 @@
 .sleep-record-dialog {
   width: min(860px, calc(100vw - 24px));
 }
+
+.meal-record-dialog { width: min(760px, calc(100vw - 24px)); }
+.meal-record-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.meal-form-field textarea { min-height: 116px; resize: vertical; white-space: pre-wrap; }
+.meal-form-error { margin: 0 0 14px; }
 
 .sleep-record-form {
   display: grid;
@@ -2279,6 +2307,7 @@ body,
   .health-profile-card,
   .weight-card,
   .sleep-card,
+  .meal-card,
   .upcoming-health-card {
     padding: 15px;
   }
@@ -2299,6 +2328,7 @@ body,
   }
 
   .sleep-time-grid,
+  .meal-record-form,
   .sleep-calculation-preview dl {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -2321,7 +2351,8 @@ body,
   .day-memo-dialog,
   .weight-record-dialog,
   .health-profile-dialog,
-  .sleep-record-dialog {
+  .sleep-record-dialog,
+  .meal-record-dialog {
     width: calc(100vw - 16px);
     max-width: calc(100vw - 16px);
     max-height: calc(100vh - 16px);
@@ -2331,7 +2362,8 @@ body,
   .day-memo-panel,
   .weight-record-panel,
   .health-profile-panel,
-  .sleep-record-panel {
+  .sleep-record-panel,
+  .meal-record-panel {
     max-height: calc(100vh - 16px);
     padding: 16px;
   }

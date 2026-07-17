@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { HealthProfile, SleepRecord, WeightRecord } from '../types/health'
+import type { HealthProfile, MealRecord, SleepRecord, WeightRecord } from '../types/health'
 import { toDateKey } from '../utils/date'
 import { formatDurationMinutes } from '../utils/sleepMetrics'
 import { HealthDateNavigator } from './HealthDateNavigator'
@@ -10,6 +10,7 @@ interface HealthDashboardProps {
   selectedDate: Date
   records: WeightRecord[]
   sleepRecords: SleepRecord[]
+  mealRecords: MealRecord[]
   profile: HealthProfile | null
   onPreviousDay: () => void
   onNextDay: () => void
@@ -18,15 +19,17 @@ interface HealthDashboardProps {
   onOpenWeight: () => void
   onOpenProfile: () => void
   onOpenSleep: () => void
+  onOpenMeal: () => void
 }
 
 const weekdayLabels = ['日曜日', '月曜日', '火曜日', '水曜日', '木曜日', '金曜日', '土曜日']
-const upcomingItems = ['食事', '運動', '体調メモ']
+const upcomingItems = ['運動', '体調メモ']
 
 export function HealthDashboard({
   selectedDate,
   records,
   sleepRecords,
+  mealRecords,
   profile,
   onPreviousDay,
   onNextDay,
@@ -35,11 +38,13 @@ export function HealthDashboard({
   onOpenWeight,
   onOpenProfile,
   onOpenSleep,
+  onOpenMeal,
 }: HealthDashboardProps) {
   const [activeSection, setActiveSection] = useState<'daily' | 'weight' | 'sleep'>('daily')
   const dateKey = toDateKey(selectedDate)
   const record = records.find((item) => item.date === dateKey) ?? null
   const sleepRecord = sleepRecords.find((item) => item.date === dateKey) ?? null
+  const mealRecord = mealRecords.find((item) => item.date === dateKey) ?? null
 
   return (
     <div className="health-dashboard">
@@ -111,6 +116,23 @@ export function HealthDashboard({
               <p>この日の睡眠記録はありません</p>
               <button type="button" className="health-primary-button" onClick={onOpenSleep}>睡眠を記録</button>
             </div>
+          )}
+        </section>
+
+        <section className="meal-card">
+          <div className="health-card-header">
+            <div><p className="health-card-kicker">Meals</p><h3>食事</h3></div>
+            <HealthDateNavigator date={selectedDate} onPreviousDay={onPreviousDay} onNextDay={onNextDay} onToday={onToday} onDateChange={onDateChange} compact label="食事記録" />
+          </div>
+          {mealRecord ? (
+            <div className="meal-record-summary">
+              {([
+                ['breakfast', '朝食'], ['lunch', '昼食'], ['dinner', '夕食'], ['snacks', '間食'],
+              ] as const).map(([key, label]) => mealRecord[key] && <div className="meal-summary-item" key={key}><h4>{label}</h4><p>{mealRecord[key]}</p></div>)}
+              <button type="button" className="health-primary-button" onClick={onOpenMeal}>編集</button>
+            </div>
+          ) : (
+            <div className="weight-empty-state"><p>この日の食事記録はありません</p><button type="button" className="health-primary-button" onClick={onOpenMeal}>食事を記録</button></div>
           )}
         </section>
 

@@ -6,6 +6,7 @@ import { DayMemoDialog } from './components/DayMemoDialog'
 import { EventEditorDialog } from './components/EventEditorDialog'
 import { HealthDashboard } from './components/HealthDashboard'
 import { HealthProfileDialog } from './components/HealthProfileDialog'
+import { MealRecordDialog } from './components/MealRecordDialog'
 import { Sidebar, type AppView } from './components/Sidebar'
 import { SleepRecordDialog } from './components/SleepRecordDialog'
 import { ThemeSettings } from './components/ThemeSettings'
@@ -13,6 +14,7 @@ import { WeightRecordDialog } from './components/WeightRecordDialog'
 import { useDayMemos } from './hooks/useDayMemos'
 import { useEvents } from './hooks/useEvents'
 import { useHealthProfile } from './hooks/useHealthProfile'
+import { useMealRecords } from './hooks/useMealRecords'
 import { useSleepRecords } from './hooks/useSleepRecords'
 import { useTheme } from './hooks/useTheme'
 import { useWeightRecords } from './hooks/useWeightRecords'
@@ -33,6 +35,7 @@ function App() {
   const [isWeightDialogOpen, setIsWeightDialogOpen] = useState(false)
   const [isHealthProfileDialogOpen, setIsHealthProfileDialogOpen] = useState(false)
   const [isSleepDialogOpen, setIsSleepDialogOpen] = useState(false)
+  const [isMealDialogOpen, setIsMealDialogOpen] = useState(false)
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null)
   const { events, saveEvent, deleteEvent } = useEvents()
   const { dayMemos, saveDayMemo, deleteDayMemo } = useDayMemos()
@@ -40,6 +43,7 @@ function App() {
   const { weightRecords, saveWeightRecord, deleteWeightRecord } = useWeightRecords()
   const { healthProfile, saveHealthProfile, deleteHealthProfile } = useHealthProfile()
   const { sleepRecords, saveSleepRecord, deleteSleepRecord } = useSleepRecords()
+  const { mealRecords, saveMealRecord, deleteMealRecord } = useMealRecords()
 
   const selectDate = (date: Date) => {
     setSelectedDate(date)
@@ -124,6 +128,7 @@ function App() {
               selectedDate={selectedDate}
               records={weightRecords}
               sleepRecords={sleepRecords}
+              mealRecords={mealRecords}
               profile={healthProfile}
               onPreviousDay={() => moveSelectedDay(-1)}
               onNextDay={() => moveSelectedDay(1)}
@@ -132,6 +137,7 @@ function App() {
               onOpenWeight={() => setIsWeightDialogOpen(true)}
               onOpenProfile={() => setIsHealthProfileDialogOpen(true)}
               onOpenSleep={() => setIsSleepDialogOpen(true)}
+              onOpenMeal={() => setIsMealDialogOpen(true)}
             />
           )}
         </main>
@@ -195,6 +201,16 @@ function App() {
           onSave={saveSleepRecord}
           onDelete={deleteSleepRecord}
           onClose={() => setIsSleepDialogOpen(false)}
+        />
+      )}
+
+      {isMealDialogOpen && (
+        <MealRecordDialog
+          date={toDateKey(selectedDate)}
+          record={mealRecords.find((record) => record.date === toDateKey(selectedDate)) ?? null}
+          onSave={saveMealRecord}
+          onDelete={deleteMealRecord}
+          onClose={() => setIsMealDialogOpen(false)}
         />
       )}
     </div>

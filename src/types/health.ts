@@ -42,3 +42,12 @@ export interface SleepRecord {
   memo: string
   updatedAt: string
 }
+
+export interface MealRecord {
+  date: string
+  breakfast: string
+  lunch: string
+  dinner: string
+  snacks: string
+  updatedAt: string
+}
