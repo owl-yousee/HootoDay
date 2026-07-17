@@ -14,3 +14,31 @@ export interface HealthProfile {
   targetWeightKg: number | null
   updatedAt: string
 }
+
+export type SleepAwakening =
+  | {
+      id: string
+      mode: 'point'
+      startTime: string
+      endTime: null
+      estimatedMinutes: number
+    }
+  | {
+      id: string
+      mode: 'range'
+      startTime: string
+      endTime: string
+      estimatedMinutes: null
+    }
+
+export interface SleepRecord {
+  date: string
+  bedtime: string
+  wakeTime: string
+  awakenings: SleepAwakening[]
+  totalInBedMinutes: number
+  awakeMinutes: number
+  sleepMinutes: number
+  memo: string
+  updatedAt: string
+}

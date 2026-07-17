@@ -1,14 +1,16 @@
 import { useState } from 'react'
 import { CaretLeftIcon } from '@phosphor-icons/react/CaretLeft'
 import { CaretRightIcon } from '@phosphor-icons/react/CaretRight'
-import type { HealthProfile, WeightRecord } from '../types/health'
+import type { HealthProfile, SleepRecord, WeightRecord } from '../types/health'
 import { toDateKey } from '../utils/date'
 import { calculateAge, formatCalculationSex } from '../utils/healthProfile'
+import { formatDurationMinutes } from '../utils/sleepMetrics'
 import { WeightDashboard } from './WeightDashboard'
 
 interface HealthDashboardProps {
   selectedDate: Date
   records: WeightRecord[]
+  sleepRecords: SleepRecord[]
   profile: HealthProfile | null
   onPreviousDay: () => void
   onNextDay: () => void
@@ -16,14 +18,16 @@ interface HealthDashboardProps {
   onDateChange: (dateKey: string) => void
   onOpenWeight: () => void
   onOpenProfile: () => void
+  onOpenSleep: () => void
 }
 
 const weekdayLabels = ['日曜日', '月曜日', '火曜日', '水曜日', '木曜日', '金曜日', '土曜日']
-const upcomingItems = ['睡眠', '食事', '運動', '体調メモ']
+const upcomingItems = ['食事', '運動', '体調メモ']
 
 export function HealthDashboard({
   selectedDate,
   records,
+  sleepRecords,
   profile,
   onPreviousDay,
   onNextDay,
@@ -31,10 +35,12 @@ export function HealthDashboard({
   onDateChange,
   onOpenWeight,
   onOpenProfile,
+  onOpenSleep,
 }: HealthDashboardProps) {
   const [activeSection, setActiveSection] = useState<'daily' | 'summary'>('daily')
   const dateKey = toDateKey(selectedDate)
   const record = records.find((item) => item.date === dateKey) ?? null
+  const sleepRecord = sleepRecords.find((item) => item.date === dateKey) ?? null
   const dateLabel = `${selectedDate.getFullYear()}年${selectedDate.getMonth() + 1}月${selectedDate.getDate()}日`
   const age = profile?.birthDate ? calculateAge(profile.birthDate) : null
 
@@ -125,7 +131,32 @@ export function HealthDashboard({
             </div>
           )}
 
-          <p className="health-future-note">今後追加予定：最新体重、目標体重、標準・美容体重、期間平均、グラフ</p>
+          <p className="health-future-note">最新体重、目標、期間平均、グラフは「体重まとめ」で確認できます。</p>
+        </section>
+
+        <section className="sleep-card">
+          <div className="health-card-header">
+            <div>
+              <p className="health-card-kicker">Sleep</p>
+              <h3>睡眠</h3>
+            </div>
+            <span className="health-card-status">1日1件</span>
+          </div>
+          {sleepRecord ? (
+            <div className="sleep-record-summary">
+              <p className="sleep-value-label">実睡眠時間</p>
+              <p className="sleep-value">{formatDurationMinutes(sleepRecord.sleepMinutes)}</p>
+              <p className="sleep-time-line">就寝 {sleepRecord.bedtime} → 起床 {sleepRecord.wakeTime}</p>
+              <p className="sleep-awakening-line">途中覚醒 {sleepRecord.awakenings.length}回・合計{formatDurationMinutes(sleepRecord.awakeMinutes)}</p>
+              {sleepRecord.memo && <p className="sleep-card-memo">{sleepRecord.memo}</p>}
+              <button type="button" className="health-primary-button" onClick={onOpenSleep}>編集</button>
+            </div>
+          ) : (
+            <div className="weight-empty-state">
+              <p>この日の睡眠記録はありません</p>
+              <button type="button" className="health-primary-button" onClick={onOpenSleep}>睡眠を記録</button>
+            </div>
+          )}
         </section>
 
         <section className="upcoming-health-card">
