@@ -85,6 +85,11 @@ function App() {
     setIsEventEditorOpen(true)
   }
 
+  const openHealthProfileFromSettings = () => {
+    setIsThemeSettingsOpen(false)
+    setIsHealthProfileDialogOpen(true)
+  }
+
   return (
     <div className="app-shell">
       <AppHeader
@@ -137,6 +142,8 @@ function App() {
           preference={preference}
           appliedTheme={appliedTheme}
           onChange={setPreference}
+          profile={healthProfile}
+          onOpenProfile={openHealthProfileFromSettings}
           onClose={() => setIsThemeSettingsOpen(false)}
         />
       )}

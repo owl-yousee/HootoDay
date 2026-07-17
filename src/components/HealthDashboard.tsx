@@ -1,10 +1,8 @@
 import { useState } from 'react'
-import { CaretLeftIcon } from '@phosphor-icons/react/CaretLeft'
-import { CaretRightIcon } from '@phosphor-icons/react/CaretRight'
 import type { HealthProfile, SleepRecord, WeightRecord } from '../types/health'
 import { toDateKey } from '../utils/date'
-import { calculateAge, formatCalculationSex } from '../utils/healthProfile'
 import { formatDurationMinutes } from '../utils/sleepMetrics'
+import { HealthDateNavigator } from './HealthDateNavigator'
 import { WeightDashboard } from './WeightDashboard'
 import { SleepDashboard } from './SleepDashboard'
 
@@ -42,8 +40,6 @@ export function HealthDashboard({
   const dateKey = toDateKey(selectedDate)
   const record = records.find((item) => item.date === dateKey) ?? null
   const sleepRecord = sleepRecords.find((item) => item.date === dateKey) ?? null
-  const dateLabel = `${selectedDate.getFullYear()}年${selectedDate.getMonth() + 1}月${selectedDate.getDate()}日`
-  const age = profile?.birthDate ? calculateAge(profile.birthDate) : null
 
   return (
     <div className="health-dashboard">
@@ -62,52 +58,9 @@ export function HealthDashboard({
       </div>
 
       {activeSection === 'daily' ? <>
-        <section className="health-date-card" aria-label="健康記録の日付選択">
-        <div>
-          <p className="health-date-label">選択中の日付</p>
-          <h3>{dateLabel}</h3>
-          <p>{weekdayLabels[selectedDate.getDay()]}</p>
-        </div>
-        <div className="health-date-controls">
-          <button type="button" className="health-date-button icon-only" onClick={onPreviousDay} aria-label="前日の健康記録を表示">
-            <CaretLeftIcon size={20} weight="bold" aria-hidden="true" />
-          </button>
-          <label className="health-date-input">
-            <span>日付を選択</span>
-            <input type="date" value={dateKey} onChange={(event) => onDateChange(event.target.value)} />
-          </label>
-          <button type="button" className="health-date-button icon-only" onClick={onNextDay} aria-label="次日の健康記録を表示">
-            <CaretRightIcon size={20} weight="bold" aria-hidden="true" />
-          </button>
-          <button type="button" className="health-date-button" onClick={onToday} aria-label="今日の健康記録を表示">今日</button>
-        </div>
-        </section>
-
-        <section className="health-profile-card" aria-labelledby="health-profile-heading">
-        <div className="health-card-header">
-          <div>
-            <p className="health-card-kicker">Profile</p>
-            <h3 id="health-profile-heading">健康プロフィール</h3>
-          </div>
-          {profile && <span className="health-card-status">本人用</span>}
-        </div>
-        {profile ? (
-          <>
-            <dl className="health-profile-list">
-              {profile.heightCm !== null && <div><dt>身長</dt><dd>{profile.heightCm.toFixed(1)} cm</dd></div>}
-              {profile.birthDate && <div><dt>生年月日</dt><dd>{profile.birthDate}{age !== null ? `（${age}歳）` : ''}</dd></div>}
-              <div><dt>計算用の性別</dt><dd>{formatCalculationSex(profile.calculationSex)}</dd></div>
-              {profile.targetWeightKg !== null && <div><dt>目標体重</dt><dd>{profile.targetWeightKg.toFixed(1)} kg</dd></div>}
-            </dl>
-            <button type="button" className="health-primary-button" onClick={onOpenProfile}>編集</button>
-          </>
-        ) : (
-          <div className="health-profile-empty">
-            <p>健康プロフィールは未設定です</p>
-            <button type="button" className="health-primary-button" onClick={onOpenProfile}>設定する</button>
-          </div>
-        )}
-        <p className="health-profile-note">身長・生年月日・計算用の性別・目標体重は、今後の体重集計や運動消費カロリーの概算に使用します。</p>
+        <section className="health-date-toolbar" aria-label="健康記録の日付選択">
+          <div><p className="health-date-label">共通選択日</p><strong>{selectedDate.getFullYear()}年{selectedDate.getMonth() + 1}月{selectedDate.getDate()}日</strong><span>{weekdayLabels[selectedDate.getDay()]}</span></div>
+          <HealthDateNavigator date={selectedDate} onPreviousDay={onPreviousDay} onNextDay={onNextDay} onToday={onToday} onDateChange={onDateChange} showToday showDateInput label="健康記録" />
         </section>
 
         <div className="health-card-grid">
@@ -117,7 +70,7 @@ export function HealthDashboard({
               <p className="health-card-kicker">Weight</p>
               <h3>体重</h3>
             </div>
-            <span className="health-card-status">1日1件</span>
+            <HealthDateNavigator date={selectedDate} onPreviousDay={onPreviousDay} onNextDay={onNextDay} onToday={onToday} onDateChange={onDateChange} compact label="体重記録" />
           </div>
 
           {record ? (
@@ -142,7 +95,7 @@ export function HealthDashboard({
               <p className="health-card-kicker">Sleep</p>
               <h3>睡眠</h3>
             </div>
-            <span className="health-card-status">1日1件</span>
+            <HealthDateNavigator date={selectedDate} onPreviousDay={onPreviousDay} onNextDay={onNextDay} onToday={onToday} onDateChange={onDateChange} compact label="睡眠記録" />
           </div>
           {sleepRecord ? (
             <div className="sleep-record-summary">

@@ -3,12 +3,16 @@ import { MoonIcon } from '@phosphor-icons/react/Moon'
 import { SunIcon } from '@phosphor-icons/react/Sun'
 import { XIcon } from '@phosphor-icons/react/X'
 import { useEffect, useRef, type MouseEvent, type SyntheticEvent } from 'react'
+import type { HealthProfile } from '../types/health'
 import type { AppliedTheme, ThemePreference } from '../types/theme'
+import { formatCalculationSex } from '../utils/healthProfile'
 
 interface ThemeSettingsProps {
   preference: ThemePreference
   appliedTheme: AppliedTheme
   onChange: (preference: ThemePreference) => void
+  profile: HealthProfile | null
+  onOpenProfile: () => void
   onClose: () => void
 }
 
@@ -32,6 +36,8 @@ export function ThemeSettings({
   preference,
   appliedTheme,
   onChange,
+  profile,
+  onOpenProfile,
   onClose,
 }: ThemeSettingsProps) {
   const dialogRef = useRef<HTMLDialogElement>(null)
@@ -80,11 +86,15 @@ export function ThemeSettings({
     }
   }
 
+  const openProfile = () => {
+    onOpenProfile()
+  }
+
   return (
     <dialog
       ref={dialogRef}
       className="theme-dialog"
-      aria-labelledby="theme-settings-title"
+      aria-labelledby="settings-title"
       onCancel={handleDialogCancel}
       onClose={handleDialogClose}
       onClick={handleBackdropClick}
@@ -92,21 +102,23 @@ export function ThemeSettings({
       <div className="theme-panel">
         <div className="theme-panel-header">
           <div>
-            <p className="theme-panel-eyebrow">Appearance</p>
-            <h2 id="theme-settings-title">テーマ設定</h2>
+            <p className="theme-panel-eyebrow">Settings</p>
+            <h2 id="settings-title">設定</h2>
           </div>
           <button
             type="button"
             className="theme-close-button"
             onClick={closeDialog}
-            aria-label="テーマ設定を閉じる"
+            aria-label="設定を閉じる"
           >
             <XIcon size={20} weight="bold" aria-hidden="true" />
           </button>
         </div>
 
-        <fieldset className="theme-options">
-          <legend>表示テーマを選択</legend>
+        <section className="settings-section" aria-labelledby="settings-theme-heading">
+          <h3 id="settings-theme-heading">テーマ</h3>
+          <fieldset className="theme-options">
+          <legend className="visually-hidden">表示テーマを選択</legend>
           {themeOptions.map((option) => {
             const Icon = option.icon
             const isSelected = preference === option.value
@@ -134,11 +146,27 @@ export function ThemeSettings({
               </label>
             )
           })}
-        </fieldset>
+          </fieldset>
 
-        <p className="applied-theme-note">
-          現在の表示：{appliedTheme === 'dark' ? 'ダーク' : 'ライト'}
-        </p>
+          <p className="applied-theme-note">現在の表示：{appliedTheme === 'dark' ? 'ダーク' : 'ライト'}</p>
+        </section>
+
+        <section className="settings-section health-profile-settings" aria-labelledby="settings-profile-heading">
+          <div className="settings-section-heading">
+            <div><p className="theme-panel-eyebrow">Health profile</p><h3 id="settings-profile-heading">健康プロフィール</h3></div>
+            <span className="health-card-status">本人用</span>
+          </div>
+          {profile ? (
+            <dl className="settings-profile-summary">
+              <div><dt>生年月日</dt><dd>{profile.birthDate ?? '未設定'}</dd></div>
+              <div><dt>身長</dt><dd>{profile.heightCm === null ? '未設定' : `${profile.heightCm.toFixed(1)} cm`}</dd></div>
+              <div><dt>計算用の性別</dt><dd>{formatCalculationSex(profile.calculationSex)}</dd></div>
+              <div><dt>目標体重</dt><dd>{profile.targetWeightKg === null ? '未設定' : `${profile.targetWeightKg.toFixed(1)} kg`}</dd></div>
+            </dl>
+          ) : <p className="settings-profile-empty">健康プロフィールは未設定です</p>}
+          <button type="button" className="health-primary-button" onClick={openProfile} aria-label={profile ? '健康プロフィールを編集' : '健康プロフィールを設定'}>{profile ? '編集' : '設定する'}</button>
+          <p className="settings-profile-note">BMIや目標体重などの概算計算に使用します。保存内容は設定画面以外へ不要に表示しません。</p>
+        </section>
       </div>
     </dialog>
   )

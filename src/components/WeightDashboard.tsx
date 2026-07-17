@@ -114,7 +114,7 @@ export function WeightDashboard({ records, profile, onOpenProfile }: WeightDashb
           <p>目標体重</p>
           <strong>{targetWeight === null ? '未設定' : `${targetWeight.toFixed(1)} kg`}</strong>
           <span>{targetWeight === null ? '健康プロフィールで設定できます' : targetDifferenceText(calculateWeightDifference(latestWeight, targetWeight))}</span>
-          <button type="button" className="weight-inline-button" onClick={onOpenProfile}>プロフィールで変更</button>
+          <button type="button" className="weight-inline-button" onClick={onOpenProfile}>健康プロフィールを編集</button>
         </section>
       </div>
 
