@@ -51,3 +51,15 @@ export interface MealRecord {
   snacks: string
   updatedAt: string
 }
+
+export type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snacks' | 'any'
+
+export interface MealTemplate {
+  id: string
+  name: string
+  mealType: MealType
+  content: string
+  sortOrder: number
+  createdAt: string
+  updatedAt: string
+}

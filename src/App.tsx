@@ -15,6 +15,7 @@ import { useDayMemos } from './hooks/useDayMemos'
 import { useEvents } from './hooks/useEvents'
 import { useHealthProfile } from './hooks/useHealthProfile'
 import { useMealRecords } from './hooks/useMealRecords'
+import { useMealTemplates } from './hooks/useMealTemplates'
 import { useSleepRecords } from './hooks/useSleepRecords'
 import { useTheme } from './hooks/useTheme'
 import { useWeightRecords } from './hooks/useWeightRecords'
@@ -44,6 +45,7 @@ function App() {
   const { healthProfile, saveHealthProfile, deleteHealthProfile } = useHealthProfile()
   const { sleepRecords, saveSleepRecord, deleteSleepRecord } = useSleepRecords()
   const { mealRecords, saveMealRecord, deleteMealRecord } = useMealRecords()
+  const { mealTemplates, saveMealTemplate, deleteMealTemplate, moveMealTemplate } = useMealTemplates()
 
   const selectDate = (date: Date) => {
     setSelectedDate(date)
@@ -208,6 +210,10 @@ function App() {
         <MealRecordDialog
           date={toDateKey(selectedDate)}
           record={mealRecords.find((record) => record.date === toDateKey(selectedDate)) ?? null}
+          templates={mealTemplates}
+          onSaveTemplate={saveMealTemplate}
+          onDeleteTemplate={deleteMealTemplate}
+          onMoveTemplate={moveMealTemplate}
           onSave={saveMealRecord}
           onDelete={deleteMealRecord}
           onClose={() => setIsMealDialogOpen(false)}
