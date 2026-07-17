@@ -11,6 +11,7 @@ interface UseThemeResult {
   preference: ThemePreference
   appliedTheme: AppliedTheme
   setPreference: (preference: ThemePreference) => void
+  replaceThemePreference: (preference: ThemePreference) => void
 }
 
 function getSystemUsesDark(): boolean {
@@ -51,5 +52,5 @@ export function useTheme(): UseThemeResult {
     }
   }, [preference])
 
-  return { preference, appliedTheme, setPreference }
+  return { preference, appliedTheme, setPreference, replaceThemePreference: setPreference }
 }

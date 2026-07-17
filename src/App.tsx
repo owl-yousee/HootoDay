@@ -29,6 +29,7 @@ import { useSleepRecords } from './hooks/useSleepRecords'
 import { useTheme } from './hooks/useTheme'
 import { useWeightRecords } from './hooks/useWeightRecords'
 import type { CalendarEvent } from './types/calendar'
+import type { HootoDayBackupData } from './types/backup'
 import type { ExerciseSession } from './types/health'
 import { fromDateKey, toDateKey, toMonthKey } from './utils/date'
 import { getDailyHealthSummary, getHealthRecordDates } from './utils/healthSummary'
@@ -54,22 +55,23 @@ function App() {
   const [isMonthlyAchievementsDialogOpen, setIsMonthlyAchievementsDialogOpen] = useState(false)
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null)
   const [editingExerciseSession, setEditingExerciseSession] = useState<ExerciseSession | null>(null)
-  const { events, saveEvent, deleteEvent } = useEvents()
-  const { dayMemos, saveDayMemo, deleteDayMemo } = useDayMemos()
-  const { dailyAchievements, saveDailyAchievement, deleteDailyAchievement } = useDailyAchievements()
+  const { events, saveEvent, deleteEvent, replaceEvents } = useEvents()
+  const { dayMemos, saveDayMemo, deleteDayMemo, replaceDayMemos } = useDayMemos()
+  const { dailyAchievements, saveDailyAchievement, deleteDailyAchievement, replaceDailyAchievements } = useDailyAchievements()
   const {
     monthlyAchievementSelections,
     saveMonthlyAchievementSelection,
     deleteMonthlyAchievementSelection,
+    replaceMonthlyAchievementSelections,
   } = useMonthlyAchievementSelections()
-  const { preference, appliedTheme, setPreference } = useTheme()
-  const { weightRecords, saveWeightRecord, deleteWeightRecord } = useWeightRecords()
-  const { healthProfile, saveHealthProfile, deleteHealthProfile } = useHealthProfile()
-  const { sleepRecords, saveSleepRecord, deleteSleepRecord } = useSleepRecords()
-  const { mealRecords, saveMealRecord, deleteMealRecord } = useMealRecords()
-  const { mealTemplates, saveMealTemplate, deleteMealTemplate, moveMealTemplate } = useMealTemplates()
-  const { exerciseSessions, saveExerciseSession, deleteExerciseSession } = useExerciseSessions()
-  const { conditionRecords, saveConditionRecord, deleteConditionRecord } = useConditionRecords()
+  const { preference, appliedTheme, setPreference, replaceThemePreference } = useTheme()
+  const { weightRecords, saveWeightRecord, deleteWeightRecord, replaceWeightRecords } = useWeightRecords()
+  const { healthProfile, saveHealthProfile, deleteHealthProfile, replaceHealthProfile } = useHealthProfile()
+  const { sleepRecords, saveSleepRecord, deleteSleepRecord, replaceSleepRecords } = useSleepRecords()
+  const { mealRecords, saveMealRecord, deleteMealRecord, replaceMealRecords } = useMealRecords()
+  const { mealTemplates, saveMealTemplate, deleteMealTemplate, moveMealTemplate, replaceMealTemplates } = useMealTemplates()
+  const { exerciseSessions, saveExerciseSession, deleteExerciseSession, replaceExerciseSessions } = useExerciseSessions()
+  const { conditionRecords, saveConditionRecord, deleteConditionRecord, replaceConditionRecords } = useConditionRecords()
   const healthSummarySource = useMemo(() => ({
     weightRecords,
     sleepRecords,
@@ -169,6 +171,21 @@ function App() {
     saveMonthlyAchievementSelection({ month: displayedMonthKey, selectedDate: date, updatedAt: new Date().toISOString() })
   }
 
+  const restoreBackupData = (data: HootoDayBackupData) => {
+    replaceThemePreference(data.theme)
+    replaceEvents(data.events)
+    replaceDayMemos(data.dayMemos)
+    replaceHealthProfile(data.healthProfile)
+    replaceWeightRecords(data.weightRecords)
+    replaceSleepRecords(data.sleepRecords)
+    replaceMealRecords(data.mealRecords)
+    replaceMealTemplates(data.mealTemplates)
+    replaceExerciseSessions(data.exerciseSessions)
+    replaceConditionRecords(data.conditionRecords)
+    replaceDailyAchievements(data.dailyAchievements)
+    replaceMonthlyAchievementSelections(data.monthlyAchievementSelections)
+  }
+
   return (
     <div className="app-shell">
       <div className="app-body">
@@ -227,6 +244,21 @@ function App() {
                 exerciseSessions,
                 conditionRecords,
               }}
+              backupData={{
+                theme: preference,
+                events,
+                dayMemos,
+                healthProfile,
+                weightRecords,
+                sleepRecords,
+                mealRecords,
+                mealTemplates,
+                exerciseSessions,
+                conditionRecords,
+                dailyAchievements,
+                monthlyAchievementSelections,
+              }}
+              onRestoreBackup={restoreBackupData}
             />
           )}
         </main>

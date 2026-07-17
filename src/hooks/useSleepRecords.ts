@@ -19,5 +19,5 @@ export function useSleepRecords() {
     setSleepRecords((current) => current.filter((record) => record.date !== date))
   }
 
-  return { sleepRecords, saveSleepRecord, deleteSleepRecord }
+  return { sleepRecords, saveSleepRecord, deleteSleepRecord, replaceSleepRecords: setSleepRecords }
 }

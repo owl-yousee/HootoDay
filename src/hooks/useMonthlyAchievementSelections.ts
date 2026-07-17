@@ -24,5 +24,6 @@ export function useMonthlyAchievementSelections() {
     monthlyAchievementSelections,
     saveMonthlyAchievementSelection,
     deleteMonthlyAchievementSelection,
+    replaceMonthlyAchievementSelections: setMonthlyAchievementSelections,
   }
 }

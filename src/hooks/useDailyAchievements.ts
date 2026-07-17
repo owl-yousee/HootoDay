@@ -17,5 +17,5 @@ export function useDailyAchievements() {
     setDailyAchievements((current) => current.filter((record) => record.date !== date))
   }
 
-  return { dailyAchievements, saveDailyAchievement, deleteDailyAchievement }
+  return { dailyAchievements, saveDailyAchievement, deleteDailyAchievement, replaceDailyAchievements: setDailyAchievements }
 }

@@ -22,5 +22,5 @@ export function useWeightRecords() {
     setWeightRecords((current) => current.filter((record) => record.date !== date))
   }
 
-  return { weightRecords, saveWeightRecord, deleteWeightRecord }
+  return { weightRecords, saveWeightRecord, deleteWeightRecord, replaceWeightRecords: setWeightRecords }
 }

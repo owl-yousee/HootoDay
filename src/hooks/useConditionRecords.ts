@@ -17,5 +17,5 @@ export function useConditionRecords() {
     setConditionRecords((current) => current.filter((record) => record.date !== date))
   }
 
-  return { conditionRecords, saveConditionRecord, deleteConditionRecord }
+  return { conditionRecords, saveConditionRecord, deleteConditionRecord, replaceConditionRecords: setConditionRecords }
 }

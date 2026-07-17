@@ -41,7 +41,10 @@
 .export-layout,
 .export-settings-card,
 .export-preview-card,
-.export-preview {
+.export-preview,
+.json-backup-area,
+.json-backup-card,
+.json-restore-card {
   width: 100%;
   max-width: 100%;
   min-width: 0;
@@ -66,7 +69,8 @@
 
 .export-settings-card,
 .export-preview-card,
-.export-future-note {
+.json-backup-card,
+.json-restore-card {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-large);
   background: var(--color-surface);
@@ -74,7 +78,9 @@
 }
 
 .export-settings-card,
-.export-preview-card {
+.export-preview-card,
+.json-backup-card,
+.json-restore-card {
   padding: clamp(16px, 2vw, 24px);
 }
 
@@ -185,8 +191,7 @@
 
 .export-date-field small,
 .export-date-fields > small,
-.export-privacy-note,
-.export-future-note p {
+.export-privacy-note {
   color: var(--color-text-muted);
   font-size: 0.73rem;
   line-height: 1.6;
@@ -287,17 +292,247 @@
   text-align: center;
 }
 
-.export-future-note {
-  padding: 14px 16px;
+.json-backup-area {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  align-items: start;
+  gap: clamp(12px, 1.5vw, 20px);
 }
 
-.export-future-note strong {
+.json-backup-card,
+.json-restore-card {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+}
+
+.json-backup-card h2,
+.json-restore-card h2 {
+  margin: 0;
   color: var(--color-text);
-  font-size: 0.82rem;
+  font-size: clamp(1.05rem, 1.3vw, 1.24rem);
 }
 
-.export-future-note p {
-  margin: 3px 0 0;
+.json-backup-card > p:not(.health-card-kicker),
+.json-restore-card > p:not(.health-card-kicker) {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+.json-backup-card .health-primary-button,
+.json-restore-card > .backup-danger-button {
+  width: fit-content;
+  max-width: 100%;
+}
+
+.json-restore-warning,
+.restore-warning {
+  padding: 11px 12px;
+  border: 1px solid color-mix(in srgb, var(--color-danger) 28%, var(--color-border));
+  border-radius: 11px;
+  color: var(--color-text) !important;
+  background: var(--color-danger-soft);
+}
+
+.backup-file-field {
+  min-width: 0;
+  display: grid;
+  gap: 7px;
+  color: var(--color-text);
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.backup-file-field input {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  color: var(--color-text);
+  background: var(--color-surface-soft);
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.backup-file-field input::file-selector-button {
+  min-height: 34px;
+  margin-right: 9px;
+  padding: 5px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  color: var(--color-text);
+  background: var(--color-sidebar);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.backup-file-field small {
+  color: var(--color-text-muted);
+  font-size: 0.7rem;
+  font-weight: 500;
+  line-height: 1.6;
+}
+
+.backup-summary {
+  min-width: 0;
+  padding: 13px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface-soft);
+}
+
+.backup-summary-heading {
+  min-width: 0;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.backup-summary-heading div {
+  display: grid;
+  gap: 2px;
+}
+
+.backup-summary-heading strong {
+  color: var(--color-text);
+}
+
+.backup-summary-heading span {
+  color: var(--color-primary-dark);
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.backup-summary-heading p {
+  max-width: 48%;
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.68rem;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.backup-summary dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.backup-summary dl div,
+.restore-confirm-summary div {
+  min-width: 0;
+  padding: 8px;
+  border-radius: 9px;
+  background: var(--color-surface);
+}
+
+.backup-summary dt,
+.restore-confirm-summary dt {
+  color: var(--color-text-muted);
+  font-size: 0.66rem;
+  font-weight: 700;
+}
+
+.backup-summary dd,
+.restore-confirm-summary dd {
+  margin: 2px 0 0;
+  color: var(--color-text);
+  font-size: 0.77rem;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.backup-notice {
+  min-height: 1.4em;
+  color: var(--color-primary-dark) !important;
+  font-weight: 700;
+}
+
+.backup-danger-button {
+  min-height: 42px;
+  padding: 8px 14px;
+  border: 1px solid var(--color-danger);
+  border-radius: 10px;
+  color: var(--color-danger);
+  background: var(--color-danger-soft);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.backup-danger-button:hover:not(:disabled) {
+  color: var(--color-on-primary);
+  background: var(--color-danger);
+}
+
+.backup-danger-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.backup-file-field input:focus-visible,
+.backup-danger-button:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--color-focus) 38%, transparent);
+  outline-offset: 2px;
+}
+
+.restore-confirm-dialog {
+  width: min(560px, calc(100vw - 28px));
+  max-width: calc(100vw - 28px);
+  max-height: calc(100vh - 28px);
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-large);
+  color: var(--color-text);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-soft);
+}
+
+.restore-confirm-dialog::backdrop {
+  background: var(--color-dialog-backdrop);
+}
+
+.restore-confirm-panel {
+  max-height: calc(100vh - 28px);
+  padding: clamp(18px, 3vw, 28px);
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+.restore-confirm-panel h2 {
+  margin: 0 0 14px;
+  color: var(--color-text);
+  font-size: clamp(1.12rem, 2vw, 1.4rem);
+}
+
+.restore-confirm-summary {
+  margin: 14px 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.restore-confirm-summary div {
+  background: var(--color-surface-soft);
+}
+
+.restore-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 @media (max-width: 920px) {
@@ -308,6 +543,10 @@
   .export-preview {
     min-height: 340px;
     max-height: 560px;
+  }
+
+  .json-backup-area {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
@@ -329,6 +568,44 @@
 
   .export-actions {
     flex-direction: column;
+  }
+
+  .json-backup-card,
+  .json-restore-card {
+    padding: 15px;
+  }
+
+  .json-backup-card .health-primary-button,
+  .json-restore-card > .backup-danger-button,
+  .restore-confirm-actions button {
+    width: 100%;
+  }
+
+  .backup-summary-heading,
+  .restore-confirm-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .backup-summary-heading p {
+    max-width: 100%;
+    text-align: left;
+  }
+
+  .backup-summary dl,
+  .restore-confirm-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .restore-confirm-dialog {
+    width: calc(100vw - 16px);
+    max-width: calc(100vw - 16px);
+    max-height: calc(100vh - 16px);
+  }
+
+  .restore-confirm-panel {
+    max-height: calc(100vh - 16px);
+    padding: 16px;
   }
 
   .export-actions button {

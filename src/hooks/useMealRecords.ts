@@ -19,5 +19,5 @@ export function useMealRecords() {
     setMealRecords((current) => current.filter((record) => record.date !== date))
   }
 
-  return { mealRecords, saveMealRecord, deleteMealRecord }
+  return { mealRecords, saveMealRecord, deleteMealRecord, replaceMealRecords: setMealRecords }
 }

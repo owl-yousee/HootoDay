@@ -34,5 +34,5 @@ export function useMealTemplates() {
     })
   }
 
-  return { mealTemplates, saveMealTemplate, deleteMealTemplate, moveMealTemplate }
+  return { mealTemplates, saveMealTemplate, deleteMealTemplate, moveMealTemplate, replaceMealTemplates: setMealTemplates }
 }

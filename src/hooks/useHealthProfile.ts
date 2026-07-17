@@ -13,5 +13,6 @@ export function useHealthProfile() {
     healthProfile,
     saveHealthProfile: setHealthProfile,
     deleteHealthProfile: () => setHealthProfile(null),
+    replaceHealthProfile: setHealthProfile,
   }
 }

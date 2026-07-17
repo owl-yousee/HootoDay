@@ -22,5 +22,5 @@ export function useDayMemos() {
     setDayMemos((current) => current.filter((memo) => memo.date !== date))
   }
 
-  return { dayMemos, saveDayMemo, deleteDayMemo }
+  return { dayMemos, saveDayMemo, deleteDayMemo, replaceDayMemos: setDayMemos }
 }

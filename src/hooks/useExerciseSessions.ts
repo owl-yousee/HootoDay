@@ -20,5 +20,5 @@ export function useExerciseSessions() {
     setExerciseSessions((current) => current.filter((session) => session.id !== id))
   }
 
-  return { exerciseSessions, saveExerciseSession, deleteExerciseSession }
+  return { exerciseSessions, saveExerciseSession, deleteExerciseSession, replaceExerciseSessions: setExerciseSessions }
 }

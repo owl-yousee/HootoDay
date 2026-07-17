@@ -25,5 +25,5 @@ export function useEvents() {
     setEvents((current) => current.filter((event) => event.id !== eventId))
   }
 
-  return { events, saveEvent, deleteEvent }
+  return { events, saveEvent, deleteEvent, replaceEvents: setEvents }
 }
