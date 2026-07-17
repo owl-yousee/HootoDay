@@ -37,6 +37,315 @@
   --radius-medium: 14px;
 }
 
+.health-export-page,
+.export-layout,
+.export-settings-card,
+.export-preview-card,
+.export-preview {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.health-export-page {
+  display: grid;
+  gap: clamp(14px, 1.7vw, 22px);
+}
+
+.export-heading {
+  margin-bottom: 0;
+}
+
+.export-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.72fr) minmax(0, 1.28fr);
+  align-items: start;
+  gap: clamp(12px, 1.5vw, 20px);
+}
+
+.export-settings-card,
+.export-preview-card,
+.export-future-note {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-large);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-soft);
+}
+
+.export-settings-card,
+.export-preview-card {
+  padding: clamp(16px, 2vw, 24px);
+}
+
+.export-section-heading {
+  min-width: 0;
+  margin-bottom: 18px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.export-section-heading h2 {
+  margin: 0;
+  color: var(--color-text);
+  font-size: clamp(1.05rem, 1.3vw, 1.24rem);
+}
+
+.export-choice-group {
+  min-width: 0;
+  margin: 0 0 18px;
+  padding: 0;
+  border: 0;
+}
+
+.export-choice-group legend,
+.export-date-field > span {
+  margin-bottom: 8px;
+  color: var(--color-text);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.export-segmented-controls,
+.export-period-controls,
+.export-actions {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.export-segmented-controls button,
+.export-period-controls button {
+  min-height: 40px;
+  padding: 7px 13px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  color: var(--color-text-muted);
+  background: var(--color-surface-soft);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.export-segmented-controls button:hover,
+.export-period-controls button:hover {
+  background: var(--color-accent-soft);
+}
+
+.export-segmented-controls button.is-active,
+.export-period-controls button.is-active {
+  border-color: var(--color-primary);
+  color: var(--color-on-primary);
+  background: var(--color-primary);
+}
+
+.export-segmented-controls button:focus-visible,
+.export-period-controls button:focus-visible,
+.export-date-field input:focus-visible,
+.export-actions button:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--color-focus) 38%, transparent);
+  outline-offset: 2px;
+}
+
+.export-date-fields,
+.export-date-field {
+  min-width: 0;
+  display: grid;
+}
+
+.export-date-fields {
+  gap: 12px;
+}
+
+.export-date-field input {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  color: var(--color-text);
+  background: var(--color-surface-soft);
+  font: inherit;
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] .export-date-field input {
+  color-scheme: dark;
+}
+
+.export-date-field input[aria-invalid="true"] {
+  border-color: var(--color-danger);
+}
+
+.export-date-field small,
+.export-date-fields > small,
+.export-privacy-note,
+.export-future-note p {
+  color: var(--color-text-muted);
+  font-size: 0.73rem;
+  line-height: 1.6;
+}
+
+.export-date-field small {
+  margin-top: 6px;
+}
+
+.export-custom-dates {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.export-range-summary {
+  min-width: 0;
+  margin: 16px 0;
+  padding: 11px 12px;
+  display: grid;
+  gap: 3px;
+  border-radius: 11px;
+  color: var(--color-text);
+  background: var(--color-primary-soft);
+}
+
+.export-range-summary span {
+  color: var(--color-text-muted);
+  font-size: 0.69rem;
+  font-weight: 700;
+}
+
+.export-range-summary strong {
+  overflow-wrap: anywhere;
+  font-size: 0.82rem;
+}
+
+.export-actions {
+  margin-top: 18px;
+}
+
+.export-actions button {
+  flex: 1 1 140px;
+}
+
+.export-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.export-notice {
+  min-height: 1.5em;
+  margin: 8px 0 0;
+  color: var(--color-primary-dark);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.export-privacy-note {
+  margin: 10px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-border);
+}
+
+.export-filename {
+  max-width: 55%;
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 0.68rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.export-preview {
+  min-height: 430px;
+  max-height: min(68vh, 760px);
+  margin: 0;
+  padding: clamp(14px, 1.7vw, 20px);
+  overflow: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 13px;
+  color: var(--color-text);
+  background: var(--color-surface-soft);
+  font-family: Consolas, "Courier New", "Yu Gothic", Meiryo, monospace;
+  font-size: clamp(0.72rem, 0.82vw, 0.82rem);
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.export-preview.is-empty {
+  min-height: 220px;
+  display: grid;
+  place-items: center;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.export-future-note {
+  padding: 14px 16px;
+}
+
+.export-future-note strong {
+  color: var(--color-text);
+  font-size: 0.82rem;
+}
+
+.export-future-note p {
+  margin: 3px 0 0;
+}
+
+@media (max-width: 920px) {
+  .export-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .export-preview {
+    min-height: 340px;
+    max-height: 560px;
+  }
+}
+
+@media (max-width: 560px) {
+  .export-section-heading,
+  .export-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .export-custom-dates {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .export-segmented-controls button,
+  .export-period-controls button {
+    flex: 1 1 calc(50% - 4px);
+  }
+
+  .export-actions {
+    flex-direction: column;
+  }
+
+  .export-actions button {
+    width: 100%;
+    flex-basis: auto;
+  }
+
+  .export-filename {
+    max-width: 100%;
+  }
+
+  .export-preview {
+    min-height: 280px;
+    max-height: 480px;
+  }
+}
+
 :root[data-theme="dark"] {
   --color-background: #201b17;
   --color-surface: #2d2823;

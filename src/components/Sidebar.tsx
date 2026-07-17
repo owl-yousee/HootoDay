@@ -12,7 +12,7 @@ const navigationItems = [
   { id: 'settings', label: '設定', icon: GearIcon },
 ]
 
-export type AppView = 'calendar' | 'health'
+export type AppView = 'calendar' | 'health' | 'export'
 
 interface SidebarProps {
   activeView: AppView
@@ -26,8 +26,9 @@ export function Sidebar({ activeView, isSettingsOpen, onViewChange, onSettingsCl
     <nav className={className} aria-label={ariaLabel}>
         {navigationItems.map((item) => {
           const Icon = item.icon
-          const isViewItem = item.id === 'calendar' || item.id === 'health'
-          const isActive = isViewItem && item.id === activeView
+          const isViewItem = item.id === 'calendar' || item.id === 'health' || item.id === 'backup'
+          const view = item.id === 'backup' ? 'export' : item.id
+          const isActive = isViewItem && view === activeView
 
           return (
             <button
@@ -41,7 +42,7 @@ export function Sidebar({ activeView, isSettingsOpen, onViewChange, onSettingsCl
               onClick={item.id === 'settings'
                 ? onSettingsClick
                 : isViewItem
-                  ? () => onViewChange(item.id as AppView)
+                  ? () => onViewChange(view as AppView)
                   : undefined}
             >
               <span className="nav-icon" aria-hidden="true">

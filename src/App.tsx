@@ -7,6 +7,7 @@ import { DailyConditionDialog } from './components/DailyConditionDialog'
 import { EventEditorDialog } from './components/EventEditorDialog'
 import { ExerciseSessionDialog } from './components/ExerciseSessionDialog'
 import { HealthDashboard } from './components/HealthDashboard'
+import { HealthExportPage } from './components/HealthExportPage'
 import { HealthProfileDialog } from './components/HealthProfileDialog'
 import { MealRecordDialog } from './components/MealRecordDialog'
 import { MonthlyAchievementHighlight } from './components/MonthlyAchievementHighlight'
@@ -193,7 +194,7 @@ function App() {
                 <DayDetails selectedDate={selectedDate} events={events} memos={dayMemos} healthSummary={selectedHealthSummary} achievement={selectedDateAchievement} onAddEvent={openNewEvent} onEditEvent={openEventEditor} onOpenMemo={() => setIsDayMemoDialogOpen(true)} onOpenHealth={openSelectedDateHealth} onOpenAchievement={() => setIsDailyAchievementDialogOpen(true)} />
               </div>
             </>
-          ) : (
+          ) : activeView === 'health' ? (
             <HealthDashboard
               selectedDate={selectedDate}
               records={weightRecords}
@@ -212,6 +213,20 @@ function App() {
               onOpenMeal={() => setIsMealDialogOpen(true)}
               onOpenExercise={openExerciseDialog}
               onOpenCondition={() => setIsConditionDialogOpen(true)}
+            />
+          ) : (
+            <HealthExportPage
+              initialDate={selectedDateKey}
+              data={{
+                dayMemos,
+                dailyAchievements,
+                monthlyAchievementSelections,
+                weightRecords,
+                sleepRecords,
+                mealRecords,
+                exerciseSessions,
+                conditionRecords,
+              }}
             />
           )}
         </main>
