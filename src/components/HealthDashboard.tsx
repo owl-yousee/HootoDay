@@ -65,7 +65,7 @@ export function HealthDashboard({
       <div className="content-heading health-heading">
         <div>
           <p className="eyebrow">Health log</p>
-          <h2>健康記録</h2>
+          <h1>健康記録</h1>
         </div>
         <p className="content-note">毎日の変化を、無理なく記録。</p>
       </div>

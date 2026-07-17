@@ -34,6 +34,7 @@ export function Sidebar({ activeView, isSettingsOpen, onViewChange, onSettingsCl
               key={item.label}
               type="button"
               className={`nav-item${isActive ? ' is-active' : ''}`}
+              aria-label={item.label}
               aria-current={isActive ? 'page' : undefined}
               aria-expanded={item.id === 'settings' ? isSettingsOpen : undefined}
               aria-haspopup={item.id === 'settings' ? 'dialog' : undefined}
@@ -50,7 +51,8 @@ export function Sidebar({ activeView, isSettingsOpen, onViewChange, onSettingsCl
                   aria-hidden="true"
                 />
               </span>
-              <span>{item.label}</span>
+              <span className="nav-label">{item.label}</span>
+              <span className="nav-tooltip" aria-hidden="true">{item.label}</span>
             </button>
           )
         })}
@@ -60,7 +62,6 @@ export function Sidebar({ activeView, isSettingsOpen, onViewChange, onSettingsCl
   return (
     <>
       <aside className="sidebar">
-        <p className="sidebar-label">Menu</p>
         {renderNavigation('sidebar-nav', 'メインメニュー')}
       </aside>
       <div className="mobile-navigation">

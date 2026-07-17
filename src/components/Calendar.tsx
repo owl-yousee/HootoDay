@@ -16,7 +16,8 @@ interface CalendarProps {
   onSelectDate: (date: Date) => void
 }
 
-const weekdays = ['日', '月', '火', '水', '木', '金', '土']
+const weekdays = ['月', '火', '水', '木', '金', '土', '日']
+const weekdayNames = ['月曜日', '火曜日', '水曜日', '木曜日', '金曜日', '土曜日', '日曜日']
 
 function isSameDate(left: Date, right: Date): boolean {
   return toDateKey(left) === toDateKey(right)
@@ -25,7 +26,8 @@ function isSameDate(left: Date, right: Date): boolean {
 function getCalendarDays(displayMonth: Date): Date[] {
   const firstDay = new Date(displayMonth.getFullYear(), displayMonth.getMonth(), 1)
   const gridStart = new Date(firstDay)
-  gridStart.setDate(firstDay.getDate() - firstDay.getDay())
+  const mondayFirstOffset = (firstDay.getDay() + 6) % 7
+  gridStart.setDate(firstDay.getDate() - mondayFirstOffset)
 
   return Array.from({ length: 42 }, (_, index) => {
     const date = new Date(gridStart)
@@ -46,14 +48,15 @@ export function Calendar({
   const days = getCalendarDays(displayMonth)
 
   return (
-    <section className="calendar-card" aria-label={`${displayMonth.getFullYear()}年${displayMonth.getMonth() + 1}月のカレンダー`}>
-      <div className="weekday-row" aria-hidden="true">
+    <section className="calendar-panel" aria-label={`${displayMonth.getFullYear()}年${displayMonth.getMonth() + 1}月のカレンダー`}>
+      <div className="weekday-row" aria-label="曜日">
         {weekdays.map((weekday, index) => (
           <div
             key={weekday}
-            className={`weekday${index === 0 ? ' sunday' : ''}${index === 6 ? ' saturday' : ''}`}
+            className={`weekday${index === 6 ? ' sunday' : ''}${index === 5 ? ' saturday' : ''}`}
+            aria-label={weekdayNames[index]}
           >
-            {weekday}
+            <span>{weekday}</span>
           </div>
         ))}
       </div>

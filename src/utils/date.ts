@@ -5,6 +5,17 @@ export function toDateKey(date: Date): string {
   return `${year}-${month}-${day}`
 }
 
+export function toMonthKey(date: Date): string {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  return `${year}-${month}`
+}
+
+export function formatMonthKeyJa(monthKey: string): string {
+  const match = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(monthKey)
+  return match ? `${Number(match[1])}年${Number(match[2])}月` : monthKey
+}
+
 export function fromDateKey(dateKey: string): Date | null {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateKey)
   if (!match) return null

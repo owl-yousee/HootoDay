@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
-import { AppHeader } from './components/AppHeader'
 import { Calendar } from './components/Calendar'
+import { DailyAchievementDialog } from './components/DailyAchievementDialog'
 import { DayDetails } from './components/DayDetails'
 import { DayMemoDialog } from './components/DayMemoDialog'
 import { DailyConditionDialog } from './components/DailyConditionDialog'
@@ -9,23 +9,27 @@ import { ExerciseSessionDialog } from './components/ExerciseSessionDialog'
 import { HealthDashboard } from './components/HealthDashboard'
 import { HealthProfileDialog } from './components/HealthProfileDialog'
 import { MealRecordDialog } from './components/MealRecordDialog'
+import { MonthlyAchievementHighlight } from './components/MonthlyAchievementHighlight'
+import { MonthlyAchievementsDialog } from './components/MonthlyAchievementsDialog'
 import { Sidebar, type AppView } from './components/Sidebar'
 import { SleepRecordDialog } from './components/SleepRecordDialog'
 import { ThemeSettings } from './components/ThemeSettings'
 import { WeightRecordDialog } from './components/WeightRecordDialog'
 import { useDayMemos } from './hooks/useDayMemos'
+import { useDailyAchievements } from './hooks/useDailyAchievements'
 import { useConditionRecords } from './hooks/useConditionRecords'
 import { useEvents } from './hooks/useEvents'
 import { useExerciseSessions } from './hooks/useExerciseSessions'
 import { useHealthProfile } from './hooks/useHealthProfile'
 import { useMealRecords } from './hooks/useMealRecords'
 import { useMealTemplates } from './hooks/useMealTemplates'
+import { useMonthlyAchievementSelections } from './hooks/useMonthlyAchievementSelections'
 import { useSleepRecords } from './hooks/useSleepRecords'
 import { useTheme } from './hooks/useTheme'
 import { useWeightRecords } from './hooks/useWeightRecords'
 import type { CalendarEvent } from './types/calendar'
 import type { ExerciseSession } from './types/health'
-import { fromDateKey, toDateKey } from './utils/date'
+import { fromDateKey, toDateKey, toMonthKey } from './utils/date'
 import { getDailyHealthSummary, getHealthRecordDates } from './utils/healthSummary'
 import './App.css'
 
@@ -45,10 +49,18 @@ function App() {
   const [isMealDialogOpen, setIsMealDialogOpen] = useState(false)
   const [isExerciseDialogOpen, setIsExerciseDialogOpen] = useState(false)
   const [isConditionDialogOpen, setIsConditionDialogOpen] = useState(false)
+  const [isDailyAchievementDialogOpen, setIsDailyAchievementDialogOpen] = useState(false)
+  const [isMonthlyAchievementsDialogOpen, setIsMonthlyAchievementsDialogOpen] = useState(false)
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null)
   const [editingExerciseSession, setEditingExerciseSession] = useState<ExerciseSession | null>(null)
   const { events, saveEvent, deleteEvent } = useEvents()
   const { dayMemos, saveDayMemo, deleteDayMemo } = useDayMemos()
+  const { dailyAchievements, saveDailyAchievement, deleteDailyAchievement } = useDailyAchievements()
+  const {
+    monthlyAchievementSelections,
+    saveMonthlyAchievementSelection,
+    deleteMonthlyAchievementSelection,
+  } = useMonthlyAchievementSelections()
   const { preference, appliedTheme, setPreference } = useTheme()
   const { weightRecords, saveWeightRecord, deleteWeightRecord } = useWeightRecords()
   const { healthProfile, saveHealthProfile, deleteHealthProfile } = useHealthProfile()
@@ -69,6 +81,20 @@ function App() {
     () => getDailyHealthSummary(toDateKey(selectedDate), healthSummarySource),
     [selectedDate, healthSummarySource],
   )
+  const selectedDateKey = toDateKey(selectedDate)
+  const selectedDateAchievement = dailyAchievements.find((record) => record.date === selectedDateKey) ?? null
+  const displayedMonthKey = toMonthKey(displayMonth)
+  const displayedMonthAchievements = useMemo(
+    () => dailyAchievements.filter((record) => record.date.startsWith(`${displayedMonthKey}-`)),
+    [dailyAchievements, displayedMonthKey],
+  )
+  const displayedMonthSelection = monthlyAchievementSelections.find((selection) => (
+    selection.month === displayedMonthKey &&
+    displayedMonthAchievements.some((record) => record.date === selection.selectedDate)
+  )) ?? null
+  const displayedMonthBest = displayedMonthSelection
+    ? displayedMonthAchievements.find((record) => record.date === displayedMonthSelection.selectedDate) ?? null
+    : null
 
   const selectDate = (date: Date) => {
     setSelectedDate(date)
@@ -129,16 +155,21 @@ function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
+  const deleteAchievement = (date: string) => {
+    deleteDailyAchievement(date)
+    const month = date.slice(0, 7)
+    if (monthlyAchievementSelections.some((selection) => selection.month === month && selection.selectedDate === date)) {
+      deleteMonthlyAchievementSelection(month)
+    }
+  }
+
+  const selectMonthlyBest = (date: string) => {
+    if (!date.startsWith(`${displayedMonthKey}-`) || !displayedMonthAchievements.some((record) => record.date === date)) return
+    saveMonthlyAchievementSelection({ month: displayedMonthKey, selectedDate: date, updatedAt: new Date().toISOString() })
+  }
+
   return (
     <div className="app-shell">
-      <AppHeader
-        isCalendarView={activeView === 'calendar'}
-        displayMonth={displayMonth}
-        onPreviousMonth={() => moveMonth(-1)}
-        onNextMonth={() => moveMonth(1)}
-        onToday={moveToToday}
-      />
-
       <div className="app-body">
         <Sidebar
           activeView={activeView}
@@ -149,13 +180,17 @@ function App() {
         <main className="main-content">
           {activeView === 'calendar' ? (
             <>
-              <div className="content-heading">
-                <div><p className="eyebrow">My calendar</p><h2>月間カレンダー</h2></div>
-                <p className="content-note">予定と毎日の記録を、ひと目で。</p>
-              </div>
+              <MonthlyAchievementHighlight
+                displayMonth={displayMonth}
+                achievement={displayedMonthBest}
+                onPreviousMonth={() => moveMonth(-1)}
+                onNextMonth={() => moveMonth(1)}
+                onToday={moveToToday}
+                onOpen={() => setIsMonthlyAchievementsDialogOpen(true)}
+              />
               <div className="calendar-layout">
                 <Calendar displayMonth={displayMonth} selectedDate={selectedDate} events={events} memos={dayMemos} healthRecordDates={healthRecordDates} onSelectDate={selectDate} />
-                <DayDetails selectedDate={selectedDate} events={events} memos={dayMemos} healthSummary={selectedHealthSummary} onAddEvent={openNewEvent} onEditEvent={openEventEditor} onOpenMemo={() => setIsDayMemoDialogOpen(true)} onOpenHealth={openSelectedDateHealth} />
+                <DayDetails selectedDate={selectedDate} events={events} memos={dayMemos} healthSummary={selectedHealthSummary} achievement={selectedDateAchievement} onAddEvent={openNewEvent} onEditEvent={openEventEditor} onOpenMemo={() => setIsDayMemoDialogOpen(true)} onOpenHealth={openSelectedDateHealth} onOpenAchievement={() => setIsDailyAchievementDialogOpen(true)} />
               </div>
             </>
           ) : (
@@ -278,6 +313,27 @@ function App() {
           onSave={saveConditionRecord}
           onDelete={deleteConditionRecord}
           onClose={() => setIsConditionDialogOpen(false)}
+        />
+      )}
+
+      {isDailyAchievementDialogOpen && (
+        <DailyAchievementDialog
+          date={selectedDateKey}
+          achievement={selectedDateAchievement}
+          onSave={saveDailyAchievement}
+          onDelete={deleteAchievement}
+          onClose={() => setIsDailyAchievementDialogOpen(false)}
+        />
+      )}
+
+      {isMonthlyAchievementsDialogOpen && (
+        <MonthlyAchievementsDialog
+          month={displayedMonthKey}
+          achievements={displayedMonthAchievements}
+          selection={displayedMonthSelection}
+          onSelect={selectMonthlyBest}
+          onClear={() => deleteMonthlyAchievementSelection(displayedMonthKey)}
+          onClose={() => setIsMonthlyAchievementsDialogOpen(false)}
         />
       )}
     </div>
