@@ -12,7 +12,7 @@ import { HealthProfileDialog } from './components/HealthProfileDialog'
 import { MealRecordDialog } from './components/MealRecordDialog'
 import { MonthlyAchievementHighlight } from './components/MonthlyAchievementHighlight'
 import { MonthlyAchievementsDialog } from './components/MonthlyAchievementsDialog'
-import { RecordsPlaceholder } from './components/RecordsPlaceholder'
+import { RecordsBrowserPage } from './components/RecordsBrowserPage'
 import { Sidebar, type AppView } from './components/Sidebar'
 import { SleepRecordDialog } from './components/SleepRecordDialog'
 import { ThemeSettings } from './components/ThemeSettings'
@@ -159,6 +159,14 @@ function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
+  const openRecordDate = (dateKey: string, view: 'calendar' | 'health') => {
+    const date = fromDateKey(dateKey)
+    if (!date) return
+    selectDate(date)
+    setActiveView(view)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
   const deleteAchievement = (date: string) => {
     deleteDailyAchievement(date)
     const month = date.slice(0, 7)
@@ -233,7 +241,15 @@ function App() {
               onOpenCondition={() => setIsConditionDialogOpen(true)}
             />
           ) : activeView === 'records' ? (
-            <RecordsPlaceholder />
+            <RecordsBrowserPage
+              dayMemos={dayMemos}
+              dailyAchievements={dailyAchievements}
+              weightRecords={weightRecords}
+              sleepRecords={sleepRecords}
+              conditionRecords={conditionRecords}
+              onOpenCalendar={(dateKey) => openRecordDate(dateKey, 'calendar')}
+              onOpenHealth={(dateKey) => openRecordDate(dateKey, 'health')}
+            />
           ) : (
             <HealthExportPage
               initialDate={selectedDateKey}
