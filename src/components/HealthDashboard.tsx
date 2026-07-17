@@ -6,6 +6,7 @@ import { toDateKey } from '../utils/date'
 import { calculateAge, formatCalculationSex } from '../utils/healthProfile'
 import { formatDurationMinutes } from '../utils/sleepMetrics'
 import { WeightDashboard } from './WeightDashboard'
+import { SleepDashboard } from './SleepDashboard'
 
 interface HealthDashboardProps {
   selectedDate: Date
@@ -37,7 +38,7 @@ export function HealthDashboard({
   onOpenProfile,
   onOpenSleep,
 }: HealthDashboardProps) {
-  const [activeSection, setActiveSection] = useState<'daily' | 'summary'>('daily')
+  const [activeSection, setActiveSection] = useState<'daily' | 'weight' | 'sleep'>('daily')
   const dateKey = toDateKey(selectedDate)
   const record = records.find((item) => item.date === dateKey) ?? null
   const sleepRecord = sleepRecords.find((item) => item.date === dateKey) ?? null
@@ -56,7 +57,8 @@ export function HealthDashboard({
 
       <div className="health-view-tabs" role="group" aria-label="健康記録の表示切り替え">
         <button type="button" className={activeSection === 'daily' ? 'is-active' : ''} aria-pressed={activeSection === 'daily'} onClick={() => setActiveSection('daily')}>日付別記録</button>
-        <button type="button" className={activeSection === 'summary' ? 'is-active' : ''} aria-pressed={activeSection === 'summary'} onClick={() => setActiveSection('summary')}>体重まとめ</button>
+        <button type="button" className={activeSection === 'weight' ? 'is-active' : ''} aria-pressed={activeSection === 'weight'} onClick={() => setActiveSection('weight')}>体重まとめ</button>
+        <button type="button" className={activeSection === 'sleep' ? 'is-active' : ''} aria-pressed={activeSection === 'sleep'} onClick={() => setActiveSection('sleep')}>睡眠まとめ</button>
       </div>
 
       {activeSection === 'daily' ? <>
@@ -167,8 +169,10 @@ export function HealthDashboard({
           </ul>
         </section>
         </div>
-      </> : (
+      </> : activeSection === 'weight' ? (
         <WeightDashboard records={records} profile={profile} onOpenProfile={onOpenProfile} />
+      ) : (
+        <SleepDashboard records={sleepRecords} />
       )}
     </div>
   )

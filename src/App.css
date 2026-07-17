@@ -591,6 +591,112 @@
   line-height: 1.65;
 }
 
+.sleep-dashboard {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  display: grid;
+  gap: clamp(14px, 1.6vw, 22px);
+}
+
+.sleep-summary-heading,
+.sleep-section-heading {
+  min-width: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.sleep-summary-heading h3,
+.sleep-section-heading h3,
+.sleep-latest-card h3,
+.sleep-trend-card h3,
+.sleep-memo-card h3 {
+  margin: 0;
+  color: var(--color-text);
+  font-size: clamp(1.05rem, 1.4vw, 1.25rem);
+}
+
+.sleep-summary-heading > p,
+.sleep-section-heading > p {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.72rem;
+}
+
+.sleep-latest-card,
+.sleep-average-section,
+.sleep-chart-section,
+.sleep-trend-card,
+.sleep-memo-card {
+  min-width: 0;
+  padding: clamp(16px, 2vw, 24px);
+  overflow-wrap: break-word;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-large);
+  color: var(--color-text);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-soft);
+}
+
+.sleep-latest-card {
+  border-color: color-mix(in srgb, var(--color-primary) 45%, var(--color-border));
+  background: color-mix(in srgb, var(--color-primary-soft) 45%, var(--color-surface));
+}
+
+.sleep-latest-content {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: minmax(170px, 0.75fr) minmax(0, 2fr);
+  gap: clamp(14px, 2vw, 24px);
+}
+
+.sleep-latest-primary { display: flex; flex-direction: column; gap: 6px; }
+.sleep-latest-primary strong { font-size: clamp(1.5rem, 3vw, 2.25rem); }
+.sleep-latest-primary span { color: var(--color-text-muted); font-size: 0.72rem; }
+.sleep-latest-details { margin: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.sleep-latest-details > div { min-width: 0; padding: 10px; border-radius: 10px; background: var(--color-surface); }
+.sleep-latest-details dt { color: var(--color-text-muted); font-size: 0.65rem; }
+.sleep-latest-details dd { margin: 3px 0 0; font-size: 0.78rem; font-weight: 700; }
+.sleep-empty-message { margin: 16px 0 0; color: var(--color-text-muted); }
+
+.sleep-average-grid { margin-top: 16px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.sleep-average-card { min-width: 0; padding: 14px; display: grid; gap: 7px; border-radius: 12px; background: var(--color-surface-soft); }
+.sleep-average-card h4 { margin: 0; color: var(--color-text-muted); font-size: 0.74rem; }
+.sleep-average-card > strong { font-size: clamp(0.9rem, 1.5vw, 1.25rem); }
+.sleep-average-card dl { margin: 0; display: grid; gap: 4px; }
+.sleep-average-card dl > div { display: flex; justify-content: space-between; gap: 8px; }
+.sleep-average-card dt, .sleep-average-card dd, .sleep-average-card > small { margin: 0; color: var(--color-text-muted); font-size: 0.65rem; line-height: 1.45; }
+.sleep-average-card dd { color: var(--color-text); font-weight: 700; text-align: right; }
+.sleep-average-method { margin: 14px 0 0; color: var(--color-text-muted); font-size: 0.68rem; line-height: 1.65; }
+
+.sleep-period-controls { max-width: 100%; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 5px; }
+.sleep-period-controls button { min-height: 34px; padding: 0 10px; border: 1px solid var(--color-border); border-radius: 9px; color: var(--color-text-muted); background: var(--color-surface-soft); font: inherit; font-size: 0.68rem; font-weight: 700; cursor: pointer; }
+.sleep-period-controls button.is-active { border-color: var(--color-primary); color: var(--color-on-primary); background: var(--color-primary); }
+.sleep-chart-summary { margin: 16px 0 10px; display: flex; flex-wrap: wrap; gap: 6px; }
+.sleep-chart-summary span { padding: 5px 8px; border-radius: 8px; color: var(--color-text-muted); background: var(--color-surface-soft); font-size: 0.66rem; }
+.sleep-chart-svg { width: 100%; max-width: 100%; height: auto; display: block; overflow: visible; }
+.sleep-chart-grid-line { stroke: var(--color-border); stroke-width: 1; }
+.sleep-chart-line { stroke: var(--color-primary); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.sleep-chart-point { fill: var(--color-surface); stroke: var(--color-primary); stroke-width: 3; }
+.sleep-chart-point.is-latest { fill: var(--color-accent); stroke: var(--color-accent-dark); }
+.sleep-chart-axis-label { fill: var(--color-text-muted); font-family: inherit; font-size: 11px; }
+.sleep-chart-empty { min-height: 190px; display: grid; place-items: center; border-radius: 13px; color: var(--color-text-muted); background: var(--color-surface-soft); text-align: center; }
+
+.sleep-secondary-grid { min-width: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: clamp(10px, 1.2vw, 15px); }
+.sleep-trend-card dl { margin: 16px 0 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.sleep-trend-card dl > div { min-width: 0; padding: 10px; border-radius: 10px; background: var(--color-surface-soft); }
+.sleep-trend-card dt { color: var(--color-text-muted); font-size: 0.68rem; }
+.sleep-trend-card dd { margin: 4px 0 0; font-size: 0.82rem; font-weight: 700; }
+.sleep-memo-card h3 small { color: var(--color-text-muted); font-size: 0.68rem; }
+.sleep-memo-card ul { margin: 16px 0 0; padding: 0; display: grid; gap: 8px; list-style: none; }
+.sleep-memo-card li { min-width: 0; padding: 10px; border-radius: 10px; background: var(--color-surface-soft); }
+.sleep-memo-card time { color: var(--color-accent-dark); font-size: 0.66rem; font-weight: 700; }
+.sleep-memo-card li p { margin: 4px 0 0; display: -webkit-box; overflow: hidden; color: var(--color-text); font-size: 0.72rem; line-height: 1.55; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.sleep-trend-card > p, .sleep-memo-card > p { color: var(--color-text-muted); font-size: 0.74rem; }
+.sleep-medical-note { margin: 0; padding: 0 4px; color: var(--color-text-muted); font-size: 0.68rem; line-height: 1.65; }
+
 .health-date-card,
 .health-profile-card,
 .weight-card,
@@ -1883,7 +1989,8 @@ body,
 
 @media (max-width: 920px) {
   .weight-metric-grid,
-  .weight-average-grid {
+  .weight-average-grid,
+  .sleep-average-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -1997,13 +2104,17 @@ body,
   }
 
   .weight-summary-heading,
-  .weight-section-heading {
+  .weight-section-heading,
+  .sleep-summary-heading,
+  .sleep-section-heading {
     align-items: flex-start;
     flex-direction: column;
   }
 
   .weight-metric-grid,
-  .weight-average-grid {
+  .weight-average-grid,
+  .sleep-average-grid,
+  .sleep-secondary-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 
@@ -2015,14 +2126,27 @@ body,
     justify-content: flex-start;
   }
 
+  .sleep-period-controls { justify-content: flex-start; }
+
+  .sleep-latest-content { grid-template-columns: minmax(0, 1fr); }
+
+  .sleep-latest-details { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
   .weight-average-section,
-  .weight-chart-section {
+  .weight-chart-section,
+  .sleep-latest-card,
+  .sleep-average-section,
+  .sleep-chart-section,
+  .sleep-trend-card,
+  .sleep-memo-card {
     padding: 14px;
   }
 
   .weight-chart-svg {
     min-height: 210px;
   }
+
+  .sleep-chart-svg { min-height: 210px; }
 
   .health-profile-list,
   .health-profile-form {
