@@ -9,6 +9,7 @@ import { HealthDateNavigator } from './HealthDateNavigator'
 import { WeightDashboard } from './WeightDashboard'
 import { SleepDashboard } from './SleepDashboard'
 import { ExerciseDashboard } from './ExerciseDashboard'
+import { ConditionDashboard } from './ConditionDashboard'
 
 interface HealthDashboardProps {
   selectedDate: Date
@@ -50,7 +51,7 @@ export function HealthDashboard({
   onOpenExercise,
   onOpenCondition,
 }: HealthDashboardProps) {
-  const [activeSection, setActiveSection] = useState<'daily' | 'weight' | 'sleep' | 'exercise'>('daily')
+  const [activeSection, setActiveSection] = useState<'daily' | 'weight' | 'sleep' | 'exercise' | 'condition'>('daily')
   const dateKey = toDateKey(selectedDate)
   const record = records.find((item) => item.date === dateKey) ?? null
   const sleepRecord = sleepRecords.find((item) => item.date === dateKey) ?? null
@@ -76,6 +77,7 @@ export function HealthDashboard({
         <button type="button" className={activeSection === 'weight' ? 'is-active' : ''} aria-pressed={activeSection === 'weight'} onClick={() => setActiveSection('weight')}>体重まとめ</button>
         <button type="button" className={activeSection === 'sleep' ? 'is-active' : ''} aria-pressed={activeSection === 'sleep'} onClick={() => setActiveSection('sleep')}>睡眠まとめ</button>
         <button type="button" className={activeSection === 'exercise' ? 'is-active' : ''} aria-pressed={activeSection === 'exercise'} onClick={() => setActiveSection('exercise')}>運動まとめ</button>
+        <button type="button" className={activeSection === 'condition' ? 'is-active' : ''} aria-pressed={activeSection === 'condition'} onClick={() => setActiveSection('condition')}>体調まとめ</button>
       </div>
 
       {activeSection === 'daily' ? <>
@@ -211,8 +213,10 @@ export function HealthDashboard({
         <WeightDashboard records={records} profile={profile} onOpenProfile={onOpenProfile} />
       ) : activeSection === 'sleep' ? (
         <SleepDashboard records={sleepRecords} />
-      ) : (
+      ) : activeSection === 'exercise' ? (
         <ExerciseDashboard sessions={exerciseSessions} onOpenDaily={() => setActiveSection('daily')} />
+      ) : (
+        <ConditionDashboard records={conditionRecords} onOpenDaily={() => setActiveSection('daily')} />
       )}
     </div>
   )
