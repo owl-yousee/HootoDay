@@ -2,6 +2,7 @@ import { CaretLeftIcon } from '@phosphor-icons/react/CaretLeft'
 import { CaretRightIcon } from '@phosphor-icons/react/CaretRight'
 
 interface AppHeaderProps {
+  isCalendarView: boolean
   displayMonth: Date
   onPreviousMonth: () => void
   onNextMonth: () => void
@@ -9,6 +10,7 @@ interface AppHeaderProps {
 }
 
 export function AppHeader({
+  isCalendarView,
   displayMonth,
   onPreviousMonth,
   onNextMonth,
@@ -22,25 +24,19 @@ export function AppHeader({
         <span className="brand-mark" aria-hidden="true">H</span>
         <h1>HootoDay</h1>
       </div>
-      <div className="month-controls" aria-label="表示月の操作">
-        <button
-          type="button"
-          className="control-button"
-          onClick={onPreviousMonth}
-          aria-label="前月を表示"
-        >
-          <CaretLeftIcon size={22} weight="bold" aria-hidden="true" />
-        </button>
-        <p className="month-title" aria-live="polite">{monthLabel}</p>
-        <button
-          type="button"
-          className="control-button"
-          onClick={onNextMonth}
-          aria-label="次月を表示"
-        >
-          <CaretRightIcon size={22} weight="bold" aria-hidden="true" />
-        </button>
-      </div>
+      {isCalendarView ? (
+        <div className="month-controls" aria-label="表示月の操作">
+          <button type="button" className="control-button" onClick={onPreviousMonth} aria-label="前月を表示">
+            <CaretLeftIcon size={22} weight="bold" aria-hidden="true" />
+          </button>
+          <p className="month-title" aria-live="polite">{monthLabel}</p>
+          <button type="button" className="control-button" onClick={onNextMonth} aria-label="次月を表示">
+            <CaretRightIcon size={22} weight="bold" aria-hidden="true" />
+          </button>
+        </div>
+      ) : (
+        <div className="month-controls"><p className="month-title">健康記録</p></div>
+      )}
       <button type="button" className="today-button" onClick={onToday} aria-label="今日を表示">
         今日
       </button>

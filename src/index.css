@@ -15,15 +15,18 @@
 }
 
 html {
+  width: 100%;
+  max-width: 100%;
   min-width: 320px;
   background: var(--color-background, #f1f8f2);
 }
 
 body {
+  width: 100%;
+  max-width: 100%;
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  overflow-x: hidden;
 }
 
 button {
@@ -36,5 +39,8 @@ button:focus-visible {
 }
 
 #root {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   min-height: 100vh;
 }
