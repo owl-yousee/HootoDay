@@ -28,6 +28,7 @@ interface HealthDashboardProps {
   onOpenSleep: () => void
   onOpenMeal: () => void
   onOpenExercise: (session: ExerciseSession | null) => void
+  onDeleteExercise: (sessionId: string) => void
   onOpenCondition: () => void
 }
 
@@ -49,6 +50,7 @@ export function HealthDashboard({
   onOpenSleep,
   onOpenMeal,
   onOpenExercise,
+  onDeleteExercise,
   onOpenCondition,
 }: HealthDashboardProps) {
   const [activeSection, setActiveSection] = useState<'daily' | 'weight' | 'sleep' | 'exercise' | 'condition'>('daily')
@@ -214,7 +216,7 @@ export function HealthDashboard({
       ) : activeSection === 'sleep' ? (
         <SleepDashboard records={sleepRecords} />
       ) : activeSection === 'exercise' ? (
-        <ExerciseDashboard sessions={exerciseSessions} onOpenDaily={() => setActiveSection('daily')} />
+        <ExerciseDashboard sessions={exerciseSessions} onOpenDaily={() => setActiveSection('daily')} onEditSession={onOpenExercise} onDeleteSession={onDeleteExercise} />
       ) : (
         <ConditionDashboard records={conditionRecords} onOpenDaily={() => setActiveSection('daily')} />
       )}

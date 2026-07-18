@@ -939,6 +939,106 @@
   -webkit-line-clamp: 3;
 }
 
+.exercise-history-group-card {
+  display: grid;
+  gap: 10px;
+}
+
+.exercise-history-group-card.is-expanded {
+  border-color: color-mix(in srgb, var(--color-primary) 42%, var(--color-border));
+  background: color-mix(in srgb, var(--color-primary-soft) 48%, var(--color-surface-soft));
+}
+
+.exercise-history-group-heading {
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.exercise-history-group-heading > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.exercise-history-group-heading strong {
+  color: var(--color-text);
+  overflow-wrap: anywhere;
+}
+
+.exercise-history-group-heading > div > span {
+  width: fit-content;
+  padding: 2px 8px;
+  border-radius: 999px;
+  color: var(--color-primary-dark);
+  background: var(--color-primary-soft);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.exercise-history-group-heading dl {
+  justify-content: flex-end;
+}
+
+.exercise-history-partial {
+  margin: 0 !important;
+  display: block !important;
+  color: var(--color-text-muted);
+  font-size: 0.68rem !important;
+  -webkit-line-clamp: unset !important;
+}
+
+.exercise-history-toggle {
+  width: fit-content;
+  max-width: 100%;
+  min-height: 38px;
+  padding: 6px 11px;
+  border: 1px solid var(--color-border);
+  border-radius: 9px;
+  color: var(--color-primary-dark);
+  background: var(--color-surface);
+  font: inherit;
+  font-size: 0.74rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.exercise-history-toggle:hover {
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
+}
+
+.exercise-history-toggle:focus-visible,
+.exercise-history-record-actions button:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--color-focus) 38%, transparent);
+  outline-offset: 2px;
+}
+
+.exercise-history-record-list {
+  margin: 0 !important;
+  padding: 10px 0 0 !important;
+  border-top: 1px solid var(--color-border);
+}
+
+.exercise-history-record-list .exercise-history-record {
+  background: var(--color-surface);
+}
+
+.exercise-history-record-actions {
+  margin-top: 10px;
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.exercise-history-record-actions button {
+  min-height: 36px;
+  padding: 6px 11px;
+}
+
 .exercise-summary-empty {
   text-align: center;
 }
@@ -1018,6 +1118,14 @@
     align-items: flex-start;
     flex-direction: column;
     gap: 3px;
+  }
+
+  .exercise-history-group-heading {
+    flex-direction: column;
+  }
+
+  .exercise-history-group-heading dl {
+    justify-content: flex-start;
   }
 }
 

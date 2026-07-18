@@ -173,6 +173,10 @@ function App() {
   }
 
   const openExerciseDialog = (session: ExerciseSession | null) => {
+    if (session) {
+      const sessionDate = fromDateKey(session.date)
+      if (sessionDate) selectDate(sessionDate)
+    }
     setEditingExerciseSession(session)
     setIsExerciseDialogOpen(true)
   }
@@ -287,6 +291,7 @@ function App() {
               onOpenSleep={() => setIsSleepDialogOpen(true)}
               onOpenMeal={() => setIsMealDialogOpen(true)}
               onOpenExercise={openExerciseDialog}
+              onDeleteExercise={deleteExerciseSession}
               onOpenCondition={() => setIsConditionDialogOpen(true)}
             />
           ) : activeView === 'records' ? (
