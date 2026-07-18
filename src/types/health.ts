@@ -68,6 +68,7 @@ export type ExerciseType =
   | 'treadmill'
   | 'exerciseBike'
   | 'beatSaber'
+  | 'aeonShopping'
   | 'stretching'
   | 'other'
 

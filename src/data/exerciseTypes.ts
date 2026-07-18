@@ -4,14 +4,16 @@ export interface ExerciseTypeOption {
   value: ExerciseType
   label: string
   defaultMets: number
+  defaultDurationMinutes: number | null
 }
 
 export const exerciseTypeOptions: ExerciseTypeOption[] = [
-  { value: 'treadmill', label: 'ルームランナー', defaultMets: 3.5 },
-  { value: 'exerciseBike', label: 'エアバイク', defaultMets: 5 },
-  { value: 'beatSaber', label: 'ビートセイバー', defaultMets: 5 },
-  { value: 'stretching', label: 'ストレッチ', defaultMets: 2.3 },
-  { value: 'other', label: 'その他', defaultMets: 3 },
+  { value: 'treadmill', label: 'ルームランナー', defaultMets: 3.5, defaultDurationMinutes: null },
+  { value: 'exerciseBike', label: 'エアバイク', defaultMets: 5, defaultDurationMinutes: null },
+  { value: 'beatSaber', label: 'ビートセイバー', defaultMets: 5, defaultDurationMinutes: null },
+  { value: 'aeonShopping', label: 'イオンでお買い物', defaultMets: 2.8, defaultDurationMinutes: 60 },
+  { value: 'stretching', label: 'ストレッチ', defaultMets: 2.3, defaultDurationMinutes: null },
+  { value: 'other', label: 'その他', defaultMets: 3, defaultDurationMinutes: null },
 ]
 
 export function getExerciseTypeOption(type: ExerciseType): ExerciseTypeOption {

@@ -72,8 +72,10 @@ export function ExerciseSessionDialog({
   }
 
   const changeExerciseType = (nextType: ExerciseType) => {
+    const nextOption = getExerciseTypeOption(nextType)
     setExerciseType(nextType)
-    setMets(getExerciseTypeOption(nextType).defaultMets.toFixed(1))
+    setMets(nextOption.defaultMets.toFixed(1))
+    if (nextOption.defaultDurationMinutes !== null) setDuration(String(nextOption.defaultDurationMinutes))
     if (nextType !== 'other') setCustomName('')
     setError('')
   }
