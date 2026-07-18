@@ -12,6 +12,7 @@ import { HealthProfileDialog } from './components/HealthProfileDialog'
 import { MealRecordDialog } from './components/MealRecordDialog'
 import { MonthlyAchievementHighlight } from './components/MonthlyAchievementHighlight'
 import { MonthlyAchievementsDialog } from './components/MonthlyAchievementsDialog'
+import { MobileCalendarQuickAdd } from './components/MobileCalendarQuickAdd'
 import { RecordsBrowserPage } from './components/RecordsBrowserPage'
 import { InventoryPage } from './components/InventoryPage'
 import { Sidebar, type AppView } from './components/Sidebar'
@@ -56,6 +57,8 @@ function App() {
   const [isConditionDialogOpen, setIsConditionDialogOpen] = useState(false)
   const [isDailyAchievementDialogOpen, setIsDailyAchievementDialogOpen] = useState(false)
   const [isMonthlyAchievementsDialogOpen, setIsMonthlyAchievementsDialogOpen] = useState(false)
+  const [isMobileQuickAddOpen, setIsMobileQuickAddOpen] = useState(false)
+  const [mobileEntryType, setMobileEntryType] = useState<'event' | 'memo' | null>(null)
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null)
   const [editingExerciseSession, setEditingExerciseSession] = useState<ExerciseSession | null>(null)
   const [inventoryEventId, setInventoryEventId] = useState<string | null>(null)
@@ -133,6 +136,7 @@ function App() {
 
   const changeView = (view: AppView) => {
     setActiveView(view)
+    if (view !== 'calendar') setIsMobileQuickAddOpen(false)
     if (view === 'inventory') setInventoryEventId(null)
     if (view === 'calendar') {
       setDisplayMonth(new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1))
@@ -140,8 +144,26 @@ function App() {
   }
 
   const openNewEvent = () => {
+    setMobileEntryType(null)
     setEditingEvent(null)
     setIsEventEditorOpen(true)
+  }
+
+  const openMobileEvent = () => {
+    setMobileEntryType('event')
+    setEditingEvent(null)
+    setIsEventEditorOpen(true)
+  }
+
+  const openMobileMemo = () => {
+    setMobileEntryType('memo')
+    setIsDayMemoDialogOpen(true)
+  }
+
+  const restoreMobileQuickAddFocus = () => {
+    requestAnimationFrame(() => {
+      document.querySelector<HTMLButtonElement>('.mobile-calendar-add-trigger')?.focus()
+    })
   }
 
   const openEventEditor = (event: CalendarEvent) => {
@@ -170,6 +192,12 @@ function App() {
   const openHealthProfileFromSettings = () => {
     setIsThemeSettingsOpen(false)
     setIsHealthProfileDialogOpen(true)
+  }
+
+  const openDataManagementFromSettings = () => {
+    setIsThemeSettingsOpen(false)
+    setActiveView('export')
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   const openExerciseDialog = (session: ExerciseSession | null) => {
@@ -205,6 +233,7 @@ function App() {
   const selectMonthlyBest = (date: string) => {
     if (!date.startsWith(`${displayedMonthKey}-`) || !displayedMonthAchievements.some((record) => record.date === date)) return
     saveMonthlyAchievementSelection({ month: displayedMonthKey, selectedDate: date, updatedAt: new Date().toISOString() })
+    setIsMonthlyAchievementsDialogOpen(false)
   }
 
   const restoreBackupData = (data: HootoDayBackupData) => {
@@ -272,6 +301,14 @@ function App() {
                 <Calendar displayMonth={displayMonth} selectedDate={selectedDate} events={events} memos={dayMemos} healthRecordDates={healthRecordDates} onSelectDate={selectDate} />
                 <DayDetails selectedDate={selectedDate} events={events} memos={dayMemos} healthSummary={selectedHealthSummary} achievement={selectedDateAchievement} onAddEvent={openNewEvent} onEditEvent={openEventEditor} onOpenMemo={() => setIsDayMemoDialogOpen(true)} onOpenHealth={openSelectedDateHealth} onOpenAchievement={() => setIsDailyAchievementDialogOpen(true)} eventSales={inventory.eventSalesRecords} onOpenInventoryEvent={openInventoryEvent} />
               </div>
+              <MobileCalendarQuickAdd
+                dateLabel={`${selectedDate.getMonth() + 1}月${selectedDate.getDate()}日`}
+                isOpen={isMobileQuickAddOpen}
+                onToggle={() => setIsMobileQuickAddOpen((current) => !current)}
+                onClose={() => setIsMobileQuickAddOpen(false)}
+                onAddEvent={openMobileEvent}
+                onAddMemo={openMobileMemo}
+              />
             </>
           ) : activeView === 'health' ? (
             <HealthDashboard
@@ -351,6 +388,7 @@ function App() {
           onChange={setPreference}
           profile={healthProfile}
           onOpenProfile={openHealthProfileFromSettings}
+          onOpenDataManagement={openDataManagementFromSettings}
           onClose={() => setIsThemeSettingsOpen(false)}
         />
       )}
@@ -364,7 +402,13 @@ function App() {
           onSaveDayMemo={saveDayMemo}
           onDeleteDayMemo={deleteDayMemo}
           onDelete={deleteCalendarEvent}
-          onClose={() => setIsEventEditorOpen(false)}
+          mobileSlide={mobileEntryType === 'event'}
+          onClose={() => {
+            const shouldRestoreFocus = mobileEntryType === 'event'
+            setIsEventEditorOpen(false)
+            setMobileEntryType(null)
+            if (shouldRestoreFocus) restoreMobileQuickAddFocus()
+          }}
         />
       )}
 
@@ -375,7 +419,13 @@ function App() {
           memo={dayMemos.find((memo) => memo.date === toDateKey(selectedDate)) ?? null}
           onSave={saveDayMemo}
           onDelete={deleteDayMemo}
-          onClose={() => setIsDayMemoDialogOpen(false)}
+          mobileSlide={mobileEntryType === 'memo'}
+          onClose={() => {
+            const shouldRestoreFocus = mobileEntryType === 'memo'
+            setIsDayMemoDialogOpen(false)
+            setMobileEntryType(null)
+            if (shouldRestoreFocus) restoreMobileQuickAddFocus()
+          }}
         />
       )}
 

@@ -21,7 +21,9 @@ interface SleepRecordDialogProps {
 
 function createAwakening(): SleepAwakening {
   return {
-    id: crypto.randomUUID(),
+    id: typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `awakening-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     mode: 'point',
     startTime: '',
     endTime: null,
@@ -118,7 +120,8 @@ export function SleepRecordDialog({ date, record, onSave, onDelete, onClose }: S
           </button>
         </header>
 
-        <div className="sleep-record-form">
+        <div className="dialog-scroll-body">
+          <div className="sleep-record-form">
           <div className="sleep-time-grid">
             <div className="form-field">
               <label htmlFor="sleep-bedtime">就寝時刻 <span className="required-label">必須</span></label>
@@ -188,6 +191,7 @@ export function SleepRecordDialog({ date, record, onSave, onDelete, onClose }: S
             <span className="character-count" aria-live="polite">{memo.length}/{MAX_SLEEP_MEMO_LENGTH}</span>
           </div>
           {error && <p id="sleep-record-error" className="form-error" role="alert">{error}</p>}
+          </div>
         </div>
 
         <div className="event-editor-actions">

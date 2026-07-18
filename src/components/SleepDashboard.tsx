@@ -67,6 +67,20 @@ export function SleepDashboard({ records }: SleepDashboardProps) {
         </div> : <p className="sleep-empty-message">睡眠記録がありません。日付別記録から入力すると集計されます。</p>}
       </section>
 
+      <section className="sleep-chart-section" aria-labelledby="sleep-chart-heading">
+        <div className="sleep-section-heading"><div><p className="health-card-kicker">Chart</p><h3 id="sleep-chart-heading">実睡眠時間グラフ</h3></div><div className="sleep-period-controls" aria-label="睡眠グラフ期間">{periodOptions.map((option) => <button key={option.id} type="button" className={period === option.id ? 'is-active' : ''} aria-pressed={period === option.id} onClick={() => setPeriod(option.id)}>{option.label}</button>)}</div></div>
+        <div className="sleep-chart-summary" aria-label="睡眠グラフの数値概要">
+          <span>対象：{selectedPeriodLabel}</span><span>記録：{selectedStatistics.count}件</span>
+          <span>平均：{selectedStatistics.averageSleepMinutes === null ? '—' : formatDurationMinutes(selectedStatistics.averageSleepMinutes)}</span>
+          <span>最短：{selectedStatistics.minimumSleepMinutes === null ? '—' : formatDurationMinutes(selectedStatistics.minimumSleepMinutes)}</span>
+          <span>最長：{selectedStatistics.maximumSleepMinutes === null ? '—' : formatDurationMinutes(selectedStatistics.maximumSleepMinutes)}</span>
+          <span>最新：{latest ? formatDurationMinutes(latest.sleepMinutes) : '—'}</span>
+        </div>
+        <SleepChart records={chartRecords} periodLabel={selectedPeriodLabel} />
+      </section>
+
+      <section className="sleep-trend-card"><p className="health-card-kicker">Awakenings</p><h3>途中覚醒傾向</h3>{selectedStatistics.count === 0 ? <p>この期間の記録はありません</p> : <dl><div><dt>平均覚醒時間</dt><dd>{formatDurationMinutes(selectedStatistics.averageAwakeMinutes ?? 0)}</dd></div><div><dt>最大覚醒時間</dt><dd>{formatDurationMinutes(selectedStatistics.maximumAwakeMinutes ?? 0)}</dd></div><div><dt>平均回数</dt><dd>{countText(selectedStatistics.averageAwakeningCount)}</dd></div><div><dt>最大回数</dt><dd>{selectedStatistics.maximumAwakeningCount}回</dd></div></dl>}</section>
+
       <section className="sleep-average-section" aria-labelledby="sleep-average-heading">
         <div className="sleep-section-heading"><div><p className="health-card-kicker">Average</p><h3 id="sleep-average-heading">期間平均</h3></div><p>記録のない日は平均に含めません</p></div>
         <div className="sleep-average-grid">
@@ -85,22 +99,7 @@ export function SleepDashboard({ records }: SleepDashboardProps) {
         <p className="sleep-average-method">平均就寝・起床時刻は、24時間を円として扱う円周平均で計算しています。深夜0時をまたぐ時刻も連続した時刻として集計します。</p>
       </section>
 
-      <section className="sleep-chart-section" aria-labelledby="sleep-chart-heading">
-        <div className="sleep-section-heading"><div><p className="health-card-kicker">Chart</p><h3 id="sleep-chart-heading">実睡眠時間グラフ</h3></div><div className="sleep-period-controls" aria-label="睡眠グラフ期間">{periodOptions.map((option) => <button key={option.id} type="button" className={period === option.id ? 'is-active' : ''} aria-pressed={period === option.id} onClick={() => setPeriod(option.id)}>{option.label}</button>)}</div></div>
-        <div className="sleep-chart-summary" aria-label="睡眠グラフの数値概要">
-          <span>対象：{selectedPeriodLabel}</span><span>記録：{selectedStatistics.count}件</span>
-          <span>平均：{selectedStatistics.averageSleepMinutes === null ? '—' : formatDurationMinutes(selectedStatistics.averageSleepMinutes)}</span>
-          <span>最短：{selectedStatistics.minimumSleepMinutes === null ? '—' : formatDurationMinutes(selectedStatistics.minimumSleepMinutes)}</span>
-          <span>最長：{selectedStatistics.maximumSleepMinutes === null ? '—' : formatDurationMinutes(selectedStatistics.maximumSleepMinutes)}</span>
-          <span>最新：{latest ? formatDurationMinutes(latest.sleepMinutes) : '—'}</span>
-        </div>
-        <SleepChart records={chartRecords} periodLabel={selectedPeriodLabel} />
-      </section>
-
-      <div className="sleep-secondary-grid">
-        <section className="sleep-trend-card"><p className="health-card-kicker">Awakenings</p><h3>途中覚醒傾向</h3>{selectedStatistics.count === 0 ? <p>この期間の記録はありません</p> : <dl><div><dt>平均覚醒時間</dt><dd>{formatDurationMinutes(selectedStatistics.averageAwakeMinutes ?? 0)}</dd></div><div><dt>最大覚醒時間</dt><dd>{formatDurationMinutes(selectedStatistics.maximumAwakeMinutes ?? 0)}</dd></div><div><dt>平均回数</dt><dd>{countText(selectedStatistics.averageAwakeningCount)}</dd></div><div><dt>最大回数</dt><dd>{selectedStatistics.maximumAwakeningCount}回</dd></div></dl>}</section>
-        <section className="sleep-memo-card"><p className="health-card-kicker">Notes</p><h3>メモ付き記録 <small>{memoCount}件</small></h3>{memoRecords.length === 0 ? <p>メモ付きの睡眠記録はありません</p> : <ul>{memoRecords.map((record) => <li key={record.date}><time dateTime={record.date}>{formatDateKeyJa(record.date)}</time><p>{record.memo}</p></li>)}</ul>}</section>
-      </div>
+      <section className="sleep-memo-card"><p className="health-card-kicker">Notes</p><h3>メモ付き記録 <small>{memoCount}件</small></h3>{memoRecords.length === 0 ? <p>メモ付きの睡眠記録はありません</p> : <ul>{memoRecords.map((record) => <li key={record.date}><time dateTime={record.date}>{formatDateKeyJa(record.date)}</time><p>{record.memo}</p></li>)}</ul>}</section>
 
       <p className="sleep-medical-note">睡眠時間と途中覚醒は本人入力による概算記録です。医療機器による測定、医療診断、睡眠状態の評価を行うものではありません。</p>
     </div>

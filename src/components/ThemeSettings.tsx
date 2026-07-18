@@ -13,6 +13,7 @@ interface ThemeSettingsProps {
   onChange: (preference: ThemePreference) => void
   profile: HealthProfile | null
   onOpenProfile: () => void
+  onOpenDataManagement: () => void
   onClose: () => void
 }
 
@@ -38,6 +39,7 @@ export function ThemeSettings({
   onChange,
   profile,
   onOpenProfile,
+  onOpenDataManagement,
   onClose,
 }: ThemeSettingsProps) {
   const dialogRef = useRef<HTMLDialogElement>(null)
@@ -166,6 +168,20 @@ export function ThemeSettings({
           ) : <p className="settings-profile-empty">健康プロフィールは未設定です</p>}
           <button type="button" className="health-primary-button" onClick={openProfile} aria-label={profile ? '健康プロフィールを編集' : '健康プロフィールを設定'}>{profile ? '編集' : '設定する'}</button>
           <p className="settings-profile-note">BMIや目標体重などの概算計算に使用します。保存内容は設定画面以外へ不要に表示しません。</p>
+        </section>
+
+        <section className="settings-section settings-data-management" aria-labelledby="settings-data-heading">
+          <p className="theme-panel-eyebrow">Data management</p>
+          <h3 id="settings-data-heading">データ管理</h3>
+          <p className="settings-data-note">バックアップ・復元・出力・初期化を行います。</p>
+          <button
+            type="button"
+            className="health-primary-button settings-data-button"
+            onClick={onOpenDataManagement}
+            aria-label="出力・バックアップを開く"
+          >
+            出力・バックアップを開く
+          </button>
         </section>
       </div>
     </dialog>

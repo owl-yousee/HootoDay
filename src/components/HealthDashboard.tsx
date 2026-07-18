@@ -1,4 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { BarbellIcon } from '@phosphor-icons/react/Barbell'
+import { CalendarDotsIcon } from '@phosphor-icons/react/CalendarDots'
+import { HeartbeatIcon } from '@phosphor-icons/react/Heartbeat'
+import { MoonIcon } from '@phosphor-icons/react/Moon'
+import { ScalesIcon } from '@phosphor-icons/react/Scales'
 import type { DailyConditionRecord, ExerciseSession, HealthProfile, MealRecord, SleepRecord, WeightRecord } from '../types/health'
 import { bodyPartConditionLabels, conditionLevelLabels, getConditionTone } from '../data/conditionOptions'
 import { getExerciseDisplayName } from '../data/exerciseTypes'
@@ -54,6 +59,7 @@ export function HealthDashboard({
   onOpenCondition,
 }: HealthDashboardProps) {
   const [activeSection, setActiveSection] = useState<'daily' | 'weight' | 'sleep' | 'exercise' | 'condition'>('daily')
+  const [areExerciseSessionsExpanded, setAreExerciseSessionsExpanded] = useState(false)
   const dateKey = toDateKey(selectedDate)
   const record = records.find((item) => item.date === dateKey) ?? null
   const sleepRecord = sleepRecords.find((item) => item.date === dateKey) ?? null
@@ -62,7 +68,20 @@ export function HealthDashboard({
     .filter((item) => item.date === dateKey)
     .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
   const exerciseSummary = calculateDailyExerciseSummary(dailyExerciseSessions)
+  const previousExerciseListRef = useRef({ date: dateKey, count: dailyExerciseSessions.length })
+  const shouldCollapseExerciseSessions = dailyExerciseSessions.length >= 3
+  const exerciseSessionListId = `daily-exercise-sessions-${dateKey}`
   const conditionRecord = conditionRecords.find((item) => item.date === dateKey) ?? null
+
+  useEffect(() => {
+    const previous = previousExerciseListRef.current
+    if (previous.date !== dateKey || dailyExerciseSessions.length < 3) {
+      setAreExerciseSessionsExpanded(false)
+    } else if (dailyExerciseSessions.length > previous.count) {
+      setAreExerciseSessionsExpanded(true)
+    }
+    previousExerciseListRef.current = { date: dateKey, count: dailyExerciseSessions.length }
+  }, [dailyExerciseSessions.length, dateKey])
 
   return (
     <div className="health-dashboard">
@@ -75,11 +94,11 @@ export function HealthDashboard({
       </div>
 
       <div className="health-view-tabs" role="group" aria-label="健康記録の表示切り替え">
-        <button type="button" className={activeSection === 'daily' ? 'is-active' : ''} aria-pressed={activeSection === 'daily'} onClick={() => setActiveSection('daily')}>日付別記録</button>
-        <button type="button" className={activeSection === 'weight' ? 'is-active' : ''} aria-pressed={activeSection === 'weight'} onClick={() => setActiveSection('weight')}>体重まとめ</button>
-        <button type="button" className={activeSection === 'sleep' ? 'is-active' : ''} aria-pressed={activeSection === 'sleep'} onClick={() => setActiveSection('sleep')}>睡眠まとめ</button>
-        <button type="button" className={activeSection === 'exercise' ? 'is-active' : ''} aria-pressed={activeSection === 'exercise'} onClick={() => setActiveSection('exercise')}>運動まとめ</button>
-        <button type="button" className={activeSection === 'condition' ? 'is-active' : ''} aria-pressed={activeSection === 'condition'} onClick={() => setActiveSection('condition')}>体調まとめ</button>
+        <button type="button" className={activeSection === 'daily' ? 'is-active' : ''} aria-pressed={activeSection === 'daily'} onClick={() => setActiveSection('daily')}><CalendarDotsIcon size={17} weight="bold" aria-hidden="true" /><span className="health-tab-label-full">日付別記録</span><span className="health-tab-label-mobile">日付別</span></button>
+        <button type="button" className={activeSection === 'weight' ? 'is-active' : ''} aria-pressed={activeSection === 'weight'} onClick={() => setActiveSection('weight')}><ScalesIcon size={17} weight="bold" aria-hidden="true" /><span className="health-tab-label-full">体重まとめ</span><span className="health-tab-label-mobile">体重</span></button>
+        <button type="button" className={activeSection === 'sleep' ? 'is-active' : ''} aria-pressed={activeSection === 'sleep'} onClick={() => setActiveSection('sleep')}><MoonIcon size={17} weight="bold" aria-hidden="true" /><span className="health-tab-label-full">睡眠まとめ</span><span className="health-tab-label-mobile">睡眠</span></button>
+        <button type="button" className={activeSection === 'exercise' ? 'is-active' : ''} aria-pressed={activeSection === 'exercise'} onClick={() => setActiveSection('exercise')}><BarbellIcon size={17} weight="bold" aria-hidden="true" /><span className="health-tab-label-full">運動まとめ</span><span className="health-tab-label-mobile">運動</span></button>
+        <button type="button" className={activeSection === 'condition' ? 'is-active' : ''} aria-pressed={activeSection === 'condition'} onClick={() => setActiveSection('condition')}><HeartbeatIcon size={17} weight="bold" aria-hidden="true" /><span className="health-tab-label-full">体調まとめ</span><span className="health-tab-label-mobile">体調</span></button>
       </div>
 
       {activeSection === 'daily' ? <>
@@ -200,14 +219,17 @@ export function HealthDashboard({
                 <div><span>セッション</span><strong>{exerciseSummary.sessionCount}件</strong></div>
               </div>
               {exerciseSummary.calculatedCount > 0 && exerciseSummary.calculatedCount < exerciseSummary.sessionCount && <p className="exercise-partial-note">計算済みの{exerciseSummary.calculatedCount}件を合計しています。</p>}
-              <div className="exercise-session-list">
+              {shouldCollapseExerciseSessions && <button type="button" className="exercise-session-toggle health-secondary-button" aria-expanded={areExerciseSessionsExpanded} aria-controls={exerciseSessionListId} onClick={() => setAreExerciseSessionsExpanded((expanded) => !expanded)}>
+                {areExerciseSessionsExpanded ? '記録を閉じる' : `${dailyExerciseSessions.length}件の記録を見る`}
+              </button>}
+              {(!shouldCollapseExerciseSessions || areExerciseSessionsExpanded) && <div className="exercise-session-list" id={exerciseSessionListId}>
                 {dailyExerciseSessions.map((session) => (
                   <article className="exercise-session-item" key={session.id}>
                     <div><h4>{getExerciseDisplayName(session.exerciseType, session.customName)}</h4><p>{formatExerciseDuration(session.durationMinutes)}{session.averageHeartRate !== null ? ` / 心拍 ${session.averageHeartRate} bpm` : ''}{session.estimatedCaloriesKcal !== null ? ` / 推定 ${session.estimatedCaloriesKcal} kcal` : ''}</p>{session.memo && <p className="exercise-session-memo">{session.memo}</p>}</div>
                     <button type="button" className="health-secondary-button" onClick={() => onOpenExercise(session)} aria-label={`${getExerciseDisplayName(session.exerciseType, session.customName)}を編集`}>編集</button>
                   </article>
                 ))}
-              </div>
+              </div>}
               <button type="button" className="health-primary-button" onClick={() => onOpenExercise(null)}>運動を追加</button>
               <p className="exercise-estimate-note">推定消費カロリーはMETs・体重・時間から算出した概算です。</p>
             </div>

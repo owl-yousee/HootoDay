@@ -77,24 +77,30 @@ export function MonthlyAchievementsDialog({ month, achievements, selection, onSe
               const isSelected = selection?.selectedDate === achievement.date
               return (
                 <li key={achievement.date} className={isSelected ? 'is-selected' : ''}>
-                  <div className="monthly-achievement-copy">
-                    <time dateTime={achievement.date}>{formatDay(achievement.date)}</time>
-                    <p>{achievement.text}</p>
-                  </div>
                   {isSelected ? (
-                    <div className="monthly-achievement-selection">
-                      <span className="monthly-best-label"><CrownIcon size={18} weight="fill" aria-hidden="true" />今月のベスト</span>
-                      <button type="button" className="achievement-list-button secondary" onClick={onClear}>選択を解除</button>
-                    </div>
+                    <>
+                      <div className="monthly-achievement-copy">
+                        <time dateTime={achievement.date}>{formatDay(achievement.date)}</time>
+                        <p>{achievement.text}</p>
+                      </div>
+                      <div className="monthly-achievement-selection">
+                        <span className="monthly-best-label"><CrownIcon size={18} weight="fill" aria-hidden="true" />今月のベスト</span>
+                        <button type="button" className="achievement-list-button secondary" onClick={onClear}>選択を解除</button>
+                      </div>
+                    </>
                   ) : (
                     <button
                       type="button"
-                      className="achievement-list-button"
+                      className="monthly-achievement-option"
                       aria-label={`${formatDay(achievement.date)}のできたことを今月のベストに選ぶ`}
                       aria-pressed="false"
                       onClick={() => onSelect(achievement.date)}
                     >
-                      この記録を選ぶ
+                      <span className="monthly-achievement-copy">
+                        <time dateTime={achievement.date}>{formatDay(achievement.date)}</time>
+                        <span>{achievement.text}</span>
+                      </span>
+                      <span className="monthly-achievement-option-action">月のベストにする</span>
                     </button>
                   )}
                 </li>

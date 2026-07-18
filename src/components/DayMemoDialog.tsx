@@ -1,4 +1,5 @@
 import { XIcon } from '@phosphor-icons/react/X'
+import { CaretLeftIcon } from '@phosphor-icons/react/CaretLeft'
 import {
   useEffect,
   useRef,
@@ -15,6 +16,7 @@ interface DayMemoDialogProps {
   onSave: (memo: DayMemo) => void
   onDelete: (date: string) => void
   onClose: () => void
+  mobileSlide?: boolean
 }
 
 export function DayMemoDialog({
@@ -24,6 +26,7 @@ export function DayMemoDialog({
   onSave,
   onDelete,
   onClose,
+  mobileSlide = false,
 }: DayMemoDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null)
   const pendingInternalCloseEventsRef = useRef(0)
@@ -65,6 +68,11 @@ export function DayMemoDialog({
 
     if (!trimmedContent) {
       setError('日記・メモの本文を入力してください。')
+      requestAnimationFrame(() => {
+        const contentField = dialogRef.current?.querySelector<HTMLTextAreaElement>('#day-memo-content')
+        contentField?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+        contentField?.focus({ preventScroll: true })
+      })
       return
     }
 
@@ -88,13 +96,18 @@ export function DayMemoDialog({
   return (
     <dialog
       ref={dialogRef}
-      className="day-memo-dialog"
+      className={`day-memo-dialog${mobileSlide ? ' mobile-entry-dialog' : ''}`}
       aria-labelledby="day-memo-dialog-title"
       onCancel={handleDialogCancel}
       onClose={handleDialogClose}
     >
       <form className="day-memo-panel" onSubmit={handleSubmit} noValidate>
         <header className="day-memo-header">
+          {mobileSlide && (
+            <button type="button" className="mobile-entry-back" onClick={closeDialog} aria-label="カレンダーへ戻る">
+              <CaretLeftIcon size={21} weight="bold" aria-hidden="true" />
+            </button>
+          )}
           <div>
             <p className="day-memo-eyebrow">Diary &amp; memo</p>
             <h2 id="day-memo-dialog-title">{memo ? '日記・メモを編集' : '日記・メモを書く'}</h2>

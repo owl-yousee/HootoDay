@@ -151,10 +151,10 @@ export function ExerciseDashboard({ sessions, onOpenDaily, onEditSession, onDele
         </section>
       ) : <>
         <div className="exercise-summary-metrics" aria-label="運動集計の概要">
-          <article><span>合計回数</span><strong>{summary.sessionCount}<small>回</small></strong></article>
-          <article><span>運動日数</span><strong>{summary.activeDays}<small>日</small></strong></article>
-          <article><span>合計時間</span><strong>{formatExerciseDuration(summary.totalMinutes)}</strong></article>
-          <article><span>推定消費カロリー</span><strong>{summary.totalCalories === null ? '計算データなし' : `${summary.totalCalories} kcal`}</strong>{summary.calculatedCaloriesCount > 0 && summary.calculatedCaloriesCount < summary.sessionCount && <small>計算可能な{summary.calculatedCaloriesCount}件の合計</small>}</article>
+          <article aria-label="合計回数"><span>合計回数</span><strong>{summary.sessionCount}<small>回</small></strong></article>
+          <article aria-label="運動日数"><span>運動日数</span><strong>{summary.activeDays}<small>日</small></strong></article>
+          <article aria-label="合計時間"><span>合計時間</span><strong>{formatExerciseDuration(summary.totalMinutes)}</strong></article>
+          <article aria-label="推定消費カロリー"><span className="exercise-metric-label-full">推定消費カロリー</span><span className="exercise-metric-label-mobile">推定消費</span><strong>{summary.totalCalories === null ? '計算データなし' : `${summary.totalCalories} kcal`}</strong>{summary.calculatedCaloriesCount > 0 && summary.calculatedCaloriesCount < summary.sessionCount && <small>計算可能な{summary.calculatedCaloriesCount}件の合計</small>}</article>
         </div>
 
         <section className="exercise-average-card" aria-labelledby="exercise-average-title">

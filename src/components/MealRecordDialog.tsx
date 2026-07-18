@@ -1,4 +1,5 @@
 import { XIcon } from '@phosphor-icons/react/X'
+import { CaretDownIcon } from '@phosphor-icons/react/CaretDown'
 import { useEffect, useRef, useState, type FormEvent, type SyntheticEvent } from 'react'
 import type { MealRecord, MealTemplate } from '../types/health'
 import { hasMealContent, MAX_MEAL_FIELD_LENGTH, normalizeMealText } from '../utils/mealStorage'
@@ -125,7 +126,7 @@ export function MealRecordDialog({ date, record, templates, onSaveTemplate, onDe
               <span id={`meal-${field.id}-hint`} className="field-hint">改行できます。最大{MAX_MEAL_FIELD_LENGTH}文字。</span>
               <span className="character-count" aria-live="polite">{values[field.id].length}/{MAX_MEAL_FIELD_LENGTH}</span>
               <div className="meal-template-picker">
-                {available.length > 0 ? <><label className="visually-hidden" htmlFor={`meal-template-${field.id}`}>{field.label}へ追加する定型メニュー</label><select id={`meal-template-${field.id}`} value={selectedTemplates[field.id]} onChange={(event) => setSelectedTemplates((current) => ({ ...current, [field.id]: event.target.value }))}><option value="">定型から追加…</option>{available.map((template) => <option key={template.id} value={template.id}>{template.name}（{mealTypeLabels[template.mealType]}）</option>)}</select><button type="button" className="event-action-button secondary" disabled={!selectedTemplates[field.id]} onClick={() => appendTemplate(field.id)}>追加</button></> : <span className="field-hint">この欄で使える定型メニューは未登録です。</span>}
+                {available.length > 0 ? <><label className="visually-hidden" htmlFor={`meal-template-${field.id}`}>{field.label}へ追加する定型メニュー</label><div className="meal-template-select-wrap"><select id={`meal-template-${field.id}`} value={selectedTemplates[field.id]} onChange={(event) => setSelectedTemplates((current) => ({ ...current, [field.id]: event.target.value }))}><option value="">定型から追加…</option>{available.map((template) => <option key={template.id} value={template.id}>{template.name}（{mealTypeLabels[template.mealType]}）</option>)}</select><CaretDownIcon size={15} weight="bold" aria-hidden="true" /></div><button type="button" className="event-action-button secondary" disabled={!selectedTemplates[field.id]} onClick={() => appendTemplate(field.id)}>追加</button></> : <span className="field-hint">この欄で使える定型メニューは未登録です。</span>}
               </div>
             </div>
           )})}

@@ -120,7 +120,8 @@ export function Calendar({
                     >
                       <CategoryIcon className="event-category-icon" size={14} weight="bold" aria-hidden="true" />
                       <span className="event-time">{displayedTime}</span>
-                      <span className="event-title-compact">{displayedTitle}</span>
+                      <span className="event-title-compact event-title-desktop">{displayedTitle}</span>
+                      <span className="event-title-compact event-title-mobile">{event.title}</span>
                     </span>
                   )
                 })}

@@ -1,6 +1,7 @@
 import { XIcon } from '@phosphor-icons/react/X'
 import { useEffect, useRef, useState, type FormEvent, type SyntheticEvent } from 'react'
 import type { DailyAchievement } from '../types/achievement'
+import { DAILY_ACHIEVEMENT_MAX_LENGTH, normalizeDailyAchievementText } from '../utils/achievement'
 import { fromDateKey } from '../utils/date'
 
 interface DailyAchievementDialogProps {
@@ -10,8 +11,6 @@ interface DailyAchievementDialogProps {
   onDelete: (date: string) => void
   onClose: () => void
 }
-
-const MAX_TEXT_LENGTH = 120
 
 function formatTargetDate(dateKey: string): string {
   const date = fromDateKey(dateKey)
@@ -54,13 +53,13 @@ export function DailyAchievementDialog({ date, achievement, onSave, onDelete, on
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    const normalized = text.replace(/[\r\n]+/g, ' ').trim()
+    const normalized = normalizeDailyAchievementText(text)
     if (!normalized) {
       setError('できたことを入力してください。')
       return
     }
-    if (normalized.length > MAX_TEXT_LENGTH) {
-      setError('できたことは120文字以内で入力してください。')
+    if (normalized.length > DAILY_ACHIEVEMENT_MAX_LENGTH) {
+      setError(`できたことは${DAILY_ACHIEVEMENT_MAX_LENGTH}文字以内で入力してください。`)
       return
     }
     onSave({ date, text: normalized, updatedAt: new Date().toISOString() })
@@ -74,7 +73,7 @@ export function DailyAchievementDialog({ date, achievement, onSave, onDelete, on
     }
   }
 
-  const errorId = error ? 'daily-achievement-text-error' : undefined
+  const describedBy = `daily-achievement-text-hint${error ? ' daily-achievement-text-error' : ''}`
 
   return (
     <dialog
@@ -97,22 +96,23 @@ export function DailyAchievementDialog({ date, achievement, onSave, onDelete, on
         </header>
 
         <div className="form-field">
-          <label htmlFor="daily-achievement-text">今日のできたこと <span className="required-label">必須・最大120文字</span></label>
+          <label htmlFor="daily-achievement-text">今日のできたこと <span className="required-label">必須・最大{DAILY_ACHIEVEMENT_MAX_LENGTH}文字</span></label>
           <input
             id="daily-achievement-text"
             type="text"
             value={text}
-            maxLength={MAX_TEXT_LENGTH}
+            maxLength={DAILY_ACHIEVEMENT_MAX_LENGTH}
             placeholder="例：散歩に出かけられた"
             required
             aria-invalid={Boolean(error)}
-            aria-describedby={errorId}
+            aria-describedby={describedBy}
             onChange={(event) => {
               setText(event.target.value)
               if (error) setError('')
             }}
           />
-          <span className="character-count" aria-live="polite">{text.length}/{MAX_TEXT_LENGTH}</span>
+          <span id="daily-achievement-text-hint" className="achievement-input-hint">{DAILY_ACHIEVEMENT_MAX_LENGTH}文字以内の短い記録です。長文はその日のメモへ。</span>
+          <span className={`character-count${text.length >= DAILY_ACHIEVEMENT_MAX_LENGTH ? ' is-limit' : ''}`} aria-live="polite">{text.length} / {DAILY_ACHIEVEMENT_MAX_LENGTH}</span>
           {error && <p id="daily-achievement-text-error" className="form-error" role="alert">{error}</p>}
         </div>
 

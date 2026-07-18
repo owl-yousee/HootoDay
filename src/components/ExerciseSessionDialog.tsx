@@ -28,6 +28,7 @@ export function ExerciseSessionDialog({
 }: ExerciseSessionDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null)
   const pendingInternalCloseEventsRef = useRef(0)
+  const isSavingRef = useRef(false)
   const initialType = session?.exerciseType ?? 'treadmill'
   const initialWeight = session ? session.weightKgUsed : findWeightForExerciseDate(weightRecords, date)
   const [exerciseType, setExerciseType] = useState<ExerciseType>(initialType)
@@ -38,6 +39,8 @@ export function ExerciseSessionDialog({
   const [weight, setWeight] = useState(initialWeight === null ? '' : initialWeight.toFixed(1))
   const [memo, setMemo] = useState(session?.memo ?? '')
   const [error, setError] = useState('')
+  const [errorField, setErrorField] = useState<string | null>(null)
+  const [isSaving, setIsSaving] = useState(false)
 
   useEffect(() => {
     const dialog = dialogRef.current
@@ -78,55 +81,76 @@ export function ExerciseSessionDialog({
     if (nextOption.defaultDurationMinutes !== null) setDuration(String(nextOption.defaultDurationMinutes))
     if (nextType !== 'other') setCustomName('')
     setError('')
+    setErrorField(null)
+  }
+
+  const showValidationError = (message: string, fieldId: string) => {
+    setError(message)
+    setErrorField(fieldId)
+    requestAnimationFrame(() => {
+      const field = dialogRef.current?.querySelector<HTMLElement>(`#${fieldId}`)
+      field?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      field?.focus({ preventScroll: true })
+    })
   }
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (isSavingRef.current) return
     const parsedHeartRate = heartRate === '' ? null : Number(heartRate)
     const normalizedCustomName = customName.trim()
     const normalizedMemo = memo.trim()
 
     if (exerciseType === 'other' && (!normalizedCustomName || normalizedCustomName.length > MAX_EXERCISE_NAME_LENGTH)) {
-      setError(`その他の運動名を1～${MAX_EXERCISE_NAME_LENGTH}文字で入力してください。`)
+      showValidationError(`その他の運動名を1～${MAX_EXERCISE_NAME_LENGTH}文字で入力してください。`, 'exercise-custom-name')
       return
     }
     if (!Number.isInteger(parsedDuration) || parsedDuration < 1 || parsedDuration > 1440) {
-      setError('運動時間を1～1440分の整数で入力してください。')
+      showValidationError('運動時間を1～1440分の整数で入力してください。', 'exercise-duration')
       return
     }
     if (parsedHeartRate !== null && (!Number.isInteger(parsedHeartRate) || parsedHeartRate < 30 || parsedHeartRate > 250)) {
-      setError('平均心拍数を30～250 bpmの整数で入力してください。')
+      showValidationError('平均心拍数を30～250 bpmの整数で入力してください。', 'exercise-heart-rate')
       return
     }
     if (!Number.isFinite(parsedMets) || parsedMets < 1 || parsedMets > 20) {
-      setError('METsを1.0～20.0で入力してください。')
+      showValidationError('METsを1.0～20.0で入力してください。', 'exercise-mets')
       return
     }
     if (parsedWeight !== null && (!Number.isFinite(parsedWeight) || parsedWeight < 20 || parsedWeight > 300)) {
-      setError('計算に使用する体重を20.0～300.0kgで入力してください。')
+      showValidationError('計算に使用する体重を20.0～300.0kgで入力してください。', 'exercise-weight')
       return
     }
     if (normalizedMemo.length > MAX_EXERCISE_MEMO_LENGTH) {
-      setError(`メモは${MAX_EXERCISE_MEMO_LENGTH}文字以内で入力してください。`)
+      showValidationError(`メモは${MAX_EXERCISE_MEMO_LENGTH}文字以内で入力してください。`, 'exercise-memo')
       return
     }
 
     const now = new Date().toISOString()
     const normalizedMets = normalizeExerciseDecimal(parsedMets)
     const normalizedWeight = parsedWeight === null ? null : normalizeExerciseDecimal(parsedWeight)
-    onSave({
-      id: session?.id ?? createId(), date, exerciseType,
-      customName: exerciseType === 'other' ? normalizedCustomName : '',
-      durationMinutes: parsedDuration,
-      averageHeartRate: parsedHeartRate,
-      mets: normalizedMets,
-      weightKgUsed: normalizedWeight,
-      estimatedCaloriesKcal: calculateEstimatedCalories(normalizedMets, normalizedWeight, parsedDuration),
-      memo: normalizedMemo,
-      createdAt: session?.createdAt ?? now,
-      updatedAt: now,
-    })
-    closeDialog()
+    isSavingRef.current = true
+    setIsSaving(true)
+    try {
+      onSave({
+        id: session?.id ?? createId(), date, exerciseType,
+        customName: exerciseType === 'other' ? normalizedCustomName : '',
+        durationMinutes: parsedDuration,
+        averageHeartRate: parsedHeartRate,
+        mets: normalizedMets,
+        weightKgUsed: normalizedWeight,
+        estimatedCaloriesKcal: calculateEstimatedCalories(normalizedMets, normalizedWeight, parsedDuration),
+        memo: normalizedMemo,
+        createdAt: session?.createdAt ?? now,
+        updatedAt: now,
+      })
+      closeDialog()
+    } catch {
+      isSavingRef.current = false
+      setIsSaving(false)
+      setErrorField(null)
+      setError('保存できませんでした。入力内容を保ったまま、もう一度お試しください。')
+    }
   }
 
   const handleDelete = () => {
@@ -137,7 +161,7 @@ export function ExerciseSessionDialog({
   }
 
   const errorId = error ? 'exercise-session-error' : undefined
-  const describedBy = (hintId: string) => errorId ? `${hintId} ${errorId}` : hintId
+  const describedBy = (hintId: string, fieldId: string) => errorId && errorField === fieldId ? `${hintId} ${errorId}` : hintId
 
   return (
     <dialog ref={dialogRef} className="exercise-session-dialog" aria-labelledby="exercise-session-dialog-title" onCancel={handleCancel} onClose={handleClose}>
@@ -147,7 +171,8 @@ export function ExerciseSessionDialog({
           <button type="button" className="theme-close-button" onClick={closeDialog} aria-label="運動入力を閉じる"><XIcon size={20} weight="bold" aria-hidden="true" /></button>
         </header>
 
-        <div className="exercise-session-form">
+        <div className="dialog-scroll-body">
+          <div className="exercise-session-form">
           <div className="form-field form-field-wide">
             <label htmlFor="exercise-type">運動種類 <span className="required-label">必須</span></label>
             <select id="exercise-type" value={exerciseType} onChange={(event) => changeExerciseType(event.target.value as ExerciseType)}>
@@ -157,31 +182,31 @@ export function ExerciseSessionDialog({
 
           {exerciseType === 'other' && <div className="form-field form-field-wide">
             <label htmlFor="exercise-custom-name">その他の運動名 <span className="required-label">必須</span></label>
-            <input id="exercise-custom-name" value={customName} maxLength={MAX_EXERCISE_NAME_LENGTH} onChange={(event) => { setCustomName(event.target.value); setError('') }} aria-invalid={Boolean(error && !customName.trim())} aria-describedby={describedBy('exercise-name-hint')} placeholder="例：ラジオ体操、散歩、筋トレ" />
+            <input id="exercise-custom-name" value={customName} maxLength={MAX_EXERCISE_NAME_LENGTH} onChange={(event) => { setCustomName(event.target.value); setError(''); setErrorField(null) }} aria-invalid={errorField === 'exercise-custom-name'} aria-describedby={describedBy('exercise-name-hint', 'exercise-custom-name')} placeholder="例：ラジオ体操、散歩、筋トレ" />
             <span id="exercise-name-hint" className="field-hint">最大{MAX_EXERCISE_NAME_LENGTH}文字</span>
           </div>}
 
           <div className="form-field">
             <label htmlFor="exercise-duration">運動時間（分） <span className="required-label">必須</span></label>
-            <input id="exercise-duration" type="number" min="1" max="1440" step="1" inputMode="numeric" value={duration} onChange={(event) => { setDuration(event.target.value); setError('') }} aria-invalid={Boolean(error)} aria-describedby={describedBy('exercise-duration-hint')} />
+            <input id="exercise-duration" type="number" min="1" max="1440" step="1" inputMode="numeric" value={duration} onChange={(event) => { setDuration(event.target.value); setError(''); setErrorField(null) }} aria-invalid={errorField === 'exercise-duration'} aria-describedby={describedBy('exercise-duration-hint', 'exercise-duration')} />
             <span id="exercise-duration-hint" className="field-hint">1～1440分の整数</span>
           </div>
 
           <div className="form-field">
             <label htmlFor="exercise-heart-rate">平均心拍数（bpm） <span className="optional-label">任意</span></label>
-            <input id="exercise-heart-rate" type="number" min="30" max="250" step="1" inputMode="numeric" value={heartRate} onChange={(event) => { setHeartRate(event.target.value); setError('') }} aria-invalid={Boolean(error)} aria-describedby={describedBy('exercise-heart-rate-hint')} />
+            <input id="exercise-heart-rate" type="number" min="30" max="250" step="1" inputMode="numeric" value={heartRate} onChange={(event) => { setHeartRate(event.target.value); setError(''); setErrorField(null) }} aria-invalid={errorField === 'exercise-heart-rate'} aria-describedby={describedBy('exercise-heart-rate-hint', 'exercise-heart-rate')} />
             <span id="exercise-heart-rate-hint" className="field-hint">30～250。今回の推定計算には使用しません。</span>
           </div>
 
           <div className="form-field">
             <label htmlFor="exercise-mets">METs <span className="required-label">必須</span></label>
-            <input id="exercise-mets" type="number" min="1" max="20" step="0.1" inputMode="decimal" value={mets} onChange={(event) => { setMets(event.target.value); setError('') }} aria-invalid={Boolean(error)} aria-describedby={describedBy('exercise-mets-hint')} />
+            <input id="exercise-mets" type="number" min="1" max="20" step="0.1" inputMode="decimal" value={mets} onChange={(event) => { setMets(event.target.value); setError(''); setErrorField(null) }} aria-invalid={errorField === 'exercise-mets'} aria-describedby={describedBy('exercise-mets-hint', 'exercise-mets')} />
             <span id="exercise-mets-hint" className="field-hint">初期値は概算です。運動強度に合わせて変更できます。</span>
           </div>
 
           <div className="form-field">
             <label htmlFor="exercise-weight">計算に使用する体重（kg） <span className="optional-label">任意</span></label>
-            <input id="exercise-weight" type="number" min="20" max="300" step="0.1" inputMode="decimal" value={weight} onChange={(event) => { setWeight(event.target.value); setError('') }} aria-invalid={Boolean(error)} aria-describedby={describedBy('exercise-weight-hint')} />
+            <input id="exercise-weight" type="number" min="20" max="300" step="0.1" inputMode="decimal" value={weight} onChange={(event) => { setWeight(event.target.value); setError(''); setErrorField(null) }} aria-invalid={errorField === 'exercise-weight'} aria-describedby={describedBy('exercise-weight-hint', 'exercise-weight')} />
             <span id="exercise-weight-hint" className="field-hint">同日または直前の体重を初期表示。手動変更できます。</span>
           </div>
 
@@ -198,15 +223,16 @@ export function ExerciseSessionDialog({
             <textarea id="exercise-memo" rows={4} maxLength={MAX_EXERCISE_MEMO_LENGTH} value={memo} onChange={(event) => setMemo(event.target.value)} placeholder="例：軽め、負荷3、膝の様子を見ながら" />
             <span className="character-count" aria-live="polite">{memo.length}/{MAX_EXERCISE_MEMO_LENGTH}</span>
           </div>
-        </div>
+          </div>
 
-        {error && <p id="exercise-session-error" className="form-error" role="alert">{error}</p>}
-        <p className="exercise-estimate-note">推定消費カロリーはMETs・体重・時間から算出した概算です。実際の消費量は運動強度や個人差で異なり、医療機器・運動機器による測定値ではありません。</p>
+          {error && <p id="exercise-session-error" className="form-error dialog-form-error" role="alert">{error}</p>}
+          <p className="exercise-estimate-note">推定消費カロリーはMETs・体重・時間から算出した概算です。実際の消費量は運動強度や個人差で異なり、医療機器・運動機器による測定値ではありません。</p>
+        </div>
         <div className="event-editor-actions">
           {session && <button type="button" className="event-action-button danger" onClick={handleDelete}>削除</button>}
           <span className="event-action-spacer" />
           <button type="button" className="event-action-button secondary" onClick={closeDialog}>キャンセル</button>
-          <button type="submit" className="event-action-button primary">保存</button>
+          <button type="submit" className="event-action-button primary" disabled={isSaving}>{isSaving ? '保存中…' : '保存'}</button>
         </div>
       </form>
     </dialog>

@@ -1,4 +1,6 @@
 import { useMemo, useState } from 'react'
+import { CaretDownIcon } from '@phosphor-icons/react/CaretDown'
+import { FunnelIcon } from '@phosphor-icons/react/Funnel'
 import type { DailyAchievement } from '../types/achievement'
 import type { DayMemo } from '../types/dayMemo'
 import type { DailyConditionRecord, SleepRecord, WeightRecord } from '../types/health'
@@ -35,6 +37,7 @@ export function RecordsBrowserPage({ dayMemos, dailyAchievements, weightRecords,
   const [customStartDate, setCustomStartDate] = useState('')
   const [customEndDate, setCustomEndDate] = useState('')
   const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set())
+  const [areFiltersExpanded, setAreFiltersExpanded] = useState(false)
   const today = toDateKey(new Date())
   const allItems = useMemo(() => buildRecordBrowserItems({ dayMemos, dailyAchievements, weightRecords, sleepRecords, conditionRecords }), [dayMemos, dailyAchievements, weightRecords, sleepRecords, conditionRecords])
   const customDateError = period === 'custom' ? getCustomDateRangeError(customStartDate, customEndDate) : ''
@@ -48,6 +51,7 @@ export function RecordsBrowserPage({ dayMemos, dailyAchievements, weightRecords,
     })
     return result
   }, [filteredItems])
+  const activeFilterCount = Number(Boolean(query.trim())) + Number(kind !== 'all') + Number(period !== 'all') + Number(sort !== 'newest')
 
   const resetFilters = () => {
     setQuery('')
@@ -75,7 +79,17 @@ export function RecordsBrowserPage({ dayMemos, dailyAchievements, weightRecords,
         <p className="content-note">日記や健康メモを、日付やキーワードから探せます。</p>
       </header>
 
-      <section className="records-filter-panel" aria-labelledby="records-filter-title">
+      <div className="records-filter-summary">
+        <button type="button" className="records-filter-toggle" aria-expanded={areFiltersExpanded} aria-controls="records-filter-panel" onClick={() => setAreFiltersExpanded((expanded) => !expanded)}>
+          <FunnelIcon size={17} weight="bold" aria-hidden="true" />
+          <span>{areFiltersExpanded ? '検索・絞り込みを閉じる' : '検索・絞り込み'}</span>
+          {activeFilterCount > 0 && <strong>{activeFilterCount}件適用中</strong>}
+          <CaretDownIcon className="records-filter-toggle-caret" size={15} weight="bold" aria-hidden="true" />
+        </button>
+        <p className="records-result-count" aria-live="polite">{allItems.length === 0 ? '検索対象の記録は0件です' : customDateError ? '期間指定を確認してください' : filteredItems.length ? `全${allItems.length}件中${filteredItems.length}件の記録` : '該当する記録はありません'}</p>
+      </div>
+
+      <section id="records-filter-panel" className="records-filter-panel" aria-labelledby="records-filter-title" hidden={!areFiltersExpanded}>
         <div className="records-filter-title-row"><h2 id="records-filter-title">検索・絞り込み</h2><span>読み取り専用</span></div>
         <div className="records-filter-grid">
           <label className="records-filter-field records-keyword-field">キーワード<input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="記録の本文を検索" /></label>
@@ -92,8 +106,6 @@ export function RecordsBrowserPage({ dayMemos, dailyAchievements, weightRecords,
         )}
         <button type="button" className="records-reset-button" onClick={resetFilters}>検索条件をリセット</button>
       </section>
-
-      <p className="records-result-count" aria-live="polite">{allItems.length === 0 ? '検索対象の記録は0件です' : customDateError ? '期間指定を確認してください' : filteredItems.length ? `全${allItems.length}件中${filteredItems.length}件の記録` : '該当する記録はありません'}</p>
 
       {allItems.length === 0 ? (
         <section className="records-empty-state"><h2>まだ検索できる記録がありません</h2><p>日記や健康メモを保存すると、ここから見返せます。</p><div><button type="button" onClick={() => onOpenCalendar(today)}>カレンダーを開く</button><button type="button" onClick={() => onOpenHealth(today)}>日付別健康記録を開く</button></div></section>

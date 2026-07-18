@@ -31,13 +31,6 @@ const periodOptions: { id: WeightPeriod; label: string }[] = [
   { id: 'all', label: '全期間' },
 ]
 
-const averageOptions: { id: Exclude<WeightPeriod, 'all'>; label: string }[] = [
-  { id: '7d', label: '7日平均' },
-  { id: '30d', label: '30日平均' },
-  { id: '6m', label: '6か月平均' },
-  { id: '1y', label: '1年平均' },
-]
-
 function differenceText(value: number | null, prefix: string): string {
   if (value === null) return '比較できません'
   if (value === 0) return `${prefix} ±0.0 kg`
@@ -63,8 +56,12 @@ export function WeightDashboard({ records, profile, onOpenProfile }: WeightDashb
   const beautyWeight = calculateBeautyWeight(heightCm)
   const selectedRange = getWeightRange(period, baseDate)
   const chartRecords = filterWeightRecordsByRange(records, selectedRange)
+  const selectedAverage = calculateAverageWeight(records, selectedRange)
   const chartMin = chartRecords.length ? Math.min(...chartRecords.map((record) => record.weightKg)) : null
   const chartMax = chartRecords.length ? Math.max(...chartRecords.map((record) => record.weightKg)) : null
+  const periodChange = chartRecords.length >= 2
+    ? calculateWeightDifference(chartRecords.at(-1)?.weightKg ?? null, chartRecords[0].weightKg)
+    : null
   const selectedPeriodLabel = periodOptions.find((option) => option.id === period)?.label ?? '30日'
 
   return (
@@ -74,7 +71,14 @@ export function WeightDashboard({ records, profile, onOpenProfile }: WeightDashb
           <p className="health-card-kicker">Weight overview</p>
           <h3>体重まとめ</h3>
         </div>
-        <p>集計基準：{formatDateKeyJa(baseDate)}</p>
+        <div className="weight-summary-controls">
+          <p>集計基準：{formatDateKeyJa(baseDate)}</p>
+          <div className="weight-period-controls" aria-label="体重まとめの集計期間">
+            {periodOptions.map((option) => (
+              <button key={option.id} type="button" className={period === option.id ? 'is-active' : ''} aria-pressed={period === option.id} onClick={() => setPeriod(option.id)}>{option.label}</button>
+            ))}
+          </div>
+        </div>
       </div>
 
       <div className="weight-metric-grid">
@@ -93,21 +97,18 @@ export function WeightDashboard({ records, profile, onOpenProfile }: WeightDashb
           <p>BMI</p>
           <strong>{bmi === null ? '計算できません' : bmi.toFixed(1)}</strong>
           <span>{getBmiLabel(bmi) ?? '身長と最新体重が必要です'}</span>
-          <small>BMIは体格の参考値です</small>
         </section>
 
         <section className="weight-metric-card">
           <p>標準体重</p>
           <strong>{standardWeight === null ? '計算できません' : `${standardWeight.toFixed(1)} kg`}</strong>
           <span>{differenceText(calculateWeightDifference(latestWeight, standardWeight), '最新との差')}</span>
-          <small>BMI 22を基準にした参考値</small>
         </section>
 
         <section className="weight-metric-card">
           <p>美容体重（参考）</p>
           <strong>{beautyWeight === null ? '計算できません' : `${beautyWeight.toFixed(1)} kg`}</strong>
           <span>{differenceText(calculateWeightDifference(latestWeight, beautyWeight), '最新との差')}</span>
-          <small>BMI 20相当の非医学的な参考値</small>
         </section>
 
         <section className="weight-metric-card weight-target-card">
@@ -118,47 +119,44 @@ export function WeightDashboard({ records, profile, onOpenProfile }: WeightDashb
         </section>
       </div>
 
-      <section className="weight-average-section" aria-labelledby="weight-average-heading">
-        <div className="weight-section-heading">
-          <div><p className="health-card-kicker">Average</p><h3 id="weight-average-heading">期間平均</h3></div>
-          <p>記録のない日は平均へ含めません</p>
-        </div>
-        <div className="weight-average-grid">
-          {averageOptions.map((option) => {
-            const average = calculateAverageWeight(records, getWeightRange(option.id, baseDate))
-            const start = average.range.startDate
-            return (
-              <article className="weight-average-card" key={option.id}>
-                <h4>{option.label}</h4>
-                {average.averageKg === null ? <strong>記録がありません</strong> : <strong>{average.averageKg.toFixed(1)} <small>kg</small></strong>}
-                <span>記録{average.count}件</span>
-                <small>{start ? `${formatDateKeyJa(start)}～${formatDateKeyJa(average.range.endDate)}` : `～${formatDateKeyJa(average.range.endDate)}`}</small>
-              </article>
-            )
-          })}
-        </div>
-      </section>
-
       <section className="weight-chart-section" aria-labelledby="weight-chart-heading">
         <div className="weight-section-heading">
           <div><p className="health-card-kicker">Chart</p><h3 id="weight-chart-heading">体重グラフ</h3></div>
-          <div className="weight-period-controls" aria-label="グラフ期間">
-            {periodOptions.map((option) => (
-              <button key={option.id} type="button" className={period === option.id ? 'is-active' : ''} aria-pressed={period === option.id} onClick={() => setPeriod(option.id)}>{option.label}</button>
-            ))}
-          </div>
-        </div>
-        <div className="weight-chart-summary" aria-label="グラフの数値概要">
-          <span>対象：{selectedPeriodLabel}</span>
-          <span>記録：{chartRecords.length}件</span>
-          <span>最小：{chartMin === null ? '－' : `${chartMin.toFixed(1)} kg`}</span>
-          <span>最大：{chartMax === null ? '－' : `${chartMax.toFixed(1)} kg`}</span>
-          <span>最新：{latestWeight === null ? '－' : `${latestWeight.toFixed(1)} kg`}</span>
+          <p>対象：{selectedPeriodLabel}</p>
         </div>
         <WeightChart records={chartRecords} targetWeightKg={targetWeight} periodLabel={selectedPeriodLabel} />
       </section>
 
-      <p className="weight-medical-note">BMIや標準体重は体格の参考値です。美容体重はBMI 20相当の非医学的な参考値であり、この画面は医療診断を行うものではありません。</p>
+      <section className="weight-average-section" aria-labelledby="weight-average-heading">
+        <div className="weight-section-heading">
+          <div><p className="health-card-kicker">Period summary</p><h3 id="weight-average-heading">期間集計</h3></div>
+          <p>{selectedPeriodLabel}・記録のない日は平均へ含めません</p>
+        </div>
+        <div className="weight-average-grid">
+          <article className="weight-average-card">
+            <h4>期間平均</h4>
+            {selectedAverage.averageKg === null ? <strong>記録なし</strong> : <strong>{selectedAverage.averageKg.toFixed(1)} <small>kg</small></strong>}
+          </article>
+          <article className="weight-average-card">
+            <h4>最小</h4>
+            <strong>{chartMin === null ? '－' : `${chartMin.toFixed(1)} kg`}</strong>
+          </article>
+          <article className="weight-average-card">
+            <h4>最大</h4>
+            <strong>{chartMax === null ? '－' : `${chartMax.toFixed(1)} kg`}</strong>
+          </article>
+          <article className="weight-average-card">
+            <h4>期間内増減</h4>
+            <strong>{periodChange === null ? '比較できません' : `${periodChange > 0 ? '+' : ''}${periodChange.toFixed(1)} kg`}</strong>
+          </article>
+          <article className="weight-average-card">
+            <h4>記録件数</h4>
+            <strong>{selectedAverage.count} <small>件</small></strong>
+          </article>
+        </div>
+      </section>
+
+      <p className="weight-medical-note">表示値は記録とプロフィールから算出した目安で、医療診断ではありません。</p>
     </div>
   )
 }
