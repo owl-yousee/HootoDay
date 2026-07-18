@@ -75,7 +75,7 @@ export function DayDetails({ selectedDate, events, memos, healthSummary, achieve
                   <div className="detail-event-copy">
                     <strong>{event.title}</strong>
                     <span>{formatEventTime(event)}・{categoryDisplay.name}</span>
-                    {event.memo && <small>{event.memo}</small>}
+                    {event.memo && <small>過去の予定補足：{event.memo}</small>}
                   </div>
                   <button type="button" className="edit-event-button" onClick={() => onEditEvent(event)} aria-label={`${event.title}を編集`}>
                     <PencilSimpleIcon size={18} weight="bold" aria-hidden="true" />

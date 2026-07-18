@@ -6,7 +6,7 @@ import {
   type FormEvent,
   type SyntheticEvent,
 } from 'react'
-import type { DayMemo } from '../types/dayMemo'
+import { MAX_DAY_MEMO_CONTENT_LENGTH, type DayMemo } from '../types/dayMemo'
 
 interface DayMemoDialogProps {
   date: string
@@ -16,8 +16,6 @@ interface DayMemoDialogProps {
   onDelete: (date: string) => void
   onClose: () => void
 }
-
-const MAX_CONTENT_LENGTH = 2000
 
 export function DayMemoDialog({
   date,
@@ -116,13 +114,13 @@ export function DayMemoDialog({
               setContent(event.target.value)
               if (error) setError('')
             }}
-            maxLength={MAX_CONTENT_LENGTH}
+            maxLength={MAX_DAY_MEMO_CONTENT_LENGTH}
             rows={10}
             required
             aria-invalid={Boolean(error)}
             aria-describedby={errorId}
           />
-          <span className="character-count" aria-live="polite">{content.length}/{MAX_CONTENT_LENGTH}</span>
+          <span className="character-count" aria-live="polite">{content.length}/{MAX_DAY_MEMO_CONTENT_LENGTH}</span>
           {error && <p id="day-memo-content-error" className="form-error" role="alert">{error}</p>}
         </div>
 

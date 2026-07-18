@@ -360,6 +360,9 @@ function App() {
           initialDate={toDateKey(selectedDate)}
           event={editingEvent}
           onSave={saveEvent}
+          dayMemos={dayMemos}
+          onSaveDayMemo={saveDayMemo}
+          onDeleteDayMemo={deleteDayMemo}
           onDelete={deleteCalendarEvent}
           onClose={() => setIsEventEditorOpen(false)}
         />

@@ -8,12 +8,16 @@ import {
 } from 'react'
 import { eventCategories } from '../data/calendarData'
 import type { CalendarEvent, EventCategory } from '../types/calendar'
+import { MAX_DAY_MEMO_CONTENT_LENGTH, type DayMemo } from '../types/dayMemo'
 import { createEventId } from '../utils/event'
 
 interface EventEditorDialogProps {
   initialDate: string
   event: CalendarEvent | null
   onSave: (event: CalendarEvent) => void
+  dayMemos: DayMemo[]
+  onSaveDayMemo: (memo: DayMemo) => void
+  onDeleteDayMemo: (date: string) => void
   onDelete: (eventId: string) => boolean
   onClose: () => void
 }
@@ -29,6 +33,9 @@ export function EventEditorDialog({
   initialDate,
   event,
   onSave,
+  dayMemos,
+  onSaveDayMemo,
+  onDeleteDayMemo,
   onDelete,
   onClose,
 }: EventEditorDialogProps) {
@@ -40,7 +47,10 @@ export function EventEditorDialog({
   const [isAllDay, setIsAllDay] = useState(event?.isAllDay ?? false)
   const [startTime, setStartTime] = useState(event?.startTime ?? '')
   const [endTime, setEndTime] = useState(event?.endTime ?? '')
-  const [memo, setMemo] = useState(event?.memo ?? '')
+  const initialDayMemo = dayMemos.find((memo) => memo.date === (event?.date ?? initialDate))?.content ?? ''
+  const [dayMemoDrafts, setDayMemoDrafts] = useState<Record<string, string>>({
+    [event?.date ?? initialDate]: initialDayMemo,
+  })
   const [errors, setErrors] = useState<FormErrors>({})
 
   useEffect(() => {
@@ -88,6 +98,7 @@ export function EventEditorDialog({
     submitEvent.preventDefault()
     if (!validate()) return
 
+    const dayMemoContent = (dayMemoDrafts[date] ?? '').trim()
     onSave({
       id: event?.id ?? createEventId(),
       date,
@@ -96,10 +107,29 @@ export function EventEditorDialog({
       isAllDay,
       startTime: isAllDay ? null : startTime,
       endTime: isAllDay || !endTime ? null : endTime,
-      memo: memo.trim(),
+      memo: event?.memo ?? '',
     })
+    if (dayMemoContent) {
+      onSaveDayMemo({ date, content: dayMemoContent, updatedAt: new Date().toISOString() })
+    } else if (dayMemos.some((memo) => memo.date === date)) {
+      onDeleteDayMemo(date)
+    }
     closeDialog()
   }
+
+  const handleDateChange = (nextDate: string) => {
+    setDate(nextDate)
+    setDayMemoDrafts((current) => {
+      if (!nextDate || Object.prototype.hasOwnProperty.call(current, nextDate)) return current
+      return {
+        ...current,
+        [nextDate]: dayMemos.find((memo) => memo.date === nextDate)?.content ?? '',
+      }
+    })
+    if (errors.date) setErrors((current) => ({ ...current, date: undefined }))
+  }
+
+  const currentDayMemo = dayMemoDrafts[date] ?? ''
 
   const handleDelete = () => {
     if (event && window.confirm(`「${event.title}」を削除しますか？`)) {
@@ -129,7 +159,7 @@ export function EventEditorDialog({
         <div className="event-form-grid">
           <div className="form-field">
             <label htmlFor="event-date">日付 <span className="required-label">必須</span></label>
-            <input id="event-date" type="date" value={date} onChange={(input) => setDate(input.target.value)} required aria-invalid={Boolean(errors.date)} aria-describedby={errors.date ? 'event-date-error' : undefined} />
+            <input id="event-date" type="date" value={date} onChange={(input) => handleDateChange(input.target.value)} required aria-invalid={Boolean(errors.date)} aria-describedby={errors.date ? 'event-date-error' : undefined} />
             {errors.date && <p id="event-date-error" className="form-error" role="alert">{errors.date}</p>}
           </div>
 
@@ -164,10 +194,27 @@ export function EventEditorDialog({
           </div>
 
           <div className="form-field form-field-wide">
-            <label htmlFor="event-memo">補足メモ（任意）</label>
-            <textarea id="event-memo" value={memo} onChange={(input) => setMemo(input.target.value)} maxLength={500} rows={4} />
-            <span className="character-count">{memo.length}/500</span>
+            <label htmlFor="event-day-memo">その日のメモ <span className="optional-label">任意</span></label>
+            <p id="event-day-memo-hint" className="field-hint">この日全体のメモです。日記画面と共通です。</p>
+            <textarea
+              id="event-day-memo"
+              value={currentDayMemo}
+              onChange={(input) => setDayMemoDrafts((current) => ({ ...current, [date]: input.target.value }))}
+              maxLength={MAX_DAY_MEMO_CONTENT_LENGTH}
+              rows={5}
+              placeholder="予定の補足や、その日に覚えておきたいこと"
+              aria-describedby="event-day-memo-hint"
+            />
+            <span className="character-count" aria-live="polite">{currentDayMemo.length}/{MAX_DAY_MEMO_CONTENT_LENGTH}</span>
           </div>
+
+          {event?.memo && (
+            <aside className="legacy-event-memo form-field-wide" aria-label="過去の予定補足">
+              <strong>過去の予定補足</strong>
+              <span>旧形式で保存された内容です。</span>
+              <p>{event.memo}</p>
+            </aside>
+          )}
         </div>
 
         <div className="event-editor-actions">
