@@ -2914,6 +2914,13 @@
   gap: clamp(12px, 1.4vw, 18px);
 }
 
+.health-card-column {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(12px, 1.4vw, 18px);
+}
+
 .weight-card,
 .sleep-card,
 .meal-card,
@@ -4487,6 +4494,16 @@ body,
   .health-card-grid {
     grid-template-columns: minmax(0, 1fr);
   }
+
+  .health-card-column {
+    display: contents;
+  }
+
+  .weight-card { order: 1; }
+  .sleep-card { order: 2; }
+  .meal-card { order: 3; }
+  .exercise-card { order: 4; }
+  .condition-card { order: 5; }
 
   .health-date-card {
     align-items: stretch;

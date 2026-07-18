@@ -89,6 +89,7 @@ export function HealthDashboard({
         </section>
 
         <div className="health-card-grid">
+        <div className="health-card-column health-card-column-left">
         <section className="weight-card">
           <div className="health-card-header">
             <div>
@@ -114,6 +115,51 @@ export function HealthDashboard({
           <p className="health-future-note">最新体重、目標、期間平均、グラフは「体重まとめ」で確認できます。</p>
         </section>
 
+        <section className="meal-card">
+          <div className="health-card-header">
+            <div><p className="health-card-kicker">Meals</p><h3>食事</h3></div>
+            <HealthDateNavigator date={selectedDate} onPreviousDay={onPreviousDay} onNextDay={onNextDay} onToday={onToday} onDateChange={onDateChange} compact label="食事記録" />
+          </div>
+          {mealRecord ? (
+            <div className="meal-record-summary">
+              {([
+                ['breakfast', '朝食'], ['lunch', '昼食'], ['dinner', '夕食'], ['snacks', '間食'],
+              ] as const).map(([key, label]) => mealRecord[key] && <div className="meal-summary-item" key={key}><h4>{label}</h4><p>{mealRecord[key]}</p></div>)}
+              <button type="button" className="health-primary-button" onClick={onOpenMeal}>編集</button>
+            </div>
+          ) : (
+            <div className="weight-empty-state"><p>この日の食事記録はありません</p><button type="button" className="health-primary-button" onClick={onOpenMeal}>食事を記録</button></div>
+          )}
+        </section>
+
+        <section className="condition-card">
+          <div className="health-card-header">
+            <div><p className="health-card-kicker">Condition</p><h3>体調メモ</h3></div>
+            <HealthDateNavigator date={selectedDate} onPreviousDay={onPreviousDay} onNextDay={onNextDay} onToday={onToday} onDateChange={onDateChange} compact label="体調記録" />
+          </div>
+          {conditionRecord ? (
+            <div className="condition-record-summary">
+              <dl className="condition-status-list" aria-label="保存済みの体調状態">
+                {conditionRecord.overallCondition !== 'unset' && <div><dt>全体</dt><dd className={`condition-badge is-${getConditionTone(conditionRecord.overallCondition)}`}>{conditionLevelLabels[conditionRecord.overallCondition]}</dd></div>}
+                {conditionRecord.kneeCondition !== 'unset' && <div><dt>膝</dt><dd className={`condition-badge is-${getConditionTone(conditionRecord.kneeCondition)}`}>{bodyPartConditionLabels[conditionRecord.kneeCondition]}</dd></div>}
+                {conditionRecord.lowerBackCondition !== 'unset' && <div><dt>腰</dt><dd className={`condition-badge is-${getConditionTone(conditionRecord.lowerBackCondition)}`}>{bodyPartConditionLabels[conditionRecord.lowerBackCondition]}</dd></div>}
+              </dl>
+              <div className="condition-text-list">
+                {conditionRecord.menstrualNote && <div><h4>生理・周期メモ</h4><p>{conditionRecord.menstrualNote}</p></div>}
+                {conditionRecord.concerns && <div><h4>気になること</h4><p>{conditionRecord.concerns}</p></div>}
+                {conditionRecord.memo && <div><h4>メモ</h4><p>{conditionRecord.memo}</p></div>}
+              </div>
+              <button type="button" className="health-primary-button" onClick={onOpenCondition}>編集</button>
+              <p className="condition-privacy-note">本人の振り返り用です。状態の自動評価や診断は行いません。</p>
+            </div>
+          ) : (
+            <div className="weight-empty-state"><p>この日の体調記録はありません</p><button type="button" className="health-primary-button" onClick={onOpenCondition}>体調を記録</button></div>
+          )}
+        </section>
+
+        </div>
+
+        <div className="health-card-column health-card-column-right">
         <section className="sleep-card">
           <div className="health-card-header">
             <div>
@@ -136,23 +182,6 @@ export function HealthDashboard({
               <p>この日の睡眠記録はありません</p>
               <button type="button" className="health-primary-button" onClick={onOpenSleep}>睡眠を記録</button>
             </div>
-          )}
-        </section>
-
-        <section className="meal-card">
-          <div className="health-card-header">
-            <div><p className="health-card-kicker">Meals</p><h3>食事</h3></div>
-            <HealthDateNavigator date={selectedDate} onPreviousDay={onPreviousDay} onNextDay={onNextDay} onToday={onToday} onDateChange={onDateChange} compact label="食事記録" />
-          </div>
-          {mealRecord ? (
-            <div className="meal-record-summary">
-              {([
-                ['breakfast', '朝食'], ['lunch', '昼食'], ['dinner', '夕食'], ['snacks', '間食'],
-              ] as const).map(([key, label]) => mealRecord[key] && <div className="meal-summary-item" key={key}><h4>{label}</h4><p>{mealRecord[key]}</p></div>)}
-              <button type="button" className="health-primary-button" onClick={onOpenMeal}>編集</button>
-            </div>
-          ) : (
-            <div className="weight-empty-state"><p>この日の食事記録はありません</p><button type="button" className="health-primary-button" onClick={onOpenMeal}>食事を記録</button></div>
           )}
         </section>
 
@@ -185,30 +214,7 @@ export function HealthDashboard({
           )}
         </section>
 
-        <section className="condition-card">
-          <div className="health-card-header">
-            <div><p className="health-card-kicker">Condition</p><h3>体調メモ</h3></div>
-            <HealthDateNavigator date={selectedDate} onPreviousDay={onPreviousDay} onNextDay={onNextDay} onToday={onToday} onDateChange={onDateChange} compact label="体調記録" />
-          </div>
-          {conditionRecord ? (
-            <div className="condition-record-summary">
-              <dl className="condition-status-list" aria-label="保存済みの体調状態">
-                {conditionRecord.overallCondition !== 'unset' && <div><dt>全体</dt><dd className={`condition-badge is-${getConditionTone(conditionRecord.overallCondition)}`}>{conditionLevelLabels[conditionRecord.overallCondition]}</dd></div>}
-                {conditionRecord.kneeCondition !== 'unset' && <div><dt>膝</dt><dd className={`condition-badge is-${getConditionTone(conditionRecord.kneeCondition)}`}>{bodyPartConditionLabels[conditionRecord.kneeCondition]}</dd></div>}
-                {conditionRecord.lowerBackCondition !== 'unset' && <div><dt>腰</dt><dd className={`condition-badge is-${getConditionTone(conditionRecord.lowerBackCondition)}`}>{bodyPartConditionLabels[conditionRecord.lowerBackCondition]}</dd></div>}
-              </dl>
-              <div className="condition-text-list">
-                {conditionRecord.menstrualNote && <div><h4>生理・周期メモ</h4><p>{conditionRecord.menstrualNote}</p></div>}
-                {conditionRecord.concerns && <div><h4>気になること</h4><p>{conditionRecord.concerns}</p></div>}
-                {conditionRecord.memo && <div><h4>メモ</h4><p>{conditionRecord.memo}</p></div>}
-              </div>
-              <button type="button" className="health-primary-button" onClick={onOpenCondition}>編集</button>
-              <p className="condition-privacy-note">本人の振り返り用です。状態の自動評価や診断は行いません。</p>
-            </div>
-          ) : (
-            <div className="weight-empty-state"><p>この日の体調記録はありません</p><button type="button" className="health-primary-button" onClick={onOpenCondition}>体調を記録</button></div>
-          )}
-        </section>
+        </div>
 
         </div>
       </> : activeSection === 'weight' ? (
