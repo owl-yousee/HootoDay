@@ -14,7 +14,7 @@ interface EventEditorDialogProps {
   initialDate: string
   event: CalendarEvent | null
   onSave: (event: CalendarEvent) => void
-  onDelete: (eventId: string) => void
+  onDelete: (eventId: string) => boolean
   onClose: () => void
 }
 
@@ -103,8 +103,7 @@ export function EventEditorDialog({
 
   const handleDelete = () => {
     if (event && window.confirm(`「${event.title}」を削除しますか？`)) {
-      onDelete(event.id)
-      closeDialog()
+      if (onDelete(event.id)) closeDialog()
     }
   }
 

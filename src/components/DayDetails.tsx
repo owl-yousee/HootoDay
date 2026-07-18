@@ -3,6 +3,7 @@ import { CaretDownIcon } from '@phosphor-icons/react/CaretDown'
 import { PencilSimpleIcon } from '@phosphor-icons/react/PencilSimple'
 import { getEventCategoryDisplay } from '../data/eventCategoryDisplay'
 import type { CalendarEvent } from '../types/calendar'
+import type { EventSalesRecord } from '../types/inventory'
 import type { DailyAchievement } from '../types/achievement'
 import type { DayMemo } from '../types/dayMemo'
 import type { DailyHealthSummary } from '../utils/healthSummary'
@@ -21,11 +22,13 @@ interface DayDetailsProps {
   onOpenMemo: () => void
   onOpenHealth: () => void
   onOpenAchievement: () => void
+  eventSales: EventSalesRecord[]
+  onOpenInventoryEvent: (eventId: string) => void
 }
 
 const weekdayLabels = ['日曜日', '月曜日', '火曜日', '水曜日', '木曜日', '金曜日', '土曜日']
 
-export function DayDetails({ selectedDate, events, memos, healthSummary, achievement, onAddEvent, onEditEvent, onOpenMemo, onOpenHealth, onOpenAchievement }: DayDetailsProps) {
+export function DayDetails({ selectedDate, events, memos, healthSummary, achievement, onAddEvent, onEditEvent, onOpenMemo, onOpenHealth, onOpenAchievement, eventSales, onOpenInventoryEvent }: DayDetailsProps) {
   const [isHealthExpanded, setIsHealthExpanded] = useState(false)
   const dateKey = toDateKey(selectedDate)
   const dayEvents = sortCalendarEvents(events.filter((event) => event.date === dateKey))
@@ -85,6 +88,20 @@ export function DayDetails({ selectedDate, events, memos, healthSummary, achieve
           <p className="empty-message">予定はありません</p>
         )}
       </section>
+
+      {dayEvents.filter((event) => event.category === '即売会').map((event) => {
+        const records = eventSales.filter((record) => record.eventId === event.id)
+        const completed = records.filter((record) => record.status === 'completed')
+        const sold = completed.reduce((sum, record) => sum + (record.soldQuantity ?? 0), 0)
+        const samples = completed.reduce((sum, record) => sum + (record.sampleQuantity ?? 0), 0)
+        const sales = completed.reduce((sum, record) => sum + (record.soldQuantity ?? 0) * record.unitPriceSnapshot, 0)
+        const brought = records.reduce((sum, record) => sum + record.broughtQuantity, 0)
+        return <section className="detail-section" key={`inventory-${event.id}`}>
+          <h4>販売・在庫記録</h4>
+          {records.length ? <div><p>登録商品：{records.length}商品・持込予定：{brought}個</p>{completed.length ? <p>実績入力済み：{completed.length}商品・販売数：{sold}個・サンプル：{samples}個・売上：{sales.toLocaleString('ja-JP')}円</p> : <p className="empty-message">実績はまだ入力されていません</p>}</div> : <p className="empty-message">販売記録はありません</p>}
+          <button type="button" className="detail-button" onClick={() => onOpenInventoryEvent(event.id)}>{records.length ? '販売記録を見る' : '販売記録を追加'}</button>
+        </section>
+      })}
 
       <section className="detail-section">
         <h4>日記・メモ</h4>

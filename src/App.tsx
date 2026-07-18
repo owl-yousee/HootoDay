@@ -13,6 +13,7 @@ import { MealRecordDialog } from './components/MealRecordDialog'
 import { MonthlyAchievementHighlight } from './components/MonthlyAchievementHighlight'
 import { MonthlyAchievementsDialog } from './components/MonthlyAchievementsDialog'
 import { RecordsBrowserPage } from './components/RecordsBrowserPage'
+import { InventoryPage } from './components/InventoryPage'
 import { Sidebar, type AppView } from './components/Sidebar'
 import { SleepRecordDialog } from './components/SleepRecordDialog'
 import { ThemeSettings } from './components/ThemeSettings'
@@ -29,6 +30,7 @@ import { useMonthlyAchievementSelections } from './hooks/useMonthlyAchievementSe
 import { useSleepRecords } from './hooks/useSleepRecords'
 import { useTheme } from './hooks/useTheme'
 import { useWeightRecords } from './hooks/useWeightRecords'
+import { useInventory } from './hooks/useInventory'
 import type { CalendarEvent } from './types/calendar'
 import type { HootoDayBackupData } from './types/backup'
 import type { ExerciseSession } from './types/health'
@@ -56,6 +58,7 @@ function App() {
   const [isMonthlyAchievementsDialogOpen, setIsMonthlyAchievementsDialogOpen] = useState(false)
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null)
   const [editingExerciseSession, setEditingExerciseSession] = useState<ExerciseSession | null>(null)
+  const [inventoryEventId, setInventoryEventId] = useState<string | null>(null)
   const { events, saveEvent, deleteEvent, replaceEvents } = useEvents()
   const { dayMemos, saveDayMemo, deleteDayMemo, replaceDayMemos } = useDayMemos()
   const { dailyAchievements, saveDailyAchievement, deleteDailyAchievement, replaceDailyAchievements } = useDailyAchievements()
@@ -73,6 +76,7 @@ function App() {
   const { mealTemplates, saveMealTemplate, deleteMealTemplate, moveMealTemplate, replaceMealTemplates } = useMealTemplates()
   const { exerciseSessions, saveExerciseSession, deleteExerciseSession, replaceExerciseSessions } = useExerciseSessions()
   const { conditionRecords, saveConditionRecord, deleteConditionRecord, replaceConditionRecords } = useConditionRecords()
+  const inventory = useInventory()
   const healthSummarySource = useMemo(() => ({
     weightRecords,
     sleepRecords,
@@ -129,6 +133,7 @@ function App() {
 
   const changeView = (view: AppView) => {
     setActiveView(view)
+    if (view === 'inventory') setInventoryEventId(null)
     if (view === 'calendar') {
       setDisplayMonth(new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1))
     }
@@ -142,6 +147,24 @@ function App() {
   const openEventEditor = (event: CalendarEvent) => {
     setEditingEvent(event)
     setIsEventEditorOpen(true)
+  }
+
+  const deleteCalendarEvent = (eventId: string): boolean => {
+    if (inventory.eventSalesRecords.some((record) => record.eventId === eventId)) {
+      window.alert('この予定には販売記録があるため削除できません。先に販売・在庫画面で記録を確認してください。')
+      return false
+    }
+    const referenced = inventory.products.filter((product) => product.firstSaleEventId === eventId)
+    if (referenced.length && !window.confirm(`この予定は${referenced.length}件の商品の初売りイベントです。参照を解除して予定を削除しますか？`)) return false
+    referenced.forEach((product) => inventory.saveProduct({ ...product, firstSaleEventId: null, updatedAt: new Date().toISOString() }))
+    deleteEvent(eventId)
+    return true
+  }
+
+  const openInventoryEvent = (eventId: string) => {
+    setInventoryEventId(eventId)
+    setActiveView('inventory')
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   const openHealthProfileFromSettings = () => {
@@ -193,6 +216,10 @@ function App() {
     replaceConditionRecords(data.conditionRecords)
     replaceDailyAchievements(data.dailyAchievements)
     replaceMonthlyAchievementSelections(data.monthlyAchievementSelections)
+    inventory.replaceProducts(data.products)
+    inventory.replaceInventoryMovements(data.inventoryMovements)
+    inventory.replaceEventSalesRecords(data.eventSalesRecords)
+    inventory.replaceBoothSalesRecords(data.boothSalesRecords)
   }
 
   return (
@@ -217,7 +244,7 @@ function App() {
               />
               <div className="calendar-layout">
                 <Calendar displayMonth={displayMonth} selectedDate={selectedDate} events={events} memos={dayMemos} healthRecordDates={healthRecordDates} onSelectDate={selectDate} />
-                <DayDetails selectedDate={selectedDate} events={events} memos={dayMemos} healthSummary={selectedHealthSummary} achievement={selectedDateAchievement} onAddEvent={openNewEvent} onEditEvent={openEventEditor} onOpenMemo={() => setIsDayMemoDialogOpen(true)} onOpenHealth={openSelectedDateHealth} onOpenAchievement={() => setIsDailyAchievementDialogOpen(true)} />
+                <DayDetails selectedDate={selectedDate} events={events} memos={dayMemos} healthSummary={selectedHealthSummary} achievement={selectedDateAchievement} onAddEvent={openNewEvent} onEditEvent={openEventEditor} onOpenMemo={() => setIsDayMemoDialogOpen(true)} onOpenHealth={openSelectedDateHealth} onOpenAchievement={() => setIsDailyAchievementDialogOpen(true)} eventSales={inventory.eventSalesRecords} onOpenInventoryEvent={openInventoryEvent} />
               </div>
             </>
           ) : activeView === 'health' ? (
@@ -250,6 +277,8 @@ function App() {
               onOpenCalendar={(dateKey) => openRecordDate(dateKey, 'calendar')}
               onOpenHealth={(dateKey) => openRecordDate(dateKey, 'health')}
             />
+          ) : activeView === 'inventory' ? (
+            <InventoryPage products={inventory.products} movements={inventory.inventoryMovements} eventSales={inventory.eventSalesRecords} boothSales={inventory.boothSalesRecords} events={events} initialEventId={inventoryEventId} onSaveProduct={inventory.saveProduct} onAddMovement={inventory.addMovement} onSaveEvent={inventory.saveEventSale} onDeleteEvent={inventory.deleteEventSale} onSaveBooth={inventory.saveBoothSale} onSaveCalendarEvent={saveEvent} />
           ) : (
             <HealthExportPage
               initialDate={selectedDateKey}
@@ -276,6 +305,10 @@ function App() {
                 conditionRecords,
                 dailyAchievements,
                 monthlyAchievementSelections,
+                products: inventory.products,
+                inventoryMovements: inventory.inventoryMovements,
+                eventSalesRecords: inventory.eventSalesRecords,
+                boothSalesRecords: inventory.boothSalesRecords,
               }}
               onRestoreBackup={restoreBackupData}
             />
@@ -299,7 +332,7 @@ function App() {
           initialDate={toDateKey(selectedDate)}
           event={editingEvent}
           onSave={saveEvent}
-          onDelete={deleteEvent}
+          onDelete={deleteCalendarEvent}
           onClose={() => setIsEventEditorOpen(false)}
         />
       )}

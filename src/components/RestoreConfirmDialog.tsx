@@ -58,6 +58,7 @@ export function RestoreConfirmDialog({ filename, summary, isBusy, onConfirm, onC
           <div><dt>作成日時</dt><dd>{formatCreatedAt(summary.createdAt)}</dd></div>
           <div><dt>テーマ</dt><dd>{backupThemeLabels[summary.theme]}</dd></div>
           <div><dt>記録件数</dt><dd>{summary.events + summary.dayMemos + summary.weightRecords + summary.sleepRecords + summary.mealRecords + summary.mealTemplates + summary.exerciseSessions + summary.conditionRecords + summary.dailyAchievements + summary.monthlyAchievementSelections}件</dd></div>
+          <div><dt>販売・在庫</dt><dd>商品 {summary.products}件／履歴 {summary.inventoryMovements}件／イベント {summary.eventSalesRecords}件／BOOTH {summary.boothSalesRecords}件</dd></div>
         </dl>
         <div className="restore-confirm-actions">
           <button type="button" className="health-secondary-button" disabled={isBusy} onClick={closeDialog}>キャンセル</button>

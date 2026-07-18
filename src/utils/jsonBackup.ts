@@ -31,8 +31,9 @@ import { MAX_SLEEP_MEMO_LENGTH, SLEEP_RECORDS_STORAGE_KEY, SLEEP_RECORDS_STORAGE
 import { calculateSleepSummary, isValidTime, MAX_POINT_AWAKENING_MINUTES, MIN_POINT_AWAKENING_MINUTES } from './sleepMetrics'
 import { THEME_STORAGE_KEY, isThemePreference } from './theme'
 import { MAX_WEIGHT_KG, MAX_WEIGHT_MEMO_LENGTH, MIN_WEIGHT_KG, WEIGHT_RECORDS_STORAGE_KEY, WEIGHT_RECORDS_STORAGE_VERSION } from './weightStorage'
+import { BOOTH_SALES_STORAGE_KEY, EVENT_SALES_STORAGE_KEY, INVENTORY_MOVEMENTS_STORAGE_KEY, INVENTORY_STORAGE_VERSION, PRODUCTS_STORAGE_KEY, isBoothSale, isEventSale, isMovement, isProduct } from './inventoryStorage'
 
-export const HOOTODAY_BACKUP_FORMAT_VERSION = 1
+export const HOOTODAY_BACKUP_FORMAT_VERSION = 2
 export const MAX_BACKUP_FILE_SIZE = 10 * 1024 * 1024
 
 export const BACKUP_STORAGE_KEYS = [
@@ -48,6 +49,10 @@ export const BACKUP_STORAGE_KEYS = [
   CONDITION_RECORDS_STORAGE_KEY,
   DAILY_ACHIEVEMENTS_STORAGE_KEY,
   MONTHLY_ACHIEVEMENT_SELECTIONS_STORAGE_KEY,
+  PRODUCTS_STORAGE_KEY,
+  INVENTORY_MOVEMENTS_STORAGE_KEY,
+  EVENT_SALES_STORAGE_KEY,
+  BOOTH_SALES_STORAGE_KEY,
 ] as const
 
 export interface StorageRestoreResult {
@@ -218,14 +223,15 @@ function isMonthlySelection(value: unknown): value is HootoDayBackupData['monthl
     isIsoDateTime(value.updatedAt)
 }
 
-function hasRequiredDataKeys(data: Record<string, unknown>): boolean {
+function hasRequiredDataKeys(data: Record<string, unknown>, includeInventory: boolean): boolean {
   return ['theme', 'events', 'dayMemos', 'healthProfile', 'weightRecords', 'sleepRecords', 'mealRecords', 'mealTemplates',
-    'exerciseSessions', 'conditionRecords', 'dailyAchievements', 'monthlyAchievementSelections']
+    'exerciseSessions', 'conditionRecords', 'dailyAchievements', 'monthlyAchievementSelections',
+    ...(includeInventory ? ['products','inventoryMovements','eventSalesRecords','boothSalesRecords'] : [])]
     .every((key) => Object.prototype.hasOwnProperty.call(data, key))
 }
 
-function validateData(value: unknown): value is HootoDayBackupData {
-  if (!isObject(value) || !hasRequiredDataKeys(value) || typeof value.theme !== 'string' || !isThemePreference(value.theme) ||
+function validateData(value: unknown, includeInventory = true): boolean {
+  if (!isObject(value) || !hasRequiredDataKeys(value, includeInventory) || typeof value.theme !== 'string' || !isThemePreference(value.theme) ||
     !Array.isArray(value.events) || !value.events.every(isCalendarEvent) || !hasUniqueValues(value.events, (item: CalendarEvent) => item.id) ||
     !Array.isArray(value.dayMemos) || !value.dayMemos.every(isDayMemo) || !hasUniqueValues(value.dayMemos, (item) => item.date) ||
     !(value.healthProfile === null || isHealthProfile(value.healthProfile)) ||
@@ -237,10 +243,31 @@ function validateData(value: unknown): value is HootoDayBackupData {
     !Array.isArray(value.conditionRecords) || !value.conditionRecords.every(isConditionRecord) || !hasUniqueValues(value.conditionRecords, (item) => item.date) ||
     !Array.isArray(value.dailyAchievements) || !value.dailyAchievements.every(isDailyAchievement) || !hasUniqueValues(value.dailyAchievements, (item) => item.date) ||
     !Array.isArray(value.monthlyAchievementSelections) || !value.monthlyAchievementSelections.every(isMonthlySelection) ||
-    !hasUniqueValues(value.monthlyAchievementSelections, (item) => item.month)) return false
+    !hasUniqueValues(value.monthlyAchievementSelections, (item) => item.month) ||
+    (includeInventory && (!Array.isArray(value.products) || !value.products.every(isProduct) || !hasUniqueValues(value.products, item=>item.id) || !Array.isArray(value.inventoryMovements) || !value.inventoryMovements.every(isMovement) || !hasUniqueValues(value.inventoryMovements,item=>item.id) || !Array.isArray(value.eventSalesRecords) || !value.eventSalesRecords.every(isEventSale) || !hasUniqueValues(value.eventSalesRecords,item=>item.id) || !Array.isArray(value.boothSalesRecords) || !value.boothSalesRecords.every(isBoothSale) || !hasUniqueValues(value.boothSalesRecords,item=>item.id)))) return false
 
   const achievementDates = new Set(value.dailyAchievements.map((item) => item.date))
   if (!value.monthlyAchievementSelections.every((selection) => achievementDates.has(selection.selectedDate))) return false
+  if (includeInventory) {
+    const eventIds = new Set(value.events.map((event) => event.id))
+    const products = value.products as HootoDayBackupData['products']
+    if (!products.every((product) => product.firstSaleEventId === null && 'firstSaleEventId' in product ||
+      typeof product.firstSaleEventId === 'string' && eventIds.has(product.firstSaleEventId))) return false
+    const productIds = new Set(products.map((product) => product.id))
+    const sales = value.eventSalesRecords as HootoDayBackupData['eventSalesRecords']
+    const movements = value.inventoryMovements as HootoDayBackupData['inventoryMovements']
+    if (!sales.every((record) => {
+      if (!eventIds.has(record.eventId) || !productIds.has(record.productId)) return false
+      const linked = movements.filter((movement) => movement.eventSalesRecordId === record.id)
+      if (record.status === 'planned') return linked.every((movement) => movement.type !== 'eventSale' && movement.type !== 'eventSample')
+      const saleMovements = linked.filter((movement) => movement.type === 'eventSale')
+      const sampleMovements = linked.filter((movement) => movement.type === 'eventSample')
+      if (saleMovements.length > 1 || sampleMovements.length > 1) return false
+      const saleQuantity = saleMovements.reduce((sum, movement) => sum + movement.quantity, 0)
+      const sampleQuantity = sampleMovements.reduce((sum, movement) => sum + movement.quantity, 0)
+      return saleQuantity === record.soldQuantity && sampleQuantity === record.sampleQuantity
+    })) return false
+  }
   const orders = value.mealTemplates.map((item) => item.sortOrder).sort((a, b) => a - b)
   return orders.every((order, index) => order === index)
 }
@@ -263,6 +290,10 @@ export function createHootoDayBackup(data: HootoDayBackupData, createdAt = new D
       conditionRecords: data.conditionRecords.map((item) => ({ ...item })),
       dailyAchievements: data.dailyAchievements.map((item) => ({ ...item })),
       monthlyAchievementSelections: data.monthlyAchievementSelections.map((item) => ({ ...item })),
+      products: data.products.map((item)=>({...item})),
+      inventoryMovements: data.inventoryMovements.map((item)=>({...item})),
+      eventSalesRecords: data.eventSalesRecords.map((item)=>({...item})),
+      boothSalesRecords: data.boothSalesRecords.map((item)=>({...item})),
     },
   }
 }
@@ -299,9 +330,15 @@ export function parseHootoDayBackup(content: string): BackupValidationResult {
     return { backup: null, error: 'JSONとして読み込めないバックアップです。' }
   }
   if (!isObject(parsed) || parsed.app !== 'HootoDay') return { backup: null, error: 'HootoDayのバックアップファイルではありません。' }
-  if (parsed.formatVersion !== HOOTODAY_BACKUP_FORMAT_VERSION) return { backup: null, error: 'このバックアップ形式には対応していません。' }
-  if (!isIsoDateTime(parsed.createdAt) || !validateData(parsed.data)) {
+  if (parsed.formatVersion !== 1 && parsed.formatVersion !== HOOTODAY_BACKUP_FORMAT_VERSION) return { backup: null, error: 'このバックアップ形式には対応していません。' }
+  if (!isIsoDateTime(parsed.createdAt) || !validateData(parsed.data, parsed.formatVersion === 2)) {
     return { backup: null, error: 'バックアップ内容が不正または不足しています。' }
+  }
+  if (parsed.formatVersion === 1 && isObject(parsed.data)) {
+    parsed = { ...parsed, formatVersion: 2, data: { ...parsed.data, products: [], inventoryMovements: [], eventSalesRecords: [], boothSalesRecords: [] } }
+  }
+  if (isObject(parsed) && isObject(parsed.data) && Array.isArray(parsed.data.eventSalesRecords)) {
+    parsed = { ...parsed, data: { ...parsed.data, eventSalesRecords: parsed.data.eventSalesRecords.map((record: unknown) => isObject(record) ? { ...record, status: record.status ?? 'completed' } : record) } }
   }
   return { backup: parsed as unknown as HootoDayBackup, error: null }
 }
@@ -321,6 +358,10 @@ export function getBackupSummary(backup: HootoDayBackup): BackupSummary {
     conditionRecords: backup.data.conditionRecords.length,
     dailyAchievements: backup.data.dailyAchievements.length,
     monthlyAchievementSelections: backup.data.monthlyAchievementSelections.length,
+    products: backup.data.products.length,
+    inventoryMovements: backup.data.inventoryMovements.length,
+    eventSalesRecords: backup.data.eventSalesRecords.length,
+    boothSalesRecords: backup.data.boothSalesRecords.length,
   }
 }
 
@@ -338,6 +379,10 @@ export function buildStorageValues(data: HootoDayBackupData): Record<(typeof BAC
     [CONDITION_RECORDS_STORAGE_KEY]: JSON.stringify({ version: CONDITION_RECORDS_STORAGE_VERSION, records: data.conditionRecords }),
     [DAILY_ACHIEVEMENTS_STORAGE_KEY]: JSON.stringify({ version: ACHIEVEMENT_STORAGE_VERSION, records: data.dailyAchievements }),
     [MONTHLY_ACHIEVEMENT_SELECTIONS_STORAGE_KEY]: JSON.stringify({ version: ACHIEVEMENT_STORAGE_VERSION, records: data.monthlyAchievementSelections }),
+    [PRODUCTS_STORAGE_KEY]: JSON.stringify({ version: INVENTORY_STORAGE_VERSION, records: data.products }),
+    [INVENTORY_MOVEMENTS_STORAGE_KEY]: JSON.stringify({ version: INVENTORY_STORAGE_VERSION, records: data.inventoryMovements }),
+    [EVENT_SALES_STORAGE_KEY]: JSON.stringify({ version: INVENTORY_STORAGE_VERSION, records: data.eventSalesRecords }),
+    [BOOTH_SALES_STORAGE_KEY]: JSON.stringify({ version: INVENTORY_STORAGE_VERSION, records: data.boothSalesRecords }),
   }
 }
 

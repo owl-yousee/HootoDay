@@ -11,6 +11,7 @@ import type {
   WeightRecord,
 } from './health'
 import type { ThemePreference } from './theme'
+import type { BoothSalesRecord, EventSalesRecord, InventoryMovement, Product } from './inventory'
 
 export interface HootoDayBackupData {
   theme: ThemePreference
@@ -25,11 +26,15 @@ export interface HootoDayBackupData {
   conditionRecords: DailyConditionRecord[]
   dailyAchievements: DailyAchievement[]
   monthlyAchievementSelections: MonthlyAchievementSelection[]
+  products: Product[]
+  inventoryMovements: InventoryMovement[]
+  eventSalesRecords: EventSalesRecord[]
+  boothSalesRecords: BoothSalesRecord[]
 }
 
 export interface HootoDayBackup {
   app: 'HootoDay'
-  formatVersion: 1
+  formatVersion: 1 | 2
   createdAt: string
   data: HootoDayBackupData
 }
@@ -48,6 +53,10 @@ export interface BackupSummary {
   conditionRecords: number
   dailyAchievements: number
   monthlyAchievementSelections: number
+  products: number
+  inventoryMovements: number
+  eventSalesRecords: number
+  boothSalesRecords: number
 }
 
 export interface BackupValidationResult {

@@ -3,16 +3,18 @@ import { DownloadSimpleIcon } from '@phosphor-icons/react/DownloadSimple'
 import { GearIcon } from '@phosphor-icons/react/Gear'
 import { HeartbeatIcon } from '@phosphor-icons/react/Heartbeat'
 import { NotebookIcon } from '@phosphor-icons/react/Notebook'
+import { PackageIcon } from '@phosphor-icons/react/Package'
 
 const navigationItems = [
   { id: 'calendar', label: 'カレンダー', icon: CalendarDotsIcon },
   { id: 'health', label: '健康記録', icon: HeartbeatIcon },
   { id: 'records', label: '記録を見る', icon: NotebookIcon },
+  { id: 'inventory', label: '販売・在庫', icon: PackageIcon },
   { id: 'backup', label: '出力・バックアップ', icon: DownloadSimpleIcon },
   { id: 'settings', label: '設定', icon: GearIcon },
 ]
 
-export type AppView = 'calendar' | 'health' | 'records' | 'export'
+export type AppView = 'calendar' | 'health' | 'records' | 'inventory' | 'export'
 
 interface SidebarProps {
   activeView: AppView
@@ -26,7 +28,7 @@ export function Sidebar({ activeView, isSettingsOpen, onViewChange, onSettingsCl
     <nav className={className} aria-label={ariaLabel}>
         {navigationItems.map((item) => {
           const Icon = item.icon
-          const isViewItem = item.id === 'calendar' || item.id === 'health' || item.id === 'records' || item.id === 'backup'
+          const isViewItem = item.id === 'calendar' || item.id === 'health' || item.id === 'records' || item.id === 'inventory' || item.id === 'backup'
           const view = item.id === 'backup' ? 'export' : item.id
           const isActive = isViewItem && view === activeView
 

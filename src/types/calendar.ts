@@ -10,6 +10,7 @@ export type EventCategory =
   | 'おでかけ'
   | '映'
   | 'その他'
+  | '即売会'
 
 export interface CalendarEvent {
   id: string

@@ -9,6 +9,7 @@ import { MusicNotesIcon } from '@phosphor-icons/react/MusicNotes'
 import { ParkIcon } from '@phosphor-icons/react/Park'
 import { PersonSimpleTaiChiIcon } from '@phosphor-icons/react/PersonSimpleTaiChi'
 import { ToothIcon } from '@phosphor-icons/react/Tooth'
+import { StorefrontIcon } from '@phosphor-icons/react/Storefront'
 import type { EventCategory } from '../types/calendar'
 
 interface EventCategoryDisplay {
@@ -30,6 +31,7 @@ export const eventCategoryDisplay = {
   おでかけ: { name: 'おでかけ', shortName: '外出', color: '#d79b3d', icon: ParkIcon },
   映: { name: '映', shortName: '映', color: '#5f7b71', icon: GhostIcon },
   その他: { name: 'その他', shortName: '他', color: '#7b817c', icon: CactusIcon },
+  即売会: { name: '即売会', shortName: '即売', color: '#c96f36', icon: StorefrontIcon },
 } satisfies Record<EventCategory, EventCategoryDisplay>
 
 export const eventCategories = Object.keys(eventCategoryDisplay) as EventCategory[]
