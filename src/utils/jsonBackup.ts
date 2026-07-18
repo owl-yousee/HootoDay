@@ -311,6 +311,10 @@ export function buildBackupFilename(date = new Date(), beforeRestore = false): s
   return `HootoDay_${beforeRestore ? 'before_restore' : 'backup'}_${localTimestamp(date)}.json`
 }
 
+export function buildFullResetBackupFilename(date = new Date()): string {
+  return `HootoDay_before_full_reset_${localTimestamp(date)}.json`
+}
+
 export function downloadBackupJson(content: string, filename: string): void {
   const url = URL.createObjectURL(new Blob([content], { type: 'application/json;charset=utf-8' }))
   const link = document.createElement('a')

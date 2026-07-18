@@ -1028,7 +1028,8 @@
 .export-preview,
 .json-backup-area,
 .json-backup-card,
-.json-restore-card {
+.json-restore-card,
+.full-reset-section {
   width: 100%;
   max-width: 100%;
   min-width: 0;
@@ -1054,7 +1055,8 @@
 .export-settings-card,
 .export-preview-card,
 .json-backup-card,
-.json-restore-card {
+.json-restore-card,
+.full-reset-section {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-large);
   background: var(--color-surface);
@@ -1064,7 +1066,8 @@
 .export-settings-card,
 .export-preview-card,
 .json-backup-card,
-.json-restore-card {
+.json-restore-card,
+.full-reset-section {
   padding: clamp(16px, 2vw, 24px);
 }
 
@@ -1291,14 +1294,16 @@
 }
 
 .json-backup-card h2,
-.json-restore-card h2 {
+.json-restore-card h2,
+.full-reset-section h2 {
   margin: 0;
   color: var(--color-text);
   font-size: clamp(1.05rem, 1.3vw, 1.24rem);
 }
 
 .json-backup-card > p:not(.health-card-kicker),
-.json-restore-card > p:not(.health-card-kicker) {
+.json-restore-card > p:not(.health-card-kicker),
+.full-reset-section > p:not(.health-card-kicker) {
   margin: 0;
   color: var(--color-text-muted);
   font-size: 0.8rem;
@@ -1442,6 +1447,30 @@
   font-weight: 700;
 }
 
+.full-reset-section {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+}
+
+.full-reset-section .export-section-heading {
+  margin-bottom: 0;
+}
+
+.full-reset-section > .backup-danger-button {
+  width: fit-content;
+  max-width: 100%;
+}
+
+.full-reset-section-warning,
+.full-reset-warning {
+  padding: 11px 12px;
+  border: 1px solid color-mix(in srgb, var(--color-danger) 28%, var(--color-border));
+  border-radius: 11px;
+  color: var(--color-text) !important;
+  background: var(--color-danger-soft);
+}
+
 .backup-danger-button {
   min-height: 42px;
   padding: 8px 14px;
@@ -1482,6 +1511,121 @@
   color: var(--color-text);
   background: var(--color-surface);
   box-shadow: var(--shadow-soft);
+}
+
+.full-reset-dialog {
+  width: min(680px, calc(100vw - 28px));
+  max-width: calc(100vw - 28px);
+  max-height: calc(100vh - 28px);
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-large);
+  color: var(--color-text);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-soft);
+}
+
+.full-reset-dialog::backdrop {
+  background: var(--color-dialog-backdrop);
+}
+
+.full-reset-dialog-panel {
+  max-height: calc(100vh - 28px);
+  padding: clamp(18px, 3vw, 28px);
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+.full-reset-dialog-panel h2 {
+  margin: 0 0 14px;
+  color: var(--color-text);
+  font-size: clamp(1.12rem, 2vw, 1.4rem);
+}
+
+.full-reset-summary {
+  margin: 14px 0 8px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.full-reset-summary div {
+  min-width: 0;
+  padding: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border-radius: 9px;
+  background: var(--color-surface-soft);
+}
+
+.full-reset-summary span {
+  min-width: 0;
+  color: var(--color-text-muted);
+  font-size: 0.7rem;
+  overflow-wrap: anywhere;
+}
+
+.full-reset-summary strong {
+  flex: 0 0 auto;
+  color: var(--color-text);
+  font-size: 0.78rem;
+}
+
+.full-reset-total {
+  margin: 0 0 14px;
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  text-align: right;
+}
+
+.full-reset-total strong {
+  color: var(--color-text);
+}
+
+.full-reset-confirm-field {
+  min-width: 0;
+  display: grid;
+  gap: 7px;
+  color: var(--color-text);
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.full-reset-confirm-field input {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  padding: 8px 10px;
+  box-sizing: border-box;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  color: var(--color-text);
+  background: var(--color-surface-soft);
+  font: inherit;
+}
+
+.full-reset-empty {
+  margin: 10px 0 0;
+  color: var(--color-text-muted);
+  font-size: 0.76rem;
+}
+
+.full-reset-actions {
+  margin-top: 18px;
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.full-reset-confirm-field input:focus-visible,
+.full-reset-actions button:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--color-focus) 38%, transparent);
+  outline-offset: 2px;
 }
 
 .restore-confirm-dialog::backdrop {
@@ -1555,12 +1699,15 @@
   }
 
   .json-backup-card,
-  .json-restore-card {
+  .json-restore-card,
+  .full-reset-section {
     padding: 15px;
   }
 
   .json-backup-card .health-primary-button,
   .json-restore-card > .backup-danger-button,
+  .full-reset-section > .backup-danger-button,
+  .full-reset-actions button,
   .restore-confirm-actions button {
     width: 100%;
   }
@@ -1590,6 +1737,26 @@
   .restore-confirm-panel {
     max-height: calc(100vh - 16px);
     padding: 16px;
+  }
+
+  .full-reset-dialog {
+    width: calc(100vw - 16px);
+    max-width: calc(100vw - 16px);
+    max-height: calc(100vh - 16px);
+  }
+
+  .full-reset-dialog-panel {
+    max-height: calc(100vh - 16px);
+    padding: 16px;
+  }
+
+  .full-reset-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .full-reset-actions {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .export-actions button {

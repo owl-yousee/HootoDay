@@ -222,6 +222,28 @@ function App() {
     inventory.replaceBoothSalesRecords(data.boothSalesRecords)
   }
 
+  const resetAllDataState = () => {
+    replaceEvents([])
+    replaceDayMemos([])
+    replaceHealthProfile(null)
+    replaceWeightRecords([])
+    replaceSleepRecords([])
+    replaceMealRecords([])
+    replaceMealTemplates([])
+    replaceExerciseSessions([])
+    replaceConditionRecords([])
+    replaceDailyAchievements([])
+    replaceMonthlyAchievementSelections([])
+    inventory.replaceProducts([])
+    inventory.replaceInventoryMovements([])
+    inventory.replaceEventSalesRecords([])
+    inventory.replaceBoothSalesRecords([])
+    setInventoryEventId(null)
+    const today = new Date()
+    setSelectedDate(today)
+    setDisplayMonth(new Date(today.getFullYear(), today.getMonth(), 1))
+  }
+
   return (
     <div className="app-shell">
       <div className="app-body">
@@ -311,6 +333,7 @@ function App() {
                 boothSalesRecords: inventory.boothSalesRecords,
               }}
               onRestoreBackup={restoreBackupData}
+              onFullDataReset={resetAllDataState}
             />
           )}
         </main>

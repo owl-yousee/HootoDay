@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { JsonBackupPanel } from './JsonBackupPanel'
+import { FullDataResetSection } from './FullDataResetSection'
 import type { HootoDayBackupData } from '../types/backup'
 import type { HealthExportData, HealthExportFormat, HealthExportPeriod } from '../types/export'
 import { formatDateKeyJa, toDateKey } from '../utils/date'
@@ -18,6 +19,7 @@ interface HealthExportPageProps {
   data: HealthExportData
   backupData: HootoDayBackupData
   onRestoreBackup: (data: HootoDayBackupData) => void
+  onFullDataReset: () => void
 }
 
 const formatOptions: Array<{ value: HealthExportFormat; label: string }> = [
@@ -33,7 +35,7 @@ const periodOptions: Array<{ value: HealthExportPeriod; label: string }> = [
   { value: 'custom', label: '期間指定' },
 ]
 
-export function HealthExportPage({ initialDate, data, backupData, onRestoreBackup }: HealthExportPageProps) {
+export function HealthExportPage({ initialDate, data, backupData, onRestoreBackup, onFullDataReset }: HealthExportPageProps) {
   const [format, setFormat] = useState<HealthExportFormat>('markdown')
   const [period, setPeriod] = useState<HealthExportPeriod>('day')
   const [baseDate, setBaseDate] = useState(initialDate)
@@ -191,6 +193,7 @@ export function HealthExportPage({ initialDate, data, backupData, onRestoreBacku
       </div>
 
       <JsonBackupPanel data={backupData} onRestore={onRestoreBackup} />
+      <FullDataResetSection data={backupData} onResetState={onFullDataReset} />
     </div>
   )
 }
