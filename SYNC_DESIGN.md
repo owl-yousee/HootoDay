@@ -450,3 +450,22 @@ HootoPost・HootoSongですでに安全な`app_workspaces`、`app_workspace_memb
 - [ ] iPhone側に同期前データがあるか確認した
 - [ ] RLSの他workspace拒否テストを準備した
 - [ ] service roleをフロントエンドで使用しないことを確認した
+
+## 18. 既存基盤調査後の決定
+
+hooto-platformの既存構造を確認した結果、当初の共通同期設計を次の具体構成で実装する。
+
+- `app_workspaces`、`app_workspace_members`、`app_pairing_codes`と既存workspace/pairing RPCは、署名と挙動を変更せず接続基盤として流用する。
+- 既存RPCはauthenticated限定、SECURITY DEFINER、search_path固定、`auth.uid()`検証ありと確認した。
+- `app_workspace_state`は全体JSON単位の競合と既存key衝突の危険があるため、HootoDay同期本体には使用しない。
+- 一般同期データは新規`hooto_day_sync_records`へ保存し、初期は`entity_type = day_memo`だけを許可する。
+- DayMemoは`entity_id = YYYY-MM-DD`とし、revision、base revision、tombstone、operation idによるレコード単位同期を行う。
+- 同期レコードのSELECTはworkspace member限定とし、INSERT・UPDATE・削除はclientの直接操作ではなく専用RPC経由とする。
+- `current_hooto_sync_key_hash()`はHootoPost系の旧方式候補であり、HootoDayでは使用せず変更しない。
+- pairing codeはパイロットでは既存形式を維持し、`used_by`監査、app識別、試行制限、入力しやすいcode形式は後方互換なv2 RPCで後日改善する。
+- `app_devices`はDayMemoパイロットの必須要素とせず後回しにする。
+- app識別子が既存workspaceにないため、パイロットではHootoDay専用workspaceを新規作成して既存HootoSong workspaceを再利用しない。正式には追加metadataとv2 RPCによるapp key検証を候補とする。
+- 在庫・販売は`hooto_day_sync_records`へ入れず、後続Phaseで専用トランザクションを設計する。
+- 次のSQL Phaseでは既存オブジェクトを変更せず、新規HootoDay専用テーブル・RPC・policyとrollback SQLだけを作成する。
+
+詳細な比較、リスク、停止条件は`SUPABASE_REUSE_DECISION.md`を正式判断書とする。

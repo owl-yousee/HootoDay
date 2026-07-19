@@ -1681,3 +1681,52 @@
 - JSONバックアップformatVersion 2と旧formatVersion 1復元互換は変更しない
 - 次工程は既存hooto-platformのテーブル・RPC・RLS確認と、非破壊のSQL設計
 - commitはユーザー確認後に行う
+
+### Supabase Structure Inspection Phase（確認SQL作成済み・Supabase実行待ち）
+
+- `SUPABASE_STRUCTURE_INSPECTION.sql`を作成
+- Supabase SQL Editorで実行する読み取り専用の構造確認SQLとし、既存オブジェクトや実データを変更しない
+- hooto-platform内の既存workspace・member・pairing・device・同期テーブルの存在を確認する
+- 関連テーブルのカラム、主キー・外部キー・UNIQUE・CHECK制約、indexを確認する
+- RLS有効状態とpolicy定義を確認する
+- 関連RPC・関数一覧、security definer、関数定義、search_path等を実行せずに確認する
+- ユーザー定義trigger、テーブルGRANT、関数実行GRANT、関連extensionを確認する
+- workspace UUID、user UUID、メール、pairing code hash、payload、本文などの実データを取得しない
+- Supabaseテーブル、RPC、RLS、policy、extensionへの変更は行っていない
+- SQL実行結果を確認後、HootoPost・HootoSongの共通同期基盤を流用できるか判断する
+- 次はユーザーがhooto-platformのSQL Editorで確認SQLを実行する
+- commitはSQL実行結果確認後に行う
+- 長い確認SQLは正常に実行できたが、SQL EditorのCSVでは最後の結果セットだけが取得された
+- 最後のextension確認で`pgcrypto 1.3`と`uuid-ossp 1.1`を確認
+- 確認を1結果セットごとのセクション分割方式へ切り替え、最初に関連publicテーブルの存在だけを確認する`SUPABASE_INSPECT_TABLES.sql`を作成
+- 現在の状態は「関連テーブル確認SQL作成済み・実行待ち」
+- 関連テーブル確認で`app_workspaces`、`app_workspace_members`、`app_pairing_codes`、`app_workspace_state`、`posts`の存在を確認
+- 候補の`app_devices`と`hooto_day_sync_records`は未作成と確認
+- 次は既存同期基盤4テーブルのカラム構造を確認する`SUPABASE_INSPECT_COLUMNS.sql`を実行する
+- 現在の状態は「カラム確認SQL作成済み・実行待ち」
+- `app_workspaces`、`app_workspace_members`、`app_pairing_codes`、`app_workspace_state`のカラム確認を完了し、既存共通基盤を流用できる可能性を確認
+- 次は既存4テーブルの制約・index・RLS有効状態・policyを個別の1結果セットで確認する
+- `SUPABASE_INSPECT_CONSTRAINTS.sql`、`SUPABASE_INSPECT_INDEXES.sql`、`SUPABASE_INSPECT_RLS.sql`、`SUPABASE_INSPECT_POLICIES.sql`を作成
+- 現在の状態は「制約・index・RLS・policy確認SQL作成済み・実行待ち」
+- 既存4テーブルの制約とindexの確認を完了
+- `app_workspaces`、`app_workspace_members`、`app_pairing_codes`、`app_workspace_state`の4テーブルすべてでRLS有効を確認
+- policyはauthenticated限定で、`app_workspace_state`はworkspace memberだけがSELECT・INSERT・UPDATE可能
+- DELETE policyはなく、`app_pairing_codes`にも直接policyがないため、RPC経由で運用している可能性が高い
+- 次はworkspace作成・member追加・pairing・state更新に関係する関数一覧、定義、EXECUTE権限を確認する
+- `SUPABASE_INSPECT_FUNCTIONS.sql`、`SUPABASE_INSPECT_FUNCTION_DEFINITIONS.sql`、`SUPABASE_INSPECT_FUNCTION_GRANTS.sql`を作成
+- 現在の状態は「関数確認SQL作成済み・実行待ち」
+
+### Supabase Reuse Decision Phase（流用方針決定・SQL実装未着手）
+
+- 既存`app_workspaces`、`app_workspace_members`、`app_pairing_codes`、`app_workspace_state`の構造、制約、index、RLS、policyを確認
+- workspace作成、owner/member判定、pairing code発行・利用RPCを確認し、主要RPCがauthenticated限定EXECUTE、SECURITY DEFINER、search_path固定、`auth.uid()`検証ありと確認
+- HootoSongの同期基盤が作りかけである可能性を考慮し、既存共通テーブル・RPC・policyを置換または破壊しない方針を確定
+- 既存workspace/member/pairing基盤を変更せず流用し、HootoDay同期本体だけを専用構造として追加するB案を採用
+- `app_workspace_state`は全体JSON競合とkey衝突を避けるため、HootoDay同期本体には使用しない
+- 一般同期データは新規`hooto_day_sync_records`へ保存し、最初はDayMemoだけを対象にする方針
+- 既存pairing RPCはパイロットでは変更せず、`used_by`監査やapp識別等は後方互換なv2 RPC候補として後回し
+- `current_hooto_sync_key_hash()`はHootoDayで使用せず、既存定義・権限を変更しない
+- DayMemoは専用テーブル、revision付き更新RPC、tombstone、初回空端末保護、手動同期で開始する
+- 次は新規HootoDay専用テーブル・RPC・policyの適用SQL、rollback SQL、検証SQLを作成する
+- Supabaseへの変更やSQL実行はまだ行っていない
+- commitはユーザー確認後に行う
