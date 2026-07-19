@@ -2110,3 +2110,22 @@ cleanup後VERIFY結果：
 - UIには分類件数、候補日、base revision、baseline change sequenceだけを表示する。previewは明示破棄またはページ再読み込みで失われ、自動判定・自動再試行・operation ID生成・pending operation作成は行わない。
 - `hootoDay.dayMemoSync`、baseline、cursor、pushBlock、local DayMemo、反映前バックアップ、JSONバックアップ形式は変更しない。通常upsert、local-only upload、delete、競合解決は未実装である。
 - package、SQL、RLS、policy、RPC定義は変更していない。PC/iPhone実機確認、Supabase実操作、stage・commit・pushは未実施である。
+
+## 2026-07-20 PC親機baseline mismatchの調査と復旧方針
+
+- PC親機では、confirmed後に既存DayMemoを編集し、本文を元へ戻して保存したことでlocal `updatedAt`だけがremote payloadと異なる状態になった。その後のbaseline再確認はcontentとupdatedAtの両方一致を要求するため、内容相違1件として`mismatch`になった。
+- 現行実装はmismatch保存時に`baselines`を空へ置換し、`baselineConfirmedAt`をnullにする。`lastPulledChangeSequence`は確認開始前の値を維持し、初回upload履歴、workspace binding、migration情報、pending operation、pushBlock、最終成功時刻は変更しない。local／remote DayMemoも自動変更しない。
+- B-3e2の更新候補previewは`baselineStatus = confirmed`を必須とするため、PCのmismatch状態では利用できない。既存のbaseline再確認を繰り返してもupdatedAt差分が残る限りmismatchとなり、confirmedへ戻す専用操作は現在存在しない。
+- PCの現在状態は、full pullで全日付のcontent一致を再確認するまでは「差異確認待ち」とする。完全取得後にcontentが全件一致し、差異がupdatedAtだけと確認できた場合は、通常編集candidateやremote conflictではなく「content同一・端末timestamp差異のbaseline rebase候補」と分類する。
+- content同一のままremoteへupsertすると、本文の実質変更がないのにrevisionとchange sequenceを増やすため推奨しない。remote payloadでlocalを上書きする案も、ユーザーの端末データを不必要に変更するため採用しない。厳格なfull pull比較後にPCのmetadataだけを明示rebaseする方針を採用する。
+- rebase条件は、対象metadataがversion 2・同一workspace・mismatch、pending operationなし、pushBlockなし、localStorageとReact state一致、full pull完全取得、remote/local日付集合一致、content全件一致、tombstone・remote-only・local-only・content相違がすべて0件であること。updatedAt相違だけを許可し、自動実行・自動再試行しない。
+- rebase時はremoteからrevision、change sequence、payload updatedAtを採用し、`baselineLocalUpdatedAt`だけ現在local updatedAtを採用する。最大change sequenceをcursorへ保存し、status・確認日時・最終成功時刻を更新する。完成metadataのvalidator、compare-and-write、read-back成功後だけconfirmedとし、失敗時は元のmismatch metadataへrollbackする。
+- rebaseはSupabaseへ書き込まず、local DayMemo、remote payload、remote revision、初回upload履歴、workspace、pushBlock、iPhone metadataを変更しない。iPhoneの実編集1件はlocalに残っているため、将来B-3e3前に更新候補previewを再作成して扱う。
+- 安全性を分離するため、次はB-3e2.5としてbaseline rebaseだけを実装し、その実機確認後にB-3e3の既存remote 1件明示upsertへ進む。本当のcontent相違はrebaseせず、差異previewとユーザー判断を扱う後続Phaseへ送る。
+- 今回は調査と文書更新だけで、コード、localStorage、DayMemo、Supabase、SQLを変更していない。stage・commit・pushも未実施である。
+- Phase B-3e2.5として、`baselineStatus = mismatch` の端末だけを対象にした明示操作のmetadata-only baseline rebaseを実装した。
+- cursor 0から既存の共通full pullを完了させ、全日付の本文が一致し、updatedAt差異だけが1件以上ある場合に限って再確立を許可する。本文相違、local-only、remote-only、tombstone、不正または不完全な取得では停止する。
+- 確定時に更新するのは `hootoDay.dayMemoSync` version 2のbaselines、cursor、baseline状態と成功日時だけで、Supabaseへのupsert／delete、ローカルDayMemo変更、operation ID／pending operation作成、pushBlock解除は行わない。
+- metadataは既存validatorを通し、書き込み後のread-back成功時だけconfirmedとする。失敗時は既存の検証付き置換処理で元のmismatch metadataへrollbackする。
+- previewの本文・remote結果・local snapshotはReactメモリ内だけに保持し、破棄またはページ再読み込みで復元しない。UIには日付、分類、件数だけを表示する。
+- PC実機確認は未実施。SQL、package、JSONバックアップ形式の変更、commit／pushは行っていない。

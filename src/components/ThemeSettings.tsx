@@ -6,6 +6,7 @@ import { useEffect, useRef, type MouseEvent, type SyntheticEvent } from 'react'
 import type { SupabaseAuthState, SupabaseConfigurationState } from '../hooks/useSupabaseAuth'
 import type { useDayMemoInitialUpload } from '../hooks/useDayMemoInitialUpload'
 import type { useDayMemoPullPreview } from '../hooks/useDayMemoPullPreview'
+import type { useDayMemoBaselineRebase } from '../hooks/useDayMemoBaselineRebase'
 import type { useDayMemoSyncBaseline } from '../hooks/useDayMemoSyncBaseline'
 import type { useDayMemoUpdatePreview } from '../hooks/useDayMemoUpdatePreview'
 import { useSupabasePairing, useSupabasePairingJoin } from '../hooks/useSupabasePairing'
@@ -41,6 +42,7 @@ interface ThemeSettingsProps {
   dayMemoInitialUpload: ReturnType<typeof useDayMemoInitialUpload>
   dayMemoPullPreview: ReturnType<typeof useDayMemoPullPreview>
   dayMemoSyncBaseline: ReturnType<typeof useDayMemoSyncBaseline>
+  dayMemoBaselineRebase: ReturnType<typeof useDayMemoBaselineRebase>
   dayMemoUpdatePreview: ReturnType<typeof useDayMemoUpdatePreview>
   onClose: () => void
 }
@@ -164,6 +166,7 @@ export function ThemeSettings({
   dayMemoInitialUpload,
   dayMemoPullPreview,
   dayMemoSyncBaseline,
+  dayMemoBaselineRebase,
   dayMemoUpdatePreview,
   onClose,
 }: ThemeSettingsProps) {
@@ -352,6 +355,71 @@ export function ThemeSettings({
                       ) : null}
                       {dayMemoSyncBaseline.safeErrorMessage ? <p className="cloud-pairing-error" role="alert">{dayMemoSyncBaseline.safeErrorMessage}</p> : null}
                       <p className="cloud-sync-note">自動同期・自動再試行・upsert・deleteは行いません。</p>
+                    </div>
+                  ) : null}
+                  {dayMemoBaselineRebase.eligible ? (
+                    <div className="cloud-day-memo-rebase-panel">
+                      <h4>baseline差異の安全確認</h4>
+                      <p>本文がすべて一致し、更新日時だけが異なる場合に限り、この端末の同期metadataだけを再確立します。自動では実行しません。</p>
+                      {dayMemoBaselineRebase.state === 'idle' ? (
+                        <button type="button" className="health-secondary-button cloud-sync-button" onClick={() => { void dayMemoBaselineRebase.checkBaselineDifference() }}>
+                          baseline差異を確認
+                        </button>
+                      ) : null}
+                      {dayMemoBaselineRebase.state === 'checking' ? (
+                        <button type="button" className="health-secondary-button cloud-sync-button" disabled>同期先を確認中…</button>
+                      ) : null}
+                      {dayMemoBaselineRebase.summary ? (
+                        <>
+                          <ul className="cloud-day-memo-preview-summary">
+                            <li>同期先：{dayMemoBaselineRebase.summary.remoteCount}件</li>
+                            <li>この端末：{dayMemoBaselineRebase.summary.localCount}件</li>
+                            <li>本文・更新日時一致：{dayMemoBaselineRebase.summary.contentAndUpdatedAtMatchCount}件</li>
+                            <li>本文一致・更新日時相違：{dayMemoBaselineRebase.summary.contentMatchUpdatedAtDiffCount}件</li>
+                            <li>本文相違：{dayMemoBaselineRebase.summary.contentDiffCount}件</li>
+                            <li>同期先のみ：{dayMemoBaselineRebase.summary.remoteOnlyCount}件</li>
+                            <li>この端末のみ：{dayMemoBaselineRebase.summary.localOnlyCount}件</li>
+                            <li>削除済み：{dayMemoBaselineRebase.summary.tombstoneCount}件</li>
+                          </ul>
+                          {dayMemoBaselineRebase.items.length > 0 ? (
+                            <ul className="cloud-day-memo-preview-items">
+                              {dayMemoBaselineRebase.items.map((item) => (
+                                <li key={`${item.date}-${item.classification}`}>
+                                  <strong>{item.date}</strong>
+                                  <span>{item.classification === 'content_and_updated_at_match' ? '本文・更新日時一致'
+                                    : item.classification === 'content_match_updated_at_diff' ? '本文一致・更新日時相違'
+                                      : item.classification === 'content_diff' ? '本文相違'
+                                        : item.classification === 'remote_only' ? '同期先のみ'
+                                          : item.classification === 'local_only' ? 'この端末のみ'
+                                            : item.classification === 'tombstone' ? '削除済み'
+                                              : '確認不能'}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          ) : null}
+                        </>
+                      ) : null}
+                      {dayMemoBaselineRebase.state === 'rebase_ready' ? (
+                        <div className="cloud-day-memo-apply-confirmation">
+                          <strong>本文はすべて一致しています</strong>
+                          <p>更新日時の差だけを吸収し、baseline metadataを再確立できます。SupabaseとローカルDayMemo本文は変更しません。</p>
+                          <button type="button" className="health-primary-button cloud-sync-button" onClick={dayMemoBaselineRebase.confirmRebase}>
+                            baselineを再確立
+                          </button>
+                        </div>
+                      ) : null}
+                      {dayMemoBaselineRebase.state === 'saving' ? <p>baseline metadataを安全に保存しています…</p> : null}
+                      {dayMemoBaselineRebase.state === 'preview_ready' ? <p className="cloud-sync-note">本文と更新日時はすでに一致しています。metadata-only rebaseは不要です。</p> : null}
+                      {dayMemoBaselineRebase.state === 'completed' ? (
+                        <p className="cloud-day-memo-success" role="status">baseline metadataを再確立しました。SupabaseとローカルDayMemoは変更していません。</p>
+                      ) : null}
+                      {dayMemoBaselineRebase.safeErrorMessage ? <p className="cloud-pairing-error" role="alert">{dayMemoBaselineRebase.safeErrorMessage}</p> : null}
+                      {dayMemoBaselineRebase.hasFreshPreview || dayMemoBaselineRebase.summary ? (
+                        <button type="button" className="health-secondary-button cloud-sync-button" onClick={dayMemoBaselineRebase.clearPreview} disabled={dayMemoBaselineRebase.state === 'saving'}>
+                          確認結果を破棄
+                        </button>
+                      ) : null}
+                      <p className="cloud-sync-note">full pullは明示操作時だけ行います。upsert・delete・自動再試行・pushBlock解除は行いません。</p>
                     </div>
                   ) : null}
                   {dayMemoUpdatePreview.eligible ? (
