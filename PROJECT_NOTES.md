@@ -1910,3 +1910,14 @@ cleanup後VERIFY結果：
 - UI、匿名認証、workspace、pairing、DayMemo同期、既存localStorage、JSONバックアップは未変更・未実装
 - Supabase実環境への接続確認は未実施
 - 次のPhaseは、設定画面の接続状態表示と明示的な匿名認証
+
+### Supabase App Integration Phase A-2（認証UI実装済み・実環境確認待ち）
+
+- 設定画面へSupabase設定状態と匿名認証状態を表示
+- 有効なclient設定がある場合だけ、起動時に保存済みAuth sessionの確認と認証状態購読を行う
+- `signInAnonymously`は設定画面のボタンをユーザーが押した場合だけ実行し、連打・自動再試行を防止
+- 認証済み表示は匿名Auth sessionの取得だけを意味し、workspace・pairing・データ同期は未開始
+- token、refresh token、user IDは表示せず、HootoDay独自stateやlocalStorageへ保存しない
+- workspace、pairing、DayMemoのpull・upsert・delete RPCは未実装
+- 環境変数未設定時は未設定表示となり、Auth APIを呼ばない
+- 次は実環境変数をローカルへ設定して匿名認証を実機確認し、その後workspace・pairing Phase Bへ進む

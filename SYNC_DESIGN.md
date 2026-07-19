@@ -547,3 +547,13 @@ pairing参加時、`consume_app_pairing_code`のDB処理は成功したが、テ
 - 認証情報の独自保存、同期metadata、既存localStorage、JSONバックアップ、UI、DayMemo処理は変更していない。
 - Supabase実環境への接続確認は未実施である。
 - 次のPhaseは設定画面の接続状態表示と、ユーザー操作による明示的な匿名認証とする。DayMemoのpull・upsert・deleteはまだ実装しない。
+
+### 19.5 アプリ統合 Phase A-2：接続状態表示と明示的な匿名認証
+
+- 設定画面へclient設定状態と匿名Auth session状態を表示する。URL、publishable key、user ID、tokenは表示しない。
+- client設定済みの場合だけ、起動時に`auth.getSession()`で保存済みsessionを確認し、`onAuthStateChange`を購読する。新規匿名認証は自動実行しない。
+- `signInAnonymously()`はユーザーが設定画面のボタンを押した場合だけ1回実行し、処理中の多重実行と自動再試行を防ぐ。
+- 認証エラーは秘密値や原文を含まない一般メッセージへ変換し、既存HootoDayの起動・表示を止めない。
+- 認証済みは匿名Auth sessionを取得できた状態だけを意味する。workspace作成、pairing、DayMemo同期、同期metadataは未実装である。
+- Supabase Auth標準のsession保存へ任せ、JWT・refresh tokenをHootoDay独自stateやlocalStorageへ複製しない。
+- 次はローカル実環境変数による匿名認証の実機確認を行い、その後workspace・pairing Phase Bへ進む。

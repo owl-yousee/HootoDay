@@ -29,6 +29,7 @@ import { useMealRecords } from './hooks/useMealRecords'
 import { useMealTemplates } from './hooks/useMealTemplates'
 import { useMonthlyAchievementSelections } from './hooks/useMonthlyAchievementSelections'
 import { useSleepRecords } from './hooks/useSleepRecords'
+import { useSupabaseAuth } from './hooks/useSupabaseAuth'
 import { useTheme } from './hooks/useTheme'
 import { useWeightRecords } from './hooks/useWeightRecords'
 import { useInventory } from './hooks/useInventory'
@@ -72,6 +73,7 @@ function App() {
     replaceMonthlyAchievementSelections,
   } = useMonthlyAchievementSelections()
   const { preference, appliedTheme, setPreference, replaceThemePreference } = useTheme()
+  const supabaseAuth = useSupabaseAuth()
   const { weightRecords, saveWeightRecord, deleteWeightRecord, replaceWeightRecords } = useWeightRecords()
   const { healthProfile, saveHealthProfile, deleteHealthProfile, replaceHealthProfile } = useHealthProfile()
   const { sleepRecords, saveSleepRecord, deleteSleepRecord, replaceSleepRecords } = useSleepRecords()
@@ -389,6 +391,7 @@ function App() {
           profile={healthProfile}
           onOpenProfile={openHealthProfileFromSettings}
           onOpenDataManagement={openDataManagementFromSettings}
+          supabaseAuth={supabaseAuth}
           onClose={() => setIsThemeSettingsOpen(false)}
         />
       )}

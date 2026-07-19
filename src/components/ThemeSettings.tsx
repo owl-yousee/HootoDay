@@ -3,6 +3,7 @@ import { MoonIcon } from '@phosphor-icons/react/Moon'
 import { SunIcon } from '@phosphor-icons/react/Sun'
 import { XIcon } from '@phosphor-icons/react/X'
 import { useEffect, useRef, type MouseEvent, type SyntheticEvent } from 'react'
+import type { SupabaseAuthState, SupabaseConfigurationState } from '../hooks/useSupabaseAuth'
 import type { HealthProfile } from '../types/health'
 import type { AppliedTheme, ThemePreference } from '../types/theme'
 import { formatCalculationSex } from '../utils/healthProfile'
@@ -14,7 +15,77 @@ interface ThemeSettingsProps {
   profile: HealthProfile | null
   onOpenProfile: () => void
   onOpenDataManagement: () => void
+  supabaseAuth: {
+    configurationState: SupabaseConfigurationState
+    authState: SupabaseAuthState
+    isConfigured: boolean
+    isSignedIn: boolean
+    signInAnonymously: () => Promise<void>
+    safeErrorMessage: string | null
+  }
   onClose: () => void
+}
+
+interface CloudSyncPresentation {
+  label: string
+  description: string
+  tone: 'neutral' | 'success' | 'error'
+}
+
+function getCloudSyncPresentation(
+  configurationState: SupabaseConfigurationState,
+  authState: SupabaseAuthState,
+  safeErrorMessage: string | null,
+): CloudSyncPresentation {
+  if (configurationState === 'missing') {
+    return {
+      label: '未設定',
+      description: 'この端末ではクラウド同期の接続設定がありません。',
+      tone: 'neutral',
+    }
+  }
+
+  if (configurationState === 'partial') {
+    return {
+      label: '設定不足',
+      description: '接続設定の一部が不足しています。',
+      tone: 'error',
+    }
+  }
+
+  if (configurationState === 'invalid_url') {
+    return {
+      label: '設定エラー',
+      description: '接続先URLの設定を確認してください。',
+      tone: 'error',
+    }
+  }
+
+  if (authState === 'checking') {
+    return { label: '確認中', description: '保存済みの認証状態を確認しています。', tone: 'neutral' }
+  }
+
+  if (authState === 'signing_in') {
+    return { label: '接続中', description: '匿名認証を開始しています。', tone: 'neutral' }
+  }
+
+  if (authState === 'signed_in') {
+    return {
+      label: '接続済み',
+      description: 'この端末の匿名認証が完了しています。',
+      tone: 'success',
+    }
+  }
+
+  if (authState === 'error') {
+    return {
+      label: '接続エラー',
+      description: safeErrorMessage ?? '認証状態を確認できませんでした。',
+      tone: 'error',
+    }
+  }
+
+  return { label: '未接続', description: '匿名認証はまだ開始されていません。', tone: 'neutral' }
 }
 
 const themeOptions = [
@@ -40,6 +111,7 @@ export function ThemeSettings({
   profile,
   onOpenProfile,
   onOpenDataManagement,
+  supabaseAuth,
   onClose,
 }: ThemeSettingsProps) {
   const dialogRef = useRef<HTMLDialogElement>(null)
@@ -91,6 +163,15 @@ export function ThemeSettings({
   const openProfile = () => {
     onOpenProfile()
   }
+
+  const cloudSyncPresentation = getCloudSyncPresentation(
+    supabaseAuth.configurationState,
+    supabaseAuth.authState,
+    supabaseAuth.safeErrorMessage,
+  )
+  const isAuthActionDisabled = !supabaseAuth.isConfigured
+    || supabaseAuth.authState === 'checking'
+    || supabaseAuth.authState === 'signing_in'
 
   return (
     <dialog
@@ -151,6 +232,37 @@ export function ThemeSettings({
           </fieldset>
 
           <p className="applied-theme-note">現在の表示：{appliedTheme === 'dark' ? 'ダーク' : 'ライト'}</p>
+        </section>
+
+        <section className="settings-section cloud-sync-settings" aria-labelledby="settings-cloud-sync-heading">
+          <div className="settings-section-heading">
+            <div>
+              <p className="theme-panel-eyebrow">Cloud sync</p>
+              <h3 id="settings-cloud-sync-heading">クラウド同期</h3>
+            </div>
+            <span className={`cloud-sync-status is-${cloudSyncPresentation.tone}`}>
+              {cloudSyncPresentation.label}
+            </span>
+          </div>
+          <div className="cloud-sync-message" role="status" aria-live="polite" aria-atomic="true">
+            <p>{cloudSyncPresentation.description}</p>
+          </div>
+          {supabaseAuth.isSignedIn ? (
+            <p className="cloud-sync-note">まだ同期先の作成・接続は行っていません。データ同期も開始していません。</p>
+          ) : supabaseAuth.isConfigured ? (
+            <button
+              type="button"
+              className="health-primary-button cloud-sync-button"
+              onClick={() => { void supabaseAuth.signInAnonymously() }}
+              disabled={isAuthActionDisabled}
+            >
+              {supabaseAuth.authState === 'signing_in'
+                ? '接続中…'
+                : supabaseAuth.authState === 'error'
+                  ? '匿名認証を再試行'
+                  : '匿名認証を開始'}
+            </button>
+          ) : null}
         </section>
 
         <section className="settings-section health-profile-settings" aria-labelledby="settings-profile-heading">
