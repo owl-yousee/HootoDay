@@ -12,6 +12,7 @@ import { FullDataResetDialog, type FullDataResetSummaryItem } from './FullDataRe
 interface FullDataResetSectionProps {
   data: HootoDayBackupData
   onResetState: () => void
+  beforeReset: () => boolean
 }
 
 function getResetSummary(data: HootoDayBackupData): FullDataResetSummaryItem[] {
@@ -34,7 +35,7 @@ function getResetSummary(data: HootoDayBackupData): FullDataResetSummaryItem[] {
   ]
 }
 
-export function FullDataResetSection({ data, onResetState }: FullDataResetSectionProps) {
+export function FullDataResetSection({ data, onResetState, beforeReset }: FullDataResetSectionProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [isBusy, setIsBusy] = useState(false)
   const [error, setError] = useState('')
@@ -67,6 +68,12 @@ export function FullDataResetSection({ data, onResetState }: FullDataResetSectio
       )
     } catch {
       setError('バックアップファイルを作成できなかったため、初期化は行いませんでした。')
+      setIsBusy(false)
+      return
+    }
+
+    if (!beforeReset()) {
+      setError('同期の誤送信防止設定を保存できなかったため、初期化を中止しました。')
       setIsBusy(false)
       return
     }

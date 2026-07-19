@@ -609,3 +609,278 @@ pairing参加時、`consume_app_pairing_code`のDB処理は成功したが、テ
 - 1ユーザーは複数workspaceへ所属可能なため、復旧候補がちょうど1件でworkspace IDがUUID検証を通過した場合だけ、既存device IDを使って`child`・`member`接続をローカル保存する。0件・複数件・owner role・不正結果・RLS/通信エラーでは復旧しない。
 - 復旧処理はSELECTとローカル保存だけで、consume RPC、DB INSERT・UPDATE・DELETE、自動復旧、自動再試行を行わない。pairing codeとcode IDも保存しない。
 - SQL・RLS・policy、親機機能、JSONバックアップ、DayMemo同期は変更しない。iPhone実機確認待ちで、commit・pushは未実施である。
+## 20. Phase B-3a：DayMemoアプリ統合前の確定設計（2026年7月19日）
+
+### 20.1 現行ローカルモデル
+
+- `DayMemo`の正本型は`{ date: string, content: string, updatedAt: string }`である。
+- `date`は`YYYY-MM-DD`で、独立IDを追加せず1日1件のentity IDとして扱う。
+- `content`は保存前にtrimし、空文字は保存しない。最大長は2000文字である。
+- `updatedAt`は作成・更新時にISO 8601文字列として生成済みである。ローカルにはrevision、change sequence、deletedAt、operation IDは存在しない。
+- `useDayMemos`が読み込み、state、作成・更新、削除、全置換を担当し、state変更後に`hootoDay.dayMemos`へ自動保存する。保存形式`{ version: 1, memos: DayMemo[] }`は変更しない。
+- 同日重複は読み込み時に`updatedAt`が新しい1件へ正規化される。これはローカル破損・重複への復旧規則であり、端末間競合のlast-write-wins規則にはしない。
+
+### 20.2 同期対象の境界
+
+初期同期対象は独立したDayMemoだけとする。日記画面と予定編集画面内の「その日のメモ」は同じDayMemoを編集するため、どちらからの変更も対象になる。
+
+次は対象外とする。
+
+- `CalendarEvent`および予定固有の補足メモ
+- 健康・体重・睡眠・食事・運動・体調・在庫・販売記録
+- カレンダー表示用の派生データと入力途中のcomponent state
+- テーマ設定
+- `hootoDay.syncConnection`を含む端末・workspace接続metadata
+- JSONバックアップ内のDayMemo以外のデータ
+
+### 20.3 Supabase側との対応
+
+`app_workspace_state`は複合主キー`workspace_id + key`、JSONB `value`、`updated_at`、`updated_by`、`updated_by_label`、`revision`を持つ既存の全体state基盤である。member向けSELECT・INSERT・UPDATE policyはあるがDELETE policyはない。DayMemo全体を1 JSONとして保存するとレコード単位競合を扱えず、既存Hootoシリーズとのkey衝突余地もあるため使用しない。
+
+DayMemoは専用基盤へ次の対応で保存する。
+
+| ローカル | Supabase |
+|---|---|
+| `date` | `entity_id`、`YYYY-MM-DD` |
+| 固定値 | `entity_type = day_memo` |
+| `{ date, content, updatedAt }` | schema version 1の`payload` |
+| ローカルには未保持 | `revision`、`change_sequence`、`deleted_at`、`server_updated_at` |
+
+操作はauthenticated workspace memberが専用SECURITY DEFINER RPCだけを使用する。
+
+- upsert：`hooto_day_upsert_sync_record`。新規はbase revision 0、既存更新・復活は現在revision一致を必須とする。
+- pull：`hooto_day_pull_sync_records`。cursorは`change_sequence`だけを使用し、`after_change_sequence`より大きい結果を昇順で取得する。limitは1～500である。
+- delete：`hooto_day_delete_sync_record`。物理DELETEではなくpayload NULL・`deleted_at`ありのtombstoneを作る。
+
+専用tableへの直接SELECT・INSERT・UPDATE・DELETEは行わない。owner/memberはいずれもRPCを利用でき、非memberと別workspaceはmembership検査で拒否される。
+
+### 20.4 採用する同期単位
+
+日付ごとに1レコードを正式採用する。
+
+- 全体JSON方式は実装が一見短いが、1件変更で全体revisionが競合し、削除・復活・部分再試行が不明瞭になる。
+- 日付単位は現行の1日1件モデル、Supabaseの複合主キー、revision、tombstone、pull cursorと一致する。
+- 変更履歴追記方式は監査用途には有効だが、個人用アプリの現行表示・復元に不要なイベント再生処理とデータ量を増やすため採用しない。冪等性履歴は既存operation tableへ限定する。
+
+### 20.5 pull・upsert・deleteの安全設計
+
+- 初回PC uploadはユーザーの明示操作だけで開始し、非空DayMemoを日付ごとにpreviewしてから1件ずつupsertする。
+- 空iPhoneはcursor 0からpullを先に行い、ローカル空配列をdelete要求へ変換しない。
+- pull結果は戻り型、workspace、entity type、日付、payload、revision、change sequence、deletedAtを検証し、全検証と競合確認が終わるまで既存localStorageへ反映しない。
+- 通信・認証・validator・RPC結果のいずれかが失敗した場合、既存DayMemo stateとlocalStorageを変更しない。自動再試行せず、operation IDを使う再送は同一requestであることを保証できる場合だけ許可する。
+- 両端に異なる内容がある場合、revision不一致を競合として表示し、`updatedAt`だけで自動上書きしない。
+- 現行のローカル削除は配列から除外するだけで削除履歴を残さない。この状態から安全なtombstone送信を判定できないため、初回uploadでは削除同期を行わない。後続Phaseで削除前revisionとpending deleteを別同期metadataへ保持してから実装する。
+- JSON復元直後と全データ初期化直後は自動pushしない。復元・初期化をクラウド全削除へ変換しない。
+
+### 20.6 更新時刻と同期metadata
+
+`updatedAt`は既存payload互換とユーザー編集時刻として維持する。サーバー順序と競合の正本は`revision`と`change_sequence`であり、端末時計の前後だけで勝者を決めない。
+
+同期metadataはユーザー本文と分離し、JSONバックアップへ含めない。後続実装で最低限、workspaceとの対応確認、pull cursor、日付ごとのrevision・change sequence・deletedAt、pending operation、最終成功時刻、初回upload状態、JSON復元直後のpush禁止状態を保持する。JWTとrefresh tokenはSupabase Auth標準保存に任せ、独自保存しない。metadata欠損・不正時は全件uploadや全件deleteを禁止する。
+
+### 20.7 JSONバックアップとの関係
+
+- formatVersion 2の`dayMemos`は現行3項目のまま維持し、旧formatVersion 1の復元互換も維持する。
+- 復元処理は対象localStorageの旧値を先に保持し、途中失敗時にrollbackする既存方式を維持する。
+- 復元成功後はAppの各stateを一括置換するが、その直後の自動pushは禁止する。
+- revision、cursor、workspace、device、pending operationなど端末固有の同期metadataはバックアップへ混在させない。
+
+### 20.8 実装Phase
+
+1. **Phase B-3b：PC親機の明示的初回upload**
+   既存DayMemoは変更せず、upload候補preview、明示ボタン、日付単位upsert、結果検証、成功結果metadata保存だけを実装する。pull、delete、自動同期、自動再試行は行わない。
+2. **Phase B-3c：iPhone pull preview**
+   cursor 0から取得し、validator後の候補を表示するがlocalStorageへ反映しない。
+3. **Phase B-3d：確認後のローカル反映**
+   競合がない候補だけを既存Hook経由で反映し、cursorとrevisionを保存する。失敗時は同期開始前stateを維持する。
+4. **Phase B-3e：通常upsert**
+   PC・iPhoneの明示的な変更送信、operation ID、pending operation、通信断・認証切れ時の安全な再送を実装する。
+5. **Phase B-3f：delete・tombstone・競合**
+   削除前revisionを伴う明示削除、tombstone pull、復活、競合表示を実装する。ローカル全初期化とは分離する。
+
+### 20.9 次に実装する最小Phase
+
+次はPhase B-3bだけを実装する。PC親機・owner・workspace接続済みを前提条件とし、既存DayMemoを読み取り専用でpreviewした後、ユーザーの明示操作でクラウドへ1件ずつ初回uploadする。既存DayMemo state、`hootoDay.dayMemos`、JSONバックアップ、予定・健康記録、`hootoDay.syncConnection`を変更しない。Supabase結果を勝手にローカルへ反映せず、自動実行・自動再試行・delete・pullを含めない。
+
+Phase B-3b実装前に、専用同期metadataのキー名・version 1構造、複数件uploadの途中成功をどう記録して安全に再開するか、同じworkspaceに既存DayMemo recordがある場合の停止・preview条件を確定する必要がある。
+
+## 21. Phase B-3b準備：初回upload安全仕様
+
+### 21.1 SQLを正本とするRPC契約
+
+専用tableは`hooto_day_sync_records`、冪等性履歴は`hooto_day_sync_operations`、採番sequenceは`hooto_day_sync_change_seq`、戻り型は`hooto_day_sync_result`である。
+
+`hooto_day_sync_records`の主な列は、`workspace_id uuid`、`entity_type text`、`entity_id text`、`payload jsonb`、`schema_version integer`、`revision bigint`、`change_sequence bigint`、`deleted_at timestamptz`、`created_at timestamptz`、`server_updated_at timestamptz`、`client_updated_at timestamptz`、`updated_by uuid`、`source_device_id text`である。主キーはworkspace・entity type・entity IDの複合である。`updated_by`はRPC内の`auth.uid()`から設定され、device labelという列はなく、最大200文字のtrim済み`source_device_id`を受け取る。
+
+| RPC | 引数 | 戻り値 |
+|---|---|---|
+| `hooto_day_upsert_sync_record` | `target_workspace_id uuid`, `target_entity_type text`, `target_entity_id text`, `target_payload jsonb`, `target_schema_version integer`, `base_revision bigint`, `operation_id uuid`, `client_updated_at timestamptz = null`, `source_device_id text = null` | `hooto_day_sync_result` 1件 |
+| `hooto_day_delete_sync_record` | `target_workspace_id uuid`, `target_entity_type text`, `target_entity_id text`, `base_revision bigint`, `operation_id uuid`, `client_updated_at timestamptz = null`, `source_device_id text = null` | `hooto_day_sync_result` 1件 |
+| `hooto_day_pull_sync_records` | `target_workspace_id uuid`, `after_change_sequence bigint = 0`, `limit_count integer = 200` | `SETOF hooto_day_sync_result` |
+
+戻り型の列順は`status`、`workspace_id`、`entity_type`、`entity_id`、`revision`、`change_sequence`、`server_updated_at`、`deleted_at`、`payload`、`conflict`である。pullのstatusは`current`、mutationは`applied`または`conflict`である。
+
+重要な制約は次のとおりである。
+
+- `entity_type`は`day_memo`だけ、entity IDは実在する`YYYY-MM-DD`、schema versionは1だけを許可する。
+- payloadはJSON objectで、`date`・`content`・`updatedAt`の3キーを過不足なく要求する。dateはentity IDと一致し、contentはtrim済み1～2000文字、updatedAtは有効なISO 8601とする。
+- 新規作成時のbase revision 0は「現在rowが存在しない場合だけrevision 1として作成する」という意味である。rowが既にあれば、現行revisionを含むconflict結果を返して本体を変更しない。
+- 成功mutationだけが`nextval()`を取得する。change sequenceはbigintで1以上、専用transaction advisory lockにより成功mutationのcommit可視化順を直列化する。sequence gapは許容する。
+- tombstoneは同じrecords rowの`payload = NULL`かつ`deleted_at IS NOT NULL`で表す。物理DELETEではない。
+- operation IDはoperation ledgerのuuid主キーである。同じoperation IDと同じfingerprintのrequestは保存済み結果を返し、record更新、revision増加、再採番を行わない。異なるrequestへの再利用は例外で拒否する。
+- fingerprintにはworkspace、entity type・ID、operation kind、呼出Auth user、base revision、schema version、payload、client updated time、source device ID、operation IDが含まれる。
+- operation履歴の推奨保持期間は30日で、cleanup後は過去operation IDの冪等再送保証がなくなる。
+- 3 RPCはすべてauthenticatedだけがEXECUTE可能なSECURITY DEFINERで、固定search pathと`auth.uid()`・workspace membership検査を持つ。owner/memberでDayMemo RPC権限差はない。専用2 tableはRLS有効、policy 0件、direct table権限なしである。
+- RPCは1件単位であり、複数DayMemoのatomic batch RPCは存在しない。
+
+既存の設計記録とSQLに実装判断を変える差異はない。SQLのほうが具体的な点として、pull statusが`current`であること、source device IDの長さ・trim制約、operation fingerprintへ呼出Auth userと全request入力が含まれること、operation保持30日後の冪等保証喪失を本節で明文化した。
+
+### 21.2 正式なローカルmetadata
+
+正式キーは`hootoDay.dayMemoSync`、versionは1とする。workspace IDは別workspaceへ進捗を誤適用しないためのbindingとして意図的に重複保存する。device IDは重複保存せず、RPC直前に有効な`hootoDay.syncConnection`から取得する。
+
+```ts
+type DayMemoInitialUploadStatus =
+  | 'not_started'
+  | 'prepared'
+  | 'uploading'
+  | 'partial'
+  | 'completed'
+  | 'blocked'
+
+type DayMemoUploadEntryStatus =
+  | 'pending'
+  | 'response_unknown'
+  | 'applied'
+  | 'conflict'
+
+type DayMemoSyncErrorCode =
+  | 'authentication_required'
+  | 'membership_required'
+  | 'remote_not_empty'
+  | 'local_changed'
+  | 'rpc_failed'
+  | 'response_invalid'
+  | 'storage_failed'
+  | 'metadata_invalid'
+
+interface DayMemoInitialUploadEntryV1 {
+  status: DayMemoUploadEntryStatus
+  operationId: string | null
+  payloadUpdatedAt: string
+  baseRevision: 0
+  remoteRevision: number | null
+  remoteChangeSequence: number | null
+}
+
+interface DayMemoSyncMetadataV1 {
+  version: 1
+  workspaceId: string
+  initialUpload: {
+    status: DayMemoInitialUploadStatus
+    preparedAt: string | null
+    completedAt: string | null
+    targetDates: string[]
+    entries: Record<string, DayMemoInitialUploadEntryV1>
+  }
+  lastPulledChangeSequence: number
+  pushBlock: null | {
+    reason: 'json_restore' | 'full_reset' | 'remote_not_empty' | 'metadata_invalid'
+    blockedAt: string
+  }
+  lastSuccessfulSyncAt: string | null
+  lastErrorCode: DayMemoSyncErrorCode | null
+}
+```
+
+成功済み・未完了日付は`entries`から導出し、重複配列を持たない。開始済み・完了済みもstatusで表す。本文、content hash、pairing code、code ID、device ID、JWT、token、Auth session、エラー全文は保存しない。revisionとchange sequenceはJavaScript safe integerとして検証できる値だけ保存し、範囲外はfail-closedとする。
+
+confirmed applied結果をmetadataへ保存できたentryはoperation IDをnullへ置換してよい。RPC後に応答不明または進捗保存失敗となったentryは事前保存済みoperation IDを残す。metadataの保存・読み込み・migrationはfail-closed validatorを持ち、version不一致を自動全件uploadへ変換しない。このmetadataは通常JSONバックアップと全ユーザーデータ初期化の対象外とする。
+
+### 21.3 準備、途中成功、再開
+
+1. owner・parent・workspace・匿名Auth状態を検証する。
+2. 現在のDayMemoを既存validator相当で検証し、日付昇順の対象snapshotを作る。0件ならRPCを呼ばない。
+3. remote空確認を行う。upload候補本文は表示せず、件数と日付だけpreviewする。
+4. ユーザーがuploadを確定した時点で、全対象日付と各日付固有operation IDをmetadataへ一度に保存する。保存後のread-back検証に成功するまでupsertを開始しない。
+5. 1件ずつ日付順にupsertし、各結果を厳格検証した直後にrevision・change sequence・状態をmetadataへ保存する。
+6. 途中失敗では後続を呼ばず、成功件数・未完了件数・確認必要件数だけを表示する。自動再開しない。
+7. 明示的な再開時はworkspace bindingと現在のlocal memoを再検証する。まだRPCを呼んでいないpending entryだけは、`payloadUpdatedAt`を含む準備済み条件が現在memoと一致する場合に保存済みoperation IDで開始できる。memoが消えた、updatedAtが変わった、Auth user・device IDが変わった可能性がある場合は呼ばない。
+8. response unknownは、同じ画面内で初回request objectをメモリ保持しており、全fingerprint入力が同一と証明できる場合だけ、同一operation ID・同一requestで明示再送する。ページ再読み込み後は本文をmetadataへ複製していないため、updatedAt一致だけを根拠に同一payloadと断定しない。blind retryせずB-3cのpull previewでremote結果を確認する。新しいoperation IDも生成しない。
+9. applied結果とmetadata保存が完了したentryはローカル進捗を正本としてskipできる。metadataだけでDB成功を推測するのではなく、applied結果を検証して保存した事実を正本とする。
+10. 全entryがappliedになった場合だけinitial uploadをcompletedとし、最終成功時刻を保存する。
+
+全10件中6件成功なら6件をapplied、残りをpendingまたはresponse unknownとして保持する。別operation ID・base revision 0で既存日付を再送するとconflictにはなるが、operation結果の同一性を保証できず不要なledger行も作るため禁止する。conflictは成功扱いせず、その時点で全体をblockedにしてB-3cへ進める。
+
+### 21.4 remote既存データ確認と停止条件
+
+payloadなしの件数・存在確認RPCは存在しない。B-3bではpull RPCを`after_change_sequence = 0`、`limit_count = 1`で1回呼ぶ。戻り配列が空なら、その確認時点で現行DayMemo rowとtombstoneが0件である。1件返ればremoteは非空であり、payload本文はUI、metadata、consoleへ保存・表示せず破棄する。
+
+次のいずれかで初回uploadを開始または継続しない。
+
+- pullが1件以上を返した。現行record、tombstone、同日・別日の区別なく停止する。
+- pull結果のworkspace、entity type、revision、change sequence、deletedAt、payloadを安全に検証できない。
+- membership、workspace、匿名認証を確認できない。
+- 通信・RPC error、空確認結果の形状不正、metadata保存失敗がある。
+- metadataのworkspace IDが現在のconnectionと一致しない。
+- 既存進捗と現在の対象日付・updatedAtが一致せず、同一requestを再現できない。
+- upsertがconflictを返した。base revision 0 conflictはremote rowが存在する証拠として扱う。
+- pushBlockが設定されている。
+
+remoteが非空なら自動マージ・上書きせず、B-3cのpull previewへ進める。pull limit 1は「空か非空か」の判定専用で、件数、全entity ID、全revisionの取得を目的としない。
+
+remote空確認と最初のupsertは同一DB transactionではないため、その間のworkspace全体の同時書込みを完全には排除できない。現在はiPhone側DayMemo mutation未実装かつ自動同期なしであり、同日raceはbase revision 0 conflictで保護される。別日raceまで原子的に排除するには新規batch/preflight RPCが必要だが、今回はSQLを変更せず、発生時は以降を停止してB-3cで確認する。
+
+### 21.5 operation ID
+
+- operation IDは日付ごとに1つのUUID v4とし、upload session全体で共用しない。
+- `crypto.randomUUID()`を優先し、LAN内HTTPで利用不可の場合は`crypto.getRandomValues()`でversion・variant bitを設定する既存方式を共通UUID utilityへ抽出して再利用する。`Math.random()`は使わない。
+- 全operation IDを最初のRPCより前にmetadataへ永続化する。実値をUI・console・文書へ出さない。
+- 応答不明時は同じ画面内に元request objectが残り、同じAuth userと全fingerprint入力を再利用できる場合だけ同じIDで再送する。payload、client updated time、source device ID、base revision等のどれかを変えて同じIDを使わない。再読み込み後はmetadataだけから同一requestを再構築したと見なさず、pull previewへ移る。
+- confirmed appliedかつ進捗保存成功後はentryのoperation IDを破棄できる。response unknownでは破棄しない。
+- workspace変更、metadata migration失敗、request再現不能、推奨30日を超えてledger cleanup済みの可能性がある場合は再利用しない。ただし新IDでblind retryもせず、remote pull previewへ移行する。
+
+### 21.6 JSON復元・全初期化後のpush禁止
+
+JSON復元の実行入口は`JsonBackupPanel.restore()`で、復元前backupを作成した後、`restoreBackupToStorage()`で16ユーザーデータキーをtransaction相当のrollback付きで置換し、成功後に`App.restoreBackupData()`がDayMemoを含むReact stateを置換する。全初期化は`FullDataResetSection.executeReset()`からbackup作成、`resetHootoDayDataStorage()`、成功後の`App.resetAllDataState()`へ進む。現状、同期向けイベントやpush禁止フラグは存在しない。
+
+実装時は復元・初期化によるユーザーデータ書換えより前に、`hootoDay.dayMemoSync`へそれぞれ`json_restore`または`full_reset`のpushBlockを保存し、read-back検証する。pushBlockを保存できなければ復元・初期化を開始しない。処理自体が失敗して元データへ正常rollbackした場合だけ、直前のblock状態へ安全に戻せる設計とする。成功後はB-3c相当のremote pull previewとユーザーの明示確認が終わるまでuploadを禁止する。
+
+- sync metadataとworkspace接続情報はJSONバックアップへ含めず、復元で上書きしない。
+- local DayMemo 0件をremote全削除、tombstone一括作成、初回upload完了とは解釈しない。
+- 初回upload済みworkspaceでローカルが空になった場合、原因が手動全削除、JSON復元、全初期化、storage破損のどれでも自動mutationしない。
+- pushBlock解除はpull preview後の明示確認だけとし、起動・再読み込み・時間経過では自動解除しない。
+
+### 21.7 Phase B-3bの最終実装範囲
+
+- PC親機、device role parent、workspace role owner、pairing status owner、workspace接続済み、匿名認証済みだけに初回upload UIを表示する。
+- DayMemo総件数を表示する。previewでは対象件数と日付だけを表示し、本文は一覧表示しない。
+- preview操作時だけremote空確認pullを1回行う。自動pullしない。
+- remote空確認とlocal snapshot検証後、明示的な確定ボタンでだけupload準備metadataを保存する。
+- 日付ごとにoperation IDを固定し、base revision 0、schema version 1、payload 3キー、client updated timeはmemo.updatedAt、source device IDは現在のconnection device IDとして、1件ずつupsertする。
+- 各RPC結果を検証して進捗を保存し、部分成功を件数で表示する。明示的再開だけを提供し、自動再試行・無限再送を行わない。
+- upload成功で既存DayMemo stateと`hootoDay.dayMemos`を変更しない。remote結果をローカル本文へ反映しない。
+- pull結果反映、delete、tombstone、通常更新、競合解決、iPhone/member upload、リアルタイム同期、DayMemo以外の送信は実装しない。
+
+実装予定ファイルは、同期metadata型を置く`src/types/sync.ts`またはDayMemo専用型ファイル、新規`src/utils/dayMemoSyncStorage.ts`、共通UUID生成utility、RPCと進捗stateを扱う新規hook、設定画面を接続する`src/App.tsx`・`src/components/ThemeSettings.tsx`・`src/App.css`、復元・初期化前guardを扱う`src/components/JsonBackupPanel.tsx`・`src/components/FullDataResetSection.tsx`、記録用`PROJECT_NOTES.md`・`SYNC_DESIGN.md`を候補とする。既存DayMemo storageとHookはB-3bでは変更しない。
+
+### 21.8 未確定事項
+
+- 復元・全初期化前guardをB-3bと同時に実装するか、upload UIを先に実装しつつpushBlockが未設定でも既存workspaceではfail-closedにするか。安全上はB-3bと同時実装を推奨する。
+- remote空確認後の別日raceをDB側で完全に排除するbatch/preflight RPCを将来追加するか。現段階ではSQL変更なしとし、race検出時停止で運用する。
+- operation ledgerの30日cleanupを実際にいつ導入するか。B-3bではcleanupを追加せず、古いresponse unknownをblind retryしない。
+
+## 22. Phase B-3b実装結果（実機確認前）
+
+- 正式metadataキー`hootoDay.dayMemoSync` version 1を実装した。validator、読み込み、workspace binding、保存後read-back、不正metadataのfail-closed、pushBlock設定を専用utilityへ分離した。
+- metadataは本文を複製せず、対象日付とpreparedUpdatedAtで通常Hook経路の変更を検出する。workspace IDは誤適用防止のbindingとして保持し、device IDは`hootoDay.syncConnection`からRPC直前に取得する。
+- UUID生成は共通`createUuidV4()`へ統合した。native randomUUIDを優先し、安全なgetRandomValues fallbackだけを使用するため、既存のLAN内HTTP対応を維持する。
+- 初回upload Hookはunavailable、idle、preview中・可能、remote非空、準備中・済み、upload中、部分完了、response unknown、conflict、完了、push blocked、復旧必要、errorを区分する。
+- owner親機だけが設定画面からpreview、準備、upload、pending再開を明示実行できる。member子機には初回upload操作を表示しない。
+- preview pullはcursor 0・limit 1の1回だけで、remoteが空の場合だけ次へ進める。remote payloadは存在判定と最低限の結果検証にのみ使い、保存・表示しない。
+- 準備時に全日付のoperation IDを作成してmetadataへ保存し、read-back後にのみupload可能とした。日付・件数・updatedAtがpreview後に変われば停止する。
+- uploadは日付順の直列処理で、各RPC直前にupload中状態を永続化する。これによりRPC中の画面終了は再読み込み後に復旧必要となり、pendingとしてblind retryされない。成功結果は日付ごとに保存し、全件applied時だけcompletedとする。
+- RPC errorと結果不正はDB適用済みの可能性を除外できないためresponse unknownへ寄せる。conflict、response unknown、storage失敗では後続を停止し、自動再試行・自動再開を行わない。
+- JSON復元・全初期化では、既存backup作成後かつlocalStorage変更前にAppの同期HookからpushBlockを保存する。workspace接続済みまたはmetadataありの場合は保存必須、未接続かつmetadataなしはno-opとする。block解除は未実装である。
+- DayMemo本文、localStorage正本、JSONバックアップ形式、workspace接続metadataは変更しない。delete・pull反映・通常更新・競合解決・iPhone反映は後続Phaseである。
+- SQL・RLS・policy・RPC・packageは変更していない。Supabase実操作は行わず、PC親機でのpreview・remote空確認・準備・初回upload・部分停止・再読み込み表示はユーザー実機確認待ちである。

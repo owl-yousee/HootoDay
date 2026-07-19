@@ -20,6 +20,8 @@ interface HealthExportPageProps {
   backupData: HootoDayBackupData
   onRestoreBackup: (data: HootoDayBackupData) => void
   onFullDataReset: () => void
+  beforeRestore: () => boolean
+  beforeFullDataReset: () => boolean
 }
 
 const formatOptions: Array<{ value: HealthExportFormat; label: string }> = [
@@ -35,7 +37,7 @@ const periodOptions: Array<{ value: HealthExportPeriod; label: string }> = [
   { value: 'custom', label: '期間指定' },
 ]
 
-export function HealthExportPage({ initialDate, data, backupData, onRestoreBackup, onFullDataReset }: HealthExportPageProps) {
+export function HealthExportPage({ initialDate, data, backupData, onRestoreBackup, onFullDataReset, beforeRestore, beforeFullDataReset }: HealthExportPageProps) {
   const [format, setFormat] = useState<HealthExportFormat>('markdown')
   const [period, setPeriod] = useState<HealthExportPeriod>('day')
   const [baseDate, setBaseDate] = useState(initialDate)
@@ -192,8 +194,8 @@ export function HealthExportPage({ initialDate, data, backupData, onRestoreBacku
         </section>
       </div>
 
-      <JsonBackupPanel data={backupData} onRestore={onRestoreBackup} />
-      <FullDataResetSection data={backupData} onResetState={onFullDataReset} />
+      <JsonBackupPanel data={backupData} onRestore={onRestoreBackup} beforeRestore={beforeRestore} />
+      <FullDataResetSection data={backupData} onResetState={onFullDataReset} beforeReset={beforeFullDataReset} />
     </div>
   )
 }

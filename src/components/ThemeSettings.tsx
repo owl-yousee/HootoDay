@@ -4,6 +4,7 @@ import { SunIcon } from '@phosphor-icons/react/Sun'
 import { XIcon } from '@phosphor-icons/react/X'
 import { useEffect, useRef, type MouseEvent, type SyntheticEvent } from 'react'
 import type { SupabaseAuthState, SupabaseConfigurationState } from '../hooks/useSupabaseAuth'
+import type { useDayMemoInitialUpload } from '../hooks/useDayMemoInitialUpload'
 import { useSupabasePairing, useSupabasePairingJoin } from '../hooks/useSupabasePairing'
 import type { ConnectAsMemberResult, SupabaseWorkspaceState } from '../hooks/useSupabaseWorkspace'
 import type { HealthProfile } from '../types/health'
@@ -34,6 +35,7 @@ interface ThemeSettingsProps {
     connectAsMember: (workspaceId: string) => ConnectAsMemberResult
     safeErrorMessage: string | null
   }
+  dayMemoInitialUpload: ReturnType<typeof useDayMemoInitialUpload>
   onClose: () => void
 }
 
@@ -124,6 +126,7 @@ export function ThemeSettings({
   onOpenDataManagement,
   supabaseAuth,
   supabaseWorkspace,
+  dayMemoInitialUpload,
   onClose,
 }: ThemeSettingsProps) {
   const dialogRef = useRef<HTMLDialogElement>(null)
@@ -292,6 +295,7 @@ export function ThemeSettings({
                   )}
                   {supabaseWorkspace.workspaceConnected
                     && supabaseWorkspace.connection?.workspaceRole === 'owner' ? (
+                    <>
                     <div className="cloud-pairing-panel">
                       <h4>iPhoneを接続</h4>
                       {supabasePairing.pairingState === 'issued' && supabasePairing.pairingCode ? (
@@ -329,6 +333,61 @@ export function ThemeSettings({
                         </>
                       )}
                     </div>
+                    <div className="cloud-day-memo-upload-panel">
+                      <h4>DayMemo初回アップロード</h4>
+                      <p>親機から手動で開始します。本文はこの画面へ表示しません。</p>
+                      <p><strong>{dayMemoInitialUpload.dayMemoCount}件</strong>のDayMemoがあります。</p>
+                      {dayMemoInitialUpload.uploadState === 'idle' ? (
+                        <button type="button" className="health-primary-button cloud-sync-button" onClick={() => { void dayMemoInitialUpload.previewInitialUpload() }}>
+                          初回アップロードを確認
+                        </button>
+                      ) : null}
+                      {dayMemoInitialUpload.uploadState === 'previewing' ? <p>同期先が空か確認しています…</p> : null}
+                      {dayMemoInitialUpload.uploadState === 'preview_ready' ? (
+                        <>
+                          <p>同期先は空です。対象は{dayMemoInitialUpload.previewDates.length}件です。</p>
+                          {dayMemoInitialUpload.previewDates.length > 0 ? (
+                            <ul className="cloud-day-memo-dates">
+                              {dayMemoInitialUpload.previewDates.map((date) => <li key={date}>{date}</li>)}
+                            </ul>
+                          ) : <p>アップロード対象はありません。削除操作は行いません。</p>}
+                          <button type="button" className="health-primary-button cloud-sync-button" disabled={dayMemoInitialUpload.previewDates.length === 0} onClick={dayMemoInitialUpload.prepareInitialUpload}>
+                            アップロードを準備
+                          </button>
+                        </>
+                      ) : null}
+                      {dayMemoInitialUpload.uploadState === 'preparing' ? <p>operation IDと進捗を安全に保存しています…</p> : null}
+                      {dayMemoInitialUpload.uploadState === 'prepared' ? (
+                        <>
+                          <p>{dayMemoInitialUpload.counts.total}件の準備が完了しました。</p>
+                          <button type="button" className="health-primary-button cloud-sync-button" onClick={() => { void dayMemoInitialUpload.uploadPending() }}>
+                            初回アップロードを開始
+                          </button>
+                        </>
+                      ) : null}
+                      {dayMemoInitialUpload.uploadState === 'partially_completed' ? (
+                        <button type="button" className="health-primary-button cloud-sync-button" onClick={() => { void dayMemoInitialUpload.uploadPending() }}>
+                          未送信分を再開
+                        </button>
+                      ) : null}
+                      {dayMemoInitialUpload.uploadState === 'uploading' ? <p>1件ずつアップロードしています。画面を閉じないでください。</p> : null}
+                      {dayMemoInitialUpload.uploadState === 'completed' ? <p className="cloud-day-memo-success">初回アップロードが完了しました。iPhoneへの反映はまだ行われません。</p> : null}
+                      {['remote_not_empty', 'response_unknown', 'conflict', 'push_blocked', 'recovery_required', 'error'].includes(dayMemoInitialUpload.uploadState) && dayMemoInitialUpload.safeErrorMessage ? (
+                        <p className="cloud-pairing-error" role="alert">{dayMemoInitialUpload.safeErrorMessage}</p>
+                      ) : null}
+                      {dayMemoInitialUpload.uploadState === 'error' && !dayMemoInitialUpload.metadata?.pushBlock ? (
+                        <button type="button" className="health-secondary-button cloud-sync-button" onClick={() => { void dayMemoInitialUpload.previewInitialUpload() }}>
+                          確認をやり直す
+                        </button>
+                      ) : null}
+                      {dayMemoInitialUpload.metadata ? (
+                        <p className="cloud-day-memo-progress">
+                          成功 {dayMemoInitialUpload.counts.applied}件・未完了 {dayMemoInitialUpload.counts.pending}件・確認必要 {dayMemoInitialUpload.counts.needsConfirmation}件
+                        </p>
+                      ) : null}
+                      <p className="cloud-sync-note">自動再試行はしません。delete・pull反映・通常更新・競合解決は未実装です。</p>
+                    </div>
+                    </>
                   ) : null}
                 </>
               ) : supabaseWorkspace.workspaceState === 'creating' ? (

@@ -20,6 +20,7 @@ import { SleepRecordDialog } from './components/SleepRecordDialog'
 import { ThemeSettings } from './components/ThemeSettings'
 import { WeightRecordDialog } from './components/WeightRecordDialog'
 import { useDayMemos } from './hooks/useDayMemos'
+import { useDayMemoInitialUpload } from './hooks/useDayMemoInitialUpload'
 import { useDailyAchievements } from './hooks/useDailyAchievements'
 import { useConditionRecords } from './hooks/useConditionRecords'
 import { useEvents } from './hooks/useEvents'
@@ -76,6 +77,12 @@ function App() {
   const { preference, appliedTheme, setPreference, replaceThemePreference } = useTheme()
   const supabaseAuth = useSupabaseAuth()
   const supabaseWorkspace = useSupabaseWorkspace(supabaseAuth.isSignedIn)
+  const dayMemoInitialUpload = useDayMemoInitialUpload({
+    dayMemos,
+    isConfigured: supabaseAuth.isConfigured,
+    isSignedIn: supabaseAuth.isSignedIn,
+    connection: supabaseWorkspace.connection,
+  })
   const { weightRecords, saveWeightRecord, deleteWeightRecord, replaceWeightRecords } = useWeightRecords()
   const { healthProfile, saveHealthProfile, deleteHealthProfile, replaceHealthProfile } = useHealthProfile()
   const { sleepRecords, saveSleepRecord, deleteSleepRecord, replaceSleepRecords } = useSleepRecords()
@@ -380,6 +387,8 @@ function App() {
               }}
               onRestoreBackup={restoreBackupData}
               onFullDataReset={resetAllDataState}
+              beforeRestore={() => dayMemoInitialUpload.guardLocalDataReplacement('json_restore')}
+              beforeFullDataReset={() => dayMemoInitialUpload.guardLocalDataReplacement('full_reset')}
             />
           )}
         </main>
@@ -395,6 +404,7 @@ function App() {
           onOpenDataManagement={openDataManagementFromSettings}
           supabaseAuth={supabaseAuth}
           supabaseWorkspace={supabaseWorkspace}
+          dayMemoInitialUpload={dayMemoInitialUpload}
           onClose={() => setIsThemeSettingsOpen(false)}
         />
       )}

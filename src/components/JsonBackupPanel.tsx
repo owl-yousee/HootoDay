@@ -16,6 +16,7 @@ import { RestoreConfirmDialog } from './RestoreConfirmDialog'
 interface JsonBackupPanelProps {
   data: HootoDayBackupData
   onRestore: (data: HootoDayBackupData) => void
+  beforeRestore: () => boolean
 }
 
 interface SelectedBackup {
@@ -41,7 +42,7 @@ function formatCreatedAt(value: string): string {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString('ja-JP')
 }
 
-export function JsonBackupPanel({ data, onRestore }: JsonBackupPanelProps) {
+export function JsonBackupPanel({ data, onRestore, beforeRestore }: JsonBackupPanelProps) {
   const [selected, setSelected] = useState<SelectedBackup | null>(null)
   const [backupError, setBackupError] = useState('')
   const [backupNotice, setBackupNotice] = useState('')
@@ -105,6 +106,12 @@ export function JsonBackupPanel({ data, onRestore }: JsonBackupPanelProps) {
         downloadBackupJson(serializeHootoDayBackup(currentBackup), buildBackupFilename(now, true))
       } catch {
         setRestoreError('現在のデータを退避できなかったため、復元を中止しました')
+        setIsConfirmOpen(false)
+        return
+      }
+
+      if (!beforeRestore()) {
+        setRestoreError('同期の誤送信防止設定を保存できなかったため、復元を中止しました。')
         setIsConfirmOpen(false)
         return
       }

@@ -1,4 +1,5 @@
 import type { SyncConnection } from '../types/sync'
+import { createUuidV4 } from './uuid'
 
 export const SYNC_CONNECTION_STORAGE_KEY = 'hootoDay.syncConnection'
 export const SYNC_CONNECTION_STORAGE_VERSION = 1
@@ -53,38 +54,9 @@ function isValidConnection(value: unknown): value is SyncConnection {
   return (isOwnerConnection || isMemberConnection) && value.pairedAt !== null
 }
 
-function createDeviceUuid(): string | null {
-  const cryptoApi = globalThis.crypto
-  if (!cryptoApi) return null
-
-  try {
-    if (typeof cryptoApi.randomUUID === 'function') {
-      const nativeUuid = cryptoApi.randomUUID()
-      if (isUuid(nativeUuid)) return nativeUuid
-    }
-  } catch {
-    // LAN内HTTPなどでrandomUUIDが利用できない場合だけ安全なfallbackへ進む。
-  }
-
-  if (typeof cryptoApi.getRandomValues !== 'function') return null
-
-  try {
-    const bytes = new Uint8Array(16)
-    cryptoApi.getRandomValues(bytes)
-    bytes[6] = (bytes[6] & 0x0f) | 0x40
-    bytes[8] = (bytes[8] & 0x3f) | 0x80
-
-    const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
-    const fallbackUuid = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
-    return isUuid(fallbackUuid) ? fallbackUuid : null
-  } catch {
-    return null
-  }
-}
-
 function createInitialConnection(): SyncConnection | null {
   try {
-    const deviceId = createDeviceUuid()
+    const deviceId = createUuidV4()
     if (!deviceId) return null
 
     return {

@@ -1973,3 +1973,47 @@ cleanup後VERIFY結果：
 - 復旧は現在の匿名AuthユーザーIDと`role = member`で`app_workspace_members`をSELECTするだけとし、候補がちょうど1件かつworkspace UUID正常の場合だけ既存metadataへ保存
 - 復旧操作ではconsume RPC、INSERT、UPDATE、DELETEを呼ばず、候補0件・複数件・RLS/通信エラー・不正結果・保存失敗では復旧しない
 - SQL・RLS・policyは変更せず、DayMemo同期も未実装。iPhone実機での復旧確認待ちでcommit・push未実施
+
+### Phase B-3a：DayMemo同期の既存構造調査と設計確定（2026年7月19日）
+
+- 実コード上の`DayMemo`は`src/types/dayMemo.ts`の独立型で、`date`、`content`、`updatedAt`の3項目を持つ。独立IDはなく、`YYYY-MM-DD`の日付が1日1件の一意キーになる。
+- `useDayMemos`が起動時に`loadStoredDayMemos()`で読み込み、React stateを保持し、state変更ごとのeffectで`saveStoredDayMemos()`へ保存する。作成・更新は日付一致の置換または追加、削除は配列からの日付一致除外である。
+- 保存先は`hootoDay.dayMemos`、形式は`{ version: 1, memos: DayMemo[] }`。読み込み時は型検証後に日付単位で重複排除し、同日の候補は`updatedAt`が新しいものを採用する。不正な全体形式は空配列へフォールバックし、不正な個別要素は除外する。
+- 日記・メモ画面と予定編集画面内の「その日のメモ」は同じ`dayMemos` stateと保存Hookを使用する。予定の`CalendarEvent`、健康記録、カレンダー表示用派生値、UI入力途中state、テーマ、workspace接続metadataはDayMemo本体とは別であり、初期同期対象へ含めない。
+- 空文字はDayMemoとして保存せず、既存日付なら`deleteDayMemo(date)`で配列から除外する。現状は削除履歴、tombstone、revision、change sequenceをローカルに保持していないため、削除同期は初回upload Phaseへ含めない。
+- JSONバックアップformatVersion 2は`dayMemos`を既存3項目のまま含み、旧formatVersion 1も復元可能。復元は全対象キーの旧値を確保してから書き込み、途中失敗時は旧値へrollbackし、成功後にApp側stateを一括置換する。同期metadataはバックアップ対象外のまま分離する。
+- `app_workspace_state`は`workspace_id`と`key`の複合主キー、JSONBの`value`、`updated_at`、`updated_by`、`updated_by_label`、`revision`を持ち、member向けSELECT/INSERT/UPDATE policyがあるがDELETE policyはない。全体JSON競合と既存key衝突を避けるため、HootoDay DayMemo同期には使用しない。
+- 正式な同期先は既存の`hooto_day_sync_records`と専用3 RPCを維持する。`entity_type = day_memo`、`entity_id = date`、schema version 1、payloadは`date`・`content`・`updatedAt`だけとする。直接table操作は行わない。
+- 同期単位は日付ごとに1レコードとする。全DayMemoを1 JSONにする方式は1件変更でも全体競合になり、変更履歴を追記する方式は現行UI・保存形式に不要な履歴モデルを持ち込むため採用しない。
+- 競合判定はローカル`updatedAt`の後勝ちではなく、RPCのrevision/base revisionを正本とする。`updatedAt`はpayload検証とユーザー編集時刻として維持するが、自動last-write-winsには使用しない。
+- 次のPhase B-3bはPC親機からの明示的な初回uploadだけとする。既存の非空DayMemoを日付ごとにpreviewし、ユーザー操作後に1件ずつ`hooto_day_upsert_sync_record`へbase revision 0で送る。自動同期、自動再試行、pull、ローカル反映、delete/tombstone、iPhone更新はまだ実装しない。
+- Phase B-3cはiPhoneでのpull結果preview、B-3dは検証・競合確認後のローカル反映、B-3eは通常の端末更新upload、B-3fは削除・tombstone・競合処理とする。既存localStorage、JSONバックアップ、予定・健康記録、接続metadataを壊さないことを各Phaseの停止条件とする。
+- 調査時点ではコード、package、SQL、RLS、policy、RPCを変更せず、Supabase接続・操作も行っていない。変更はこの調査記録と`SYNC_DESIGN.md`だけで、stage・commit・pushは未実施である。
+
+### Phase B-3b準備：DayMemo初回uploadの安全仕様確定（2026年7月19日）
+
+- SQLを正本として、専用table、operation ledger、戻り複合型、upsert/delete/pull RPCの引数・戻り値・権限・競合・冪等性契約を再確認した。RPCは一括処理ではなく1日1件単位である。
+- remote存在確認専用RPCはない。初回upload previewでは`hooto_day_pull_sync_records`をcursor 0・limit 1で呼び、返却内容を保存・表示せず、0件か1件以上かだけ判定する。現行recordとtombstoneのどちらか1件でもあればuploadを停止してB-3cへ進める。
+- 同期metadataの正式キーを`hootoDay.dayMemoSync`、versionを1とする。workspace誤適用防止のためworkspace IDだけを接続metadataと重複して保持し、device IDは`hootoDay.syncConnection`から毎回取得する。本文、pairing code、token、Auth session、エラー全文は保存しない。
+- upload開始前に、固定した対象日付、各日付のpayload `updatedAt`、base revision 0、各日付固有のoperation IDをまとめて永続化する。対象一覧を保存できなければRPCを1件も呼ばない。
+- operation IDはUUID v4とし、`crypto.randomUUID()`を優先し、利用不可時は既存の`crypto.getRandomValues()`方式を共通utilityとして再利用する。uploadセッション全体ではなく日付ごとに1つ生成する。
+- 応答不明では、同じ画面内で元request objectをメモリ保持し、匿名Authユーザー、workspace、日付、payload、`updatedAt`、base revision、schema version、source device ID、operation IDが完全一致すると確認できる場合だけ、ユーザーの明示操作で同じrequestを再送する。再読み込み後は本文をmetadataへ複製しないため同一payloadを証明できず、`updatedAt`一致だけで再送せずpull previewへ移る。
+- applied結果を検証して進捗保存できた日付は成功済みとし、revisionとchange sequenceを保存する。応答不明は成功済みと推測せず、同じoperation IDによるRPC冪等再送で確定する。別operation ID・base revision 0での再送は禁止する。
+- conflict、remote非空、tombstone、membership不一致、通信・認証・validator失敗、metadata不正、workspace変更はfail-closedで停止する。一部成功は件数だけを表示し、自動再開・自動再試行せず、明示的な「初回uploadを再開」操作だけを許可する。
+- JSON復元と全初期化の既存入口は`JsonBackupPanel`と`FullDataResetSection`である。将来はデータ変更前にpush禁止状態をmetadataへ保存し、保存できなければ復元・初期化を止める。成功後もpull previewとユーザー確認までuploadを禁止し、ローカル0件をremote全削除へ変換しない。
+- Phase B-3bはPC親機・owner・匿名認証済み・workspace接続済みだけに表示し、本文を一覧表示せず件数と対象日付だけpreviewする。remote空確認後、明示操作で1件ずつ初回upsertする。local DayMemo、pull結果、delete、競合解決、iPhone/member upload、DayMemo以外は変更・実装しない。
+- 実装前の残課題は、remote空確認と最初のupsertの間の競合をDB transactionで完全には固定できない点である。現PhaseではiPhone側DayMemo操作が未実装であることを前提とし、万一の同日競合はbase revision 0で停止する。workspace全体の同時新規作成まで完全排除する原子的batch RPCは新設せず、必要性を実機統合後に再評価する。
+- 今回は`PROJECT_NOTES.md`と`SYNC_DESIGN.md`だけを更新し、コード、package、SQL、RLS、policy、RPC、localStorage実値、Supabase環境は変更していない。stage・commit・pushも未実施である。
+
+### Phase B-3b：PC親機のDayMemo初回upload実装（実機確認待ち）
+
+- `hootoDay.dayMemoSync` version 1の型とstorage utilityを追加した。workspace binding、初回upload状態、対象日付、日付別operation ID・進捗・remote revision/change sequence、pull cursor、pushBlock、最終成功時刻だけを保持し、本文・device ID・token・エラー全文は保存しない。
+- UUID v4生成を共通utilityへ分離し、既存syncConnectionのdevice ID生成も同utilityへ切り替えた。`crypto.randomUUID()`優先、LAN内HTTPでは`crypto.getRandomValues()` fallback、`Math.random()`不使用を維持する。
+- owner親機専用の`useDayMemoInitialUpload`を追加した。設定・匿名認証・workspace・parent/owner状態を再検証し、明示preview操作時だけpull RPCをcursor 0・limit 1で1回呼び、remote空を確認する。
+- previewは件数と日付だけを保持・表示し、本文とremote payloadをUI・metadata・consoleへ残さない。remoteが1件以上ならpushBlockを設定して初回uploadを禁止する。
+- 別の明示操作で全対象日付と日付別operation IDをRPC前に永続化し、保存後read-back成功後だけupload開始を許可する。0件は「対象なし」とし、completedや削除要求へ変換しない。
+- uploadは日付順に直列で`hooto_day_upsert_sync_record`を1件ずつ呼び、base revision 0、schema version 1、現在のdevice ID、memoのupdatedAtを使用する。applied・revision 1・change sequence・payload一致等を検証し、1件ごとに進捗を保存する。
+- conflict、RPC error、戻り値不正、local変更、進捗保存失敗では後続を停止する。RPC error・結果不明はresponse unknownとして扱い、自動再試行しない。再読み込み後はresponse unknownを再送せずpull確認を要求する。明示再開は安全なpendingだけに限定する。
+- upload成功でも既存`useDayMemos`、`hootoDay.dayMemos`、本文は変更せず、pull結果も反映しない。delete、tombstone、通常更新、競合解決、iPhone/member uploadは未実装である。
+- JSON復元と全初期化は、実データ変更直前に同期Hook経由で`json_restore`または`full_reset`のpushBlockを保存・read-backする。保存できなければ操作を開始せず、成功後のblockは自動解除しない。未接続かつmetadataなしでは従来どおり操作できる。
+- SQL、RLS、policy、RPC、package、既存localStorageキー・version、JSON formatVersionは変更していない。Supabase実操作と実機確認は未実施で、stage・commit・pushも行っていない。
