@@ -2017,3 +2017,11 @@ cleanup後VERIFY結果：
 - upload成功でも既存`useDayMemos`、`hootoDay.dayMemos`、本文は変更せず、pull結果も反映しない。delete、tombstone、通常更新、競合解決、iPhone/member uploadは未実装である。
 - JSON復元と全初期化は、実データ変更直前に同期Hook経由で`json_restore`または`full_reset`のpushBlockを保存・read-backする。保存できなければ操作を開始せず、成功後のblockは自動解除しない。未接続かつmetadataなしでは従来どおり操作できる。
 - SQL、RLS、policy、RPC、package、既存localStorageキー・version、JSON formatVersionは変更していない。Supabase実操作と実機確認は未実施で、stage・commit・pushも行っていない。
+- 2026-07-19 Phase B-3c実装（iPhone子機のDayMemo pull preview、実機確認前）
+  - child・member・同一workspace接続済み端末だけに、明示操作の「DayMemoを確認」を追加した。owner親機からは実行できない。
+  - `hooto_day_pull_sync_records`をcursor 0からchange sequence昇順で直列ページングする。1ページ100件、最大20ページ・2000件を安全上限とし、上限到達やcursor停止・重複は完全previewとして扱わない。
+  - 各結果のstatus、workspace、entity type・ID、revision、change sequence、日時、tombstone、schema version 1相当のpayload 3キーを検証する。不正・欠落・重複が1件でもあれば取得済み全件を破棄する。
+  - previewはReactメモリだけに保持し、ページ再読み込みまたは明示的な「確認結果を破棄」で消去する。本文はUI・console・同期metadata・新しいlocalStorageキーへ出さない。
+  - 日付単位でremoteのみ、localのみ、内容一致、内容相違、remote tombstoneとlocal有無を比較し、件数・日付・分類・remote revision/change sequenceだけを表示する。
+  - B-3cでは`hootoDay.dayMemos`、`hootoDay.dayMemoSync`、pull cursor、pushBlockを変更しない。json_restore/full_reset中でもpull previewは許可するが、pushBlock解除は行わない。
+  - 自動pull・自動再試行・ローカル反映・upsert・delete・通常同期は未実装。Supabase実操作、SQL変更、commit、pushは行わず、iPhone実機確認待ち。

@@ -6070,3 +6070,10 @@ body,
 .cloud-day-memo-dates { max-height: 10rem; overflow: auto; margin: 0.6rem 0; padding-left: 1.4rem; }
 .cloud-day-memo-success { color: var(--success-color, #287a4b); font-weight: 700; }
 .cloud-day-memo-progress { font-variant-numeric: tabular-nums; }
+.cloud-day-memo-pull-panel { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--color-border, #d5dfd8); }
+.cloud-day-memo-pull-panel h4 { margin: 0 0 0.5rem; }
+.cloud-day-memo-pull-panel p { margin: 0.45rem 0; }
+.cloud-day-memo-preview-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.35rem 0.8rem; margin: 0.65rem 0; padding-left: 1.2rem; font-size: 0.75rem; }
+.cloud-day-memo-preview-items { max-height: 13rem; overflow: auto; margin: 0.65rem 0; padding: 0; list-style: none; }
+.cloud-day-memo-preview-items li { display: grid; gap: 0.15rem; padding: 0.55rem 0; border-bottom: 1px solid var(--color-border, #d5dfd8); }
+.cloud-day-memo-preview-items span, .cloud-day-memo-preview-items small { color: var(--color-text-muted); font-size: 0.72rem; }

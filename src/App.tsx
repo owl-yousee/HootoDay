@@ -21,6 +21,7 @@ import { ThemeSettings } from './components/ThemeSettings'
 import { WeightRecordDialog } from './components/WeightRecordDialog'
 import { useDayMemos } from './hooks/useDayMemos'
 import { useDayMemoInitialUpload } from './hooks/useDayMemoInitialUpload'
+import { useDayMemoPullPreview } from './hooks/useDayMemoPullPreview'
 import { useDailyAchievements } from './hooks/useDailyAchievements'
 import { useConditionRecords } from './hooks/useConditionRecords'
 import { useEvents } from './hooks/useEvents'
@@ -78,6 +79,12 @@ function App() {
   const supabaseAuth = useSupabaseAuth()
   const supabaseWorkspace = useSupabaseWorkspace(supabaseAuth.isSignedIn)
   const dayMemoInitialUpload = useDayMemoInitialUpload({
+    dayMemos,
+    isConfigured: supabaseAuth.isConfigured,
+    isSignedIn: supabaseAuth.isSignedIn,
+    connection: supabaseWorkspace.connection,
+  })
+  const dayMemoPullPreview = useDayMemoPullPreview({
     dayMemos,
     isConfigured: supabaseAuth.isConfigured,
     isSignedIn: supabaseAuth.isSignedIn,
@@ -405,6 +412,7 @@ function App() {
           supabaseAuth={supabaseAuth}
           supabaseWorkspace={supabaseWorkspace}
           dayMemoInitialUpload={dayMemoInitialUpload}
+          dayMemoPullPreview={dayMemoPullPreview}
           onClose={() => setIsThemeSettingsOpen(false)}
         />
       )}

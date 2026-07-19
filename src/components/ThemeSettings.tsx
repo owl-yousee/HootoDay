@@ -5,6 +5,7 @@ import { XIcon } from '@phosphor-icons/react/X'
 import { useEffect, useRef, type MouseEvent, type SyntheticEvent } from 'react'
 import type { SupabaseAuthState, SupabaseConfigurationState } from '../hooks/useSupabaseAuth'
 import type { useDayMemoInitialUpload } from '../hooks/useDayMemoInitialUpload'
+import type { useDayMemoPullPreview } from '../hooks/useDayMemoPullPreview'
 import { useSupabasePairing, useSupabasePairingJoin } from '../hooks/useSupabasePairing'
 import type { ConnectAsMemberResult, SupabaseWorkspaceState } from '../hooks/useSupabaseWorkspace'
 import type { HealthProfile } from '../types/health'
@@ -36,6 +37,7 @@ interface ThemeSettingsProps {
     safeErrorMessage: string | null
   }
   dayMemoInitialUpload: ReturnType<typeof useDayMemoInitialUpload>
+  dayMemoPullPreview: ReturnType<typeof useDayMemoPullPreview>
   onClose: () => void
 }
 
@@ -117,6 +119,15 @@ const themeOptions = [
   icon: typeof SunIcon
 }>
 
+const pullComparisonLabels = {
+  remote_only: '同期先のみ',
+  local_only: 'この端末のみ',
+  same: '内容一致',
+  different: '内容相違',
+  remote_tombstone_local_exists: '同期先は削除済み・端末にあり',
+  remote_tombstone_local_missing: '同期先は削除済み・端末になし',
+} as const
+
 export function ThemeSettings({
   preference,
   appliedTheme,
@@ -127,6 +138,7 @@ export function ThemeSettings({
   supabaseAuth,
   supabaseWorkspace,
   dayMemoInitialUpload,
+  dayMemoPullPreview,
   onClose,
 }: ThemeSettingsProps) {
   const dialogRef = useRef<HTMLDialogElement>(null)
@@ -286,6 +298,58 @@ export function ThemeSettings({
                       <p>{supabasePairingJoin.joinedByRecovery
                         ? '既存の参加状態を確認し、このiPhoneの接続情報を復旧しました。DayMemo同期はまだ実装されていません。'
                         : 'この端末は子機・memberとして接続済みです。DayMemo同期はまだ実装されていません。'}</p>
+                      <div className="cloud-day-memo-pull-panel">
+                        <h4>DayMemoを確認</h4>
+                        <p>同期先の内容を読み取り、ローカルへ反映する前のpreviewだけを作成します。本文は表示しません。</p>
+                        {dayMemoPullPreview.previewState === 'idle' ? (
+                          <button type="button" className="health-primary-button cloud-sync-button" onClick={() => { void dayMemoPullPreview.pullPreview() }}>
+                            DayMemoを確認
+                          </button>
+                        ) : null}
+                        {dayMemoPullPreview.previewState === 'pulling' ? (
+                          <>
+                            <p>同期先のDayMemoを順番に確認しています…</p>
+                            <button type="button" className="health-primary-button cloud-sync-button" disabled>確認中…</button>
+                          </>
+                        ) : null}
+                        {dayMemoPullPreview.summary ? (
+                          <>
+                            <p className="cloud-day-memo-progress">
+                              通常 {dayMemoPullPreview.summary.remoteActiveCount}件・削除済み {dayMemoPullPreview.summary.remoteTombstoneCount}件
+                            </p>
+                            <ul className="cloud-day-memo-preview-summary">
+                              <li>同期先のみ：{dayMemoPullPreview.summary.remoteOnlyCount}件</li>
+                              <li>この端末のみ：{dayMemoPullPreview.summary.localOnlyCount}件</li>
+                              <li>内容一致：{dayMemoPullPreview.summary.sameCount}件</li>
+                              <li>内容相違：{dayMemoPullPreview.summary.differentCount}件</li>
+                              <li>削除済み・端末にあり：{dayMemoPullPreview.summary.remoteTombstoneLocalExistsCount}件</li>
+                              <li>削除済み・端末になし：{dayMemoPullPreview.summary.remoteTombstoneLocalMissingCount}件</li>
+                            </ul>
+                            {dayMemoPullPreview.items.length > 0 ? (
+                              <ul className="cloud-day-memo-preview-items">
+                                {dayMemoPullPreview.items.map((item) => (
+                                  <li key={`${item.date}-${item.comparison}`}>
+                                    <strong>{item.date}</strong>
+                                    <span>{pullComparisonLabels[item.comparison]}</span>
+                                    {item.remoteRevision !== null ? <small>revision {item.remoteRevision}・change {item.remoteChangeSequence}</small> : null}
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : <p>同期先のDayMemoは空です。</p>}
+                            <p className="cloud-sync-note">この結果はpreviewです。ローカルDayMemoへの反映はまだ行いません。</p>
+                            <button type="button" className="health-secondary-button cloud-sync-button" onClick={dayMemoPullPreview.clearPreview}>
+                              確認結果を破棄
+                            </button>
+                          </>
+                        ) : null}
+                        {dayMemoPullPreview.safeErrorMessage ? <p className="cloud-pairing-error" role="alert">{dayMemoPullPreview.safeErrorMessage}</p> : null}
+                        {dayMemoPullPreview.safeErrorMessage && dayMemoPullPreview.previewState !== 'pulling' ? (
+                          <button type="button" className="health-secondary-button cloud-sync-button" onClick={dayMemoPullPreview.clearPreview}>
+                            確認結果を破棄
+                          </button>
+                        ) : null}
+                        <p className="cloud-sync-note">自動pull・自動再試行・ローカル保存・pushBlock解除は行いません。</p>
+                      </div>
                     </>
                   ) : (
                     <>
