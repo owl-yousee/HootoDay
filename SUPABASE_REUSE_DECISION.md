@@ -453,3 +453,11 @@ HootoPost系の旧同期方式と推定され、PUBLIC EXECUTEである。HootoD
 - non-memberからW1、W1 memberからW2へのpull・upsert・deleteはすべてworkspace membershipエラーで拒否された。
 - pairing consume成功後にclient側の戻り値形状誤判定でローカルstateだけ未保存となったが、consumeを再実行せずmembership RPCでDB成功を確認して安全に復旧した。
 - 以上により、既存接続基盤を非破壊で流用し、HootoDay専用同期テーブル・RPCを分離するB案のRPC単体動作を確認した。アプリ統合後のlocalStorage保護と実端末同期は未確認である。
+
+## 19. 実操作テストデータcleanup後の再利用判断（2026年7月19日）
+
+- UUID完全一致のテスト用W1・W2と子データ、テスト匿名Authユーザー3名だけを段階的にcleanupした。
+- cleanup後VERIFYは49行すべて`matched=true`で、テストDatabase行とAuthユーザーが0件であることを確認した。
+- 共通4テーブル、共通workspace・pairing RPC、`app_workspace_state`構造は残存し、既存HootoSong・HootoPostデータを削除対象に含めていない。
+- HootoDay専用2テーブル、sequence、result型、専用3 RPC、RLS・policy 0件、RPC属性・ACL、table・sequence直接権限なしも維持している。
+- 以上により、既存接続基盤を変更せずHootoDay専用同期基盤を分離するB案は、テストデータcleanup後も維持できている。rollbackは未実行で、アプリ統合後のlocalStorage保護と実端末同期は未確認である。

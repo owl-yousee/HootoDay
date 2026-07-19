@@ -522,4 +522,18 @@ pairing参加時、`consume_app_pairing_code`のDB処理は成功したが、テ
 
 現在確認できた空端末・失敗時保護はRPC呼出順とクラウドDB不変までである。次はアプリ統合後に、実iPhone localStorageでの初回pull優先、初回自動push禁止、受信validator後だけの保存、失敗・conflict時のlocalStorage非変更、JSON復元直後の自動push禁止、全初期化とクラウド削除の分離、cursor・revision永続化、通信断・認証切れUIを再確認する。
 
-テスト用workspace、匿名ユーザー、pairing履歴、同期record、operation履歴はcleanup未実施で残っている。cleanupは対象を限定して別途手動設計し、既存HootoSong・HootoPostデータと現行recordを誤削除しない。アプリ側同期実装と統合テスト、rollbackも未実施である。
+テスト完了直後にはテスト用workspace、匿名ユーザー、pairing履歴、同期record、operation履歴を残し、対象を限定したcleanupを別途設計する状態だった。アプリ側同期実装と統合テスト、rollbackは未実施である。
+
+### 19.3 実操作テストデータcleanup結果（2026年7月19日）
+
+- cleanup PRECHECKは53行すべて`matched=true`、summaryは`expected_count=52`、`actual_count=52`、`matched=true`で、UUID完全一致のW1・W2だけを安全に削除できる状態を確認した。
+- Database cleanupは1トランザクションで子データから明示削除し、operation履歴8件、sync records 2件、workspace state 0件、pairing code 1件、workspace member 3件、workspace 2件を削除した。全結果は`matched=true`だった。
+- Database cleanupでは対象外workspace、既存HootoSong・HootoPostデータ、HootoDay同期テーブル・RPC・sequence・型・index・RLSを削除していない。
+- Authentication Dashboardでは一度ユーザー0人に見えたが、UUID完全一致のSQL確認ではテスト匿名ユーザー3名が各1件残っていた。表示差の理由は断定せず、SQL確認を正本としてowner・member・non-memberの3 UUIDだけを`auth.users`から削除した。
+- Auth cleanupは1トランザクションで正確に3件を削除し、全項目`matched=true`だった。`auth.identities`等の内部テーブルは直接操作せず、対象外Authユーザーを削除条件に含めていない。
+- cleanup後VERIFYは49行すべて`matched=true`で、summaryは`Test cleanup verified; HootoDay sync infrastructure remains intact`だった。
+- W1・W2関連の共通6テーブル行とテスト匿名Authユーザー3名がすべて0件であることを確認した。
+- 共通4テーブル、共通workspace・pairing RPC、`app_workspace_state`構造、HootoDay専用2テーブル、sequence、result型、専用3 RPCが残存している。
+- 専用2テーブルのRLS有効・policy 0件、専用RPCのSECURITY DEFINER・固定search_path、PUBLIC/anon実行不可・authenticated実行可、table・sequence直接権限なしも維持している。
+- rollbackは未実行。アプリ側同期実装と統合テストは未着手であり、localStorage保護、空iPhone初回pull、初回自動push禁止、JSON復元後の自動push禁止、conflict、cursor、通信断等はアプリ実装後に検証する。
+- リポジトリ外`HootoDay-Sync-Test`は文書記録のcommit・push完了まで保持しており、`.env`、state、テストスクリプト、依存関係、秘密SQLを含めて後からフォルダ全体を削除可能である。

@@ -1842,10 +1842,60 @@ authenticated clientで確認した16ケース：
 - cursorとrevisionを端末へ安全に保存して再起動後も継続できること
 - 通信断・認証切れ・途中失敗時のUIと再試行、PC初回uploadの明示操作、実アプリでのPC・iPhone間同期
 
-テスト用データの現在状態：
+テスト完了直後の状態（cleanup前）：
 
-- W1・W2、匿名ユーザー3名、pairing履歴、同期record、operation履歴はテスト用として現在も残している
-- cleanupは結果記録後に方法と対象を別途確認し、既存HootoSong・HootoPostデータへ触れず、対象を限定して手動実施する
+- W1・W2、匿名ユーザー3名、pairing履歴、同期record、operation履歴はテスト完了直後には残していた
+- cleanupは結果記録後に方法と対象を別途確認し、既存HootoSong・HootoPostデータへ触れず、対象を限定して手動実施する方針とした
 - 全件削除や曖昧な条件による削除は行わず、cleanup完了まではテスト用stateを削除しない
 - リポジトリ外テストフォルダの`.env`と`.sync-test-state.json`は秘密情報を含むため共有・commit禁止
-- Supabase同期SQL適用、構造VERIFY、APPLY前後PRECHECK一致、authenticated client RPC実操作テストまで完了。rollbackとcleanupは未実施
+- この時点ではSupabase同期SQL適用、構造VERIFY、APPLY前後PRECHECK一致、authenticated client RPC実操作テストまで完了し、rollbackとcleanupは未実施だった
+
+### HootoDay Sync 実操作テストデータcleanup（2026年7月19日完了）
+
+Database cleanup前確認：
+
+- 読み取り専用cleanup PRECHECKを実行し、53行すべて`matched=true`を確認
+- summaryは`expected_count=52`、`actual_count=52`、`matched=true`で、対象と外部キー・残存基盤を確認したうえでcleanup SQL作成・実行へ進める状態と判断
+- UUID完全一致のW1・W2だけをcleanup対象とし、workspace名、日付、entity ID、LIKE等の曖昧な削除条件は使用していない
+
+Database cleanup APPLY結果：
+
+- 1トランザクション内で子データを明示削除し、最後にW1・W2 workspaceを削除
+- HootoDay operation履歴8件、HootoDay sync records 2件、`app_workspace_state` 0件、pairing codes 1件、workspace members 3件、W1・W2 workspace 2件を削除
+- 事前件数、DELETE件数、削除後0件確認を行い、結果は全項目`matched=true`
+- 対象外workspace、既存HootoSong・HootoPostデータ、一般operation履歴は削除条件に含めていない
+- HootoDay同期テーブル、RPC、sequence、result型、index、RLSは削除していない
+
+Auth cleanup結果：
+
+- Authentication Dashboardでは一度ユーザー0人に見えたが、cleanup後VERIFYのUUID完全一致確認ではテスト匿名ユーザー3名が各1件残存していた
+- Dashboard表示だけで削除完了とせず、UUID完全一致のSQL結果を正本として追加cleanupを実施。Dashboard表示とSQL結果が異なった理由は断定しない
+- owner・member・non-memberの3 UUIDだけを`auth.users`から1トランザクションで削除し、削除件数が正確に3件であることを確認
+- `auth.identities`等のAuth内部テーブルは直接操作せず、対象外Authユーザーは削除条件に含めていない
+- Auth cleanup結果は全項目`matched=true`
+
+cleanup後VERIFY結果：
+
+- 読み取り専用cleanup後VERIFYは49行すべて`matched=true`
+- summaryは`Test cleanup verified; HootoDay sync infrastructure remains intact`
+- W1・W2に関する`app_workspaces`、`app_workspace_members`、`app_pairing_codes`、`app_workspace_state`、`hooto_day_sync_records`、`hooto_day_sync_operations`がすべて0件であることを確認
+- テスト匿名Authユーザー3名がすべて0件であることをUUID完全一致で確認
+- 共通4テーブル、共通workspace・pairing関連RPC、`app_workspace_state`構造が残っていることを確認
+- HootoDay専用2テーブル、`hooto_day_sync_change_seq`、`hooto_day_sync_result`、専用3 RPCが残っていることを確認
+- 専用2テーブルはRLS有効・policy 0件、専用RPCはSECURITY DEFINER・`search_path=pg_catalog, public`を維持
+- PUBLIC・anonは専用RPCを実行不可、authenticatedは実行可能で、専用table・sequenceの直接権限がないことを再確認
+
+現在の同期進捗：
+
+- Supabase同期SQL適用、構造VERIFY、APPLY前後PRECHECK一致、authenticated client RPC単体16ケース、Database cleanup、テスト匿名Authユーザーcleanup、cleanup後VERIFYまで完了
+- HootoDay同期基盤は正常に残存し、rollbackは未実行
+- アプリ側同期実装は未着手で、アプリ統合テストも未実施
+- PC親機・iPhone子機の実同期、localStorageへの安全な反映、同期失敗時のlocalStorage非変更、空iPhoneの初回pull優先と初回pull前自動push禁止は未確認
+- JSON復元直後の自動push禁止、conflict時のローカル自動上書き禁止、cursor・revisionの端末保存、通信断・認証切れ・再試行、ローカル全初期化とクラウド全削除の分離もアプリ実装後に確認する
+
+ローカルテストフォルダ：
+
+- リポジトリ外の`HootoDay-Sync-Test`フォルダは現在も残っており、Git管理していない
+- `.env`と`.sync-test-state.json`は秘密情報を含むため、共有・commit禁止
+- Supabase側cleanup後VERIFYが成功したため、この文書記録のcommit・push完了後にフォルダ全体を削除可能
+- フォルダ削除対象には`.env`、state、テストスクリプト、`node_modules`、packageファイル、UUIDを含む秘密SQLを含む
