@@ -7,6 +7,7 @@ import type { SupabaseAuthState, SupabaseConfigurationState } from '../hooks/use
 import type { useDayMemoInitialUpload } from '../hooks/useDayMemoInitialUpload'
 import type { useDayMemoPullPreview } from '../hooks/useDayMemoPullPreview'
 import type { useDayMemoSyncBaseline } from '../hooks/useDayMemoSyncBaseline'
+import type { useDayMemoUpdatePreview } from '../hooks/useDayMemoUpdatePreview'
 import { useSupabasePairing, useSupabasePairingJoin } from '../hooks/useSupabasePairing'
 import type { ConnectAsMemberResult, SupabaseWorkspaceState } from '../hooks/useSupabaseWorkspace'
 import type { HealthProfile } from '../types/health'
@@ -40,6 +41,7 @@ interface ThemeSettingsProps {
   dayMemoInitialUpload: ReturnType<typeof useDayMemoInitialUpload>
   dayMemoPullPreview: ReturnType<typeof useDayMemoPullPreview>
   dayMemoSyncBaseline: ReturnType<typeof useDayMemoSyncBaseline>
+  dayMemoUpdatePreview: ReturnType<typeof useDayMemoUpdatePreview>
   onClose: () => void
 }
 
@@ -141,6 +143,15 @@ const pullComparisonLabels = {
   remote_tombstone_local_missing: '同期先は削除済み・端末になし',
 } as const
 
+const updateClassificationLabels = {
+  unchanged: '変更なし',
+  modified_candidate: '既存DayMemoの更新候補',
+  local_only: 'この端末のみ（今回対象外）',
+  missing_local: 'この端末に存在しない（削除処理は未実装）',
+  tombstone_baseline: '同期先で削除済み（今回対象外）',
+  metadata_invalid: '同期情報の確認が必要',
+} as const
+
 export function ThemeSettings({
   preference,
   appliedTheme,
@@ -153,6 +164,7 @@ export function ThemeSettings({
   dayMemoInitialUpload,
   dayMemoPullPreview,
   dayMemoSyncBaseline,
+  dayMemoUpdatePreview,
   onClose,
 }: ThemeSettingsProps) {
   const dialogRef = useRef<HTMLDialogElement>(null)
@@ -340,6 +352,57 @@ export function ThemeSettings({
                       ) : null}
                       {dayMemoSyncBaseline.safeErrorMessage ? <p className="cloud-pairing-error" role="alert">{dayMemoSyncBaseline.safeErrorMessage}</p> : null}
                       <p className="cloud-sync-note">自動同期・自動再試行・upsert・deleteは行いません。</p>
+                    </div>
+                  ) : null}
+                  {dayMemoUpdatePreview.eligible ? (
+                    <div className="cloud-day-memo-update-panel">
+                      <h4>通常更新の候補</h4>
+                      <p>確認済みbaselineとこの端末のDayMemoを比較します。明示操作だけで判定し、Supabaseへはまだ送信しません。</p>
+                      <p>baseline：{dayMemoSyncBaseline.baselineState === 'confirmed' ? '確認済み' : '未確認'}</p>
+                      {dayMemoUpdatePreview.previewState === 'idle' ? (
+                        <button type="button" className="health-secondary-button cloud-sync-button" onClick={dayMemoUpdatePreview.checkForUpdates}>
+                          更新候補を確認
+                        </button>
+                      ) : null}
+                      {dayMemoUpdatePreview.previewState === 'checking' ? (
+                        <button type="button" className="health-secondary-button cloud-sync-button" disabled>確認中…</button>
+                      ) : null}
+                      {dayMemoUpdatePreview.summary ? (
+                        <>
+                          <ul className="cloud-day-memo-preview-summary">
+                            <li>更新候補：{dayMemoUpdatePreview.summary.modifiedCandidateCount}件</li>
+                            <li>変更なし：{dayMemoUpdatePreview.summary.unchangedCount}件</li>
+                            <li>この端末のみ：{dayMemoUpdatePreview.summary.localOnlyCount}件</li>
+                            <li>端末に存在しない：{dayMemoUpdatePreview.summary.missingLocalCount}件</li>
+                            <li>削除済みbaseline：{dayMemoUpdatePreview.summary.tombstoneCount}件</li>
+                            <li>metadata不整合：{dayMemoUpdatePreview.summary.metadataInvalidCount}件</li>
+                          </ul>
+                          {dayMemoUpdatePreview.items.some((item) => item.classification !== 'unchanged') ? (
+                            <ul className="cloud-day-memo-preview-items">
+                              {dayMemoUpdatePreview.items.filter((item) => item.classification !== 'unchanged').map((item) => (
+                                <li key={`${item.date}-${item.classification}`}>
+                                  <strong>{item.date}</strong>
+                                  <span>{updateClassificationLabels[item.classification]}</span>
+                                  {item.baseRevision !== null ? <small>base revision {item.baseRevision}・change {item.baselineChangeSequence}</small> : null}
+                                </li>
+                              ))}
+                            </ul>
+                          ) : null}
+                        </>
+                      ) : null}
+                      {dayMemoUpdatePreview.previewState === 'preview_ready' ? (
+                        <p className="cloud-day-memo-success" role="status">既存DayMemoの更新候補を確認しました。通常アップロードは次のPhaseです。</p>
+                      ) : null}
+                      {dayMemoUpdatePreview.previewState === 'no_changes' ? (
+                        <p className="cloud-sync-note" role="status">更新候補はありません。</p>
+                      ) : null}
+                      {dayMemoUpdatePreview.safeErrorMessage ? <p className="cloud-pairing-error" role="alert">{dayMemoUpdatePreview.safeErrorMessage}</p> : null}
+                      {dayMemoUpdatePreview.hasFreshSnapshot || dayMemoUpdatePreview.summary ? (
+                        <button type="button" className="health-secondary-button cloud-sync-button" onClick={dayMemoUpdatePreview.discardPreview}>
+                          確認結果を破棄
+                        </button>
+                      ) : null}
+                      <p className="cloud-sync-note">本文は表示・保存しません。自動同期、operation ID作成、upsert、deleteは行いません。</p>
                     </div>
                   ) : null}
                   {supabaseWorkspace.connection?.workspaceRole === 'member' ? (

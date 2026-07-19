@@ -23,6 +23,7 @@ import { useDayMemos } from './hooks/useDayMemos'
 import { useDayMemoInitialUpload } from './hooks/useDayMemoInitialUpload'
 import { useDayMemoPullPreview } from './hooks/useDayMemoPullPreview'
 import { useDayMemoSyncBaseline } from './hooks/useDayMemoSyncBaseline'
+import { useDayMemoUpdatePreview } from './hooks/useDayMemoUpdatePreview'
 import { useDailyAchievements } from './hooks/useDailyAchievements'
 import { useConditionRecords } from './hooks/useConditionRecords'
 import { useEvents } from './hooks/useEvents'
@@ -93,6 +94,12 @@ function App() {
     adoptVerifiedStoredDayMemos,
   })
   const dayMemoSyncBaseline = useDayMemoSyncBaseline({
+    dayMemos,
+    isConfigured: supabaseAuth.isConfigured,
+    isSignedIn: supabaseAuth.isSignedIn,
+    connection: supabaseWorkspace.connection,
+  })
+  const dayMemoUpdatePreview = useDayMemoUpdatePreview({
     dayMemos,
     isConfigured: supabaseAuth.isConfigured,
     isSignedIn: supabaseAuth.isSignedIn,
@@ -422,6 +429,7 @@ function App() {
           dayMemoInitialUpload={dayMemoInitialUpload}
           dayMemoPullPreview={dayMemoPullPreview}
           dayMemoSyncBaseline={dayMemoSyncBaseline}
+          dayMemoUpdatePreview={dayMemoUpdatePreview}
           onClose={() => setIsThemeSettingsOpen(false)}
         />
       )}

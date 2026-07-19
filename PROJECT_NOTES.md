@@ -2099,3 +2099,14 @@ cleanup後VERIFY結果：
 - migration結果を、旧metadata不正、変換結果不正、保存失敗、read-back失敗、rollback失敗へ分離した。confirming保存、pull RPC、pull validator、remote/local不一致、baseline完成metadata不正、baseline保存/read-back、local状態変化、pending operationも内部理由を区別し、UIには秘密情報を含まない文言だけを表示する。
 - version 1 JSON、初回upload履歴、workspace binding、pushBlock、local DayMemo、反映前バックアップは維持する。新しいoperation IDやlocalStorageキーは作らず、Supabaseへの書込み、pushBlock解除、通常uploadは行わない。
 - 修正後のPC実機再確認は未実施である。SQL変更、Supabase実操作、stage・commit・pushも行っていない。
+
+## 2026-07-19 Phase B-3e2: DayMemo通常更新候補preview（実装済み・実機確認待ち）
+
+- owner親機とmember子機で共通利用する`useDayMemoUpdatePreview`を追加した。明示的な「更新候補を確認」操作時だけ、confirmed baselineと現在の`hootoDay.dayMemos`をローカルで比較する。Supabase RPCは呼ばない。
+- 通常のDayMemo dialogと予定編集画面内メモは、本文をtrimし、保存操作ごとに新しいISO 8601 `updatedAt`を設定することを再確認した。version 2へ本文hashを追加せず、`baselineLocalUpdatedAt`と現在`updatedAt`の不一致を「既存remote DayMemoの更新候補」として扱う。
+- 分類は`unchanged`、`modified_candidate`、`local_only`、`missing_local`、`tombstone_baseline`、`metadata_invalid`である。通常更新候補にするのは、active baseline・有効なlocal内容・updatedAt差分を持つ`modified_candidate`だけである。
+- `local_only`は新規upload未実装、`missing_local`はdelete未実装、tombstoneは反映未実装として候補外にする。内容不正、baseline不正、workspace不一致、baseline未確認、pending operation、pushBlock中、React stateと保存値の不一致では安全に停止する。
+- preview snapshotはworkspace binding、baseline確認日時、cursor、候補日、各候補のlocal updatedAt・base revision・本文、version 1 localStorage全体をReactメモリ内だけに保持する。本文はUI、console、sync metadata、新しいlocalStorageへ出さない。
+- UIには分類件数、候補日、base revision、baseline change sequenceだけを表示する。previewは明示破棄またはページ再読み込みで失われ、自動判定・自動再試行・operation ID生成・pending operation作成は行わない。
+- `hootoDay.dayMemoSync`、baseline、cursor、pushBlock、local DayMemo、反映前バックアップ、JSONバックアップ形式は変更しない。通常upsert、local-only upload、delete、競合解決は未実装である。
+- package、SQL、RLS、policy、RPC定義は変更していない。PC/iPhone実機確認、Supabase実操作、stage・commit・pushは未実施である。
