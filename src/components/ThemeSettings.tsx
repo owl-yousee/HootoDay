@@ -5,6 +5,7 @@ import { XIcon } from '@phosphor-icons/react/X'
 import { useEffect, useRef, type MouseEvent, type SyntheticEvent } from 'react'
 import type { SupabaseAuthState, SupabaseConfigurationState } from '../hooks/useSupabaseAuth'
 import type { useDayMemoInitialUpload } from '../hooks/useDayMemoInitialUpload'
+import type { useDayMemoLocalOnlyPreview } from '../hooks/useDayMemoLocalOnlyPreview'
 import type { useDayMemoPullPreview } from '../hooks/useDayMemoPullPreview'
 import type { useDayMemoBaselineRebase } from '../hooks/useDayMemoBaselineRebase'
 import type { useDayMemoSyncBaseline } from '../hooks/useDayMemoSyncBaseline'
@@ -46,6 +47,7 @@ interface ThemeSettingsProps {
   dayMemoBaselineRebase: ReturnType<typeof useDayMemoBaselineRebase>
   dayMemoUpdatePreview: ReturnType<typeof useDayMemoUpdatePreview>
   dayMemoUpdateUpload: ReturnType<typeof useDayMemoUpdateUpload>
+  dayMemoLocalOnlyPreview: ReturnType<typeof useDayMemoLocalOnlyPreview>
   onClose: () => void
 }
 
@@ -171,6 +173,7 @@ export function ThemeSettings({
   dayMemoBaselineRebase,
   dayMemoUpdatePreview,
   dayMemoUpdateUpload,
+  dayMemoLocalOnlyPreview,
   onClose,
 }: ThemeSettingsProps) {
   const dialogRef = useRef<HTMLDialogElement>(null)
@@ -518,6 +521,55 @@ export function ThemeSettings({
                         </button>
                       ) : null}
                       <p className="cloud-sync-note">本文は表示・metadata保存しません。upsertは明示操作で1件だけ行い、delete・自動再試行は行いません。</p>
+                    </div>
+                  ) : null}
+                  {dayMemoLocalOnlyPreview.eligible ? (
+                    <div className="cloud-day-memo-local-only-panel">
+                      <h4>local-only候補</h4>
+                      <p>この端末だけにあるDayMemoについて、同期先の通常recordと削除済みrecordをfull pullで確認します。自動同期ではありません。</p>
+                      {dayMemoLocalOnlyPreview.previewState === 'idle' ? (
+                        <button type="button" className="health-secondary-button cloud-sync-button" onClick={() => { void dayMemoLocalOnlyPreview.previewLocalOnly() }}>
+                          local-only候補を確認
+                        </button>
+                      ) : null}
+                      {dayMemoLocalOnlyPreview.previewState === 'checking' ? (
+                        <button type="button" className="health-secondary-button cloud-sync-button" disabled>同期先を確認中…</button>
+                      ) : null}
+                      {dayMemoLocalOnlyPreview.summary ? (
+                        <>
+                          <ul className="cloud-day-memo-preview-summary">
+                            <li>候補：{dayMemoLocalOnlyPreview.summary.candidateCount}件</li>
+                            <li>新規候補：{dayMemoLocalOnlyPreview.summary.localNewCandidateCount}件</li>
+                            <li>同期先で削除済み：{dayMemoLocalOnlyPreview.summary.remoteDeletedCandidateCount}件</li>
+                            <li>確認不能：{dayMemoLocalOnlyPreview.summary.unknownLocalOnlyCount}件</li>
+                          </ul>
+                          {dayMemoLocalOnlyPreview.items.length > 0 ? (
+                            <ul className="cloud-day-memo-preview-items">
+                              {dayMemoLocalOnlyPreview.items.map((item) => (
+                                <li key={`${item.date}-${item.classification}`}>
+                                  <strong>{item.date}</strong>
+                                  <span>{item.classification === 'local_new_candidate' ? '新規候補'
+                                    : item.classification === 'remote_deleted_candidate' ? '同期先で削除済み'
+                                      : '確認不能'}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          ) : null}
+                        </>
+                      ) : null}
+                      {dayMemoLocalOnlyPreview.previewState === 'preview_ready' ? (
+                        <p className="cloud-day-memo-success" role="status">local-only候補の分類が完了しました。送信判断は次のPhaseで行います。</p>
+                      ) : null}
+                      {dayMemoLocalOnlyPreview.previewState === 'no_candidates' ? (
+                        <p className="cloud-sync-note" role="status">baselineに存在しないローカルDayMemoはありません。</p>
+                      ) : null}
+                      {dayMemoLocalOnlyPreview.safeErrorMessage ? <p className="cloud-pairing-error" role="alert">{dayMemoLocalOnlyPreview.safeErrorMessage}</p> : null}
+                      {dayMemoLocalOnlyPreview.summary || dayMemoLocalOnlyPreview.items.length > 0 ? (
+                        <button type="button" className="health-secondary-button cloud-sync-button" onClick={dayMemoLocalOnlyPreview.discardPreview}>
+                          確認結果を破棄
+                        </button>
+                      ) : null}
+                      <p className="cloud-sync-note">本文は表示・保存しません。upsert・delete・operation ID生成・metadata更新は行いません。</p>
                     </div>
                   ) : null}
                   {supabaseWorkspace.connection?.workspaceRole === 'member' ? (

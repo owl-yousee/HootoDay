@@ -2153,4 +2153,11 @@ cleanup後VERIFY結果：
 - `json_restore`または`full_reset`のpushBlock中はlocal-only uploadを禁止する。読み取り専用full pullと分類確認は可能だが、解除Phase完了後にlocal・metadata・remoteを再取得して再判定する。空localや復元データを新規作成・削除要求へ自動変換しない。
 - PC／iPhoneでfull pull、候補判定、operation準備、1件upsert、結果検証、baseline追加は共通Hook／utility化できる。端末固有差は表示位置と説明だけとし、owner/memberで独自の書き込み権限差を追加しない。
 - 推奨PhaseはB-3e4a「local-onlyのfull pull分類preview」、B-3e4b「安全な新規候補1件の明示upsert」、B-3e4c「複数件の逐次処理」、B-3f「delete・tombstone・明示復活」とする。次に実装すべき最小単位はB-3e4aであり、まだupsertやmetadata変更を行わない。
+
+### Phase B-3e4a: local-only full pull分類preview
+
+- baselineに同日がないローカルDayMemoを、明示操作時だけ既存共通full pullで確認する読み取り専用previewを実装した。候補が0件ならRPCを呼ばず終了する。
+- full pull完了後、remote recordもtombstoneもない日を`local_new_candidate`、tombstoneがある日を`remote_deleted_candidate`、通常record存在または安全確認不能を`unknown_local_only`へ分類する。分類は送信許可を意味しない。
+- preview結果は日付と分類だけをReact stateへ保持し、本文、payload、UUID、operation IDは表示・永続化しない。破棄または再読み込みで消え、DayMemo・baseline・cursor・metadataを変更しない。
+- upsert、delete、operation ID生成、pendingOperation作成、自動pull、自動再試行は未実装のままである。
 - 今回は調査・設計文書更新のみ。src、SQL、package、localStorage、metadataは変更せず、Supabase操作、commit、pushは行っていない。
