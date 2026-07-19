@@ -337,10 +337,30 @@ export function ThemeSettings({
                               </ul>
                             ) : <p>同期先のDayMemoは空です。</p>}
                             <p className="cloud-sync-note">この結果はpreviewです。ローカルDayMemoへの反映はまだ行いません。</p>
-                            <button type="button" className="health-secondary-button cloud-sync-button" onClick={dayMemoPullPreview.clearPreview}>
+                            {dayMemoPullPreview.canApplyPreview ? (
+                              <div className="cloud-day-memo-apply-confirmation">
+                                <strong>この端末へ追加する内容を確認してください</strong>
+                                <p>同期先にだけあるDayMemoを追加します。この端末だけの内容、相違がある内容、削除済みデータは変更しません。</p>
+                                <p>反映前バックアップを保存してから、明示操作で1回だけ反映します。Supabaseへの書き込みは行いません。</p>
+                                <button
+                                  type="button"
+                                  className="health-primary-button cloud-sync-button"
+                                  disabled={dayMemoPullPreview.applyState === 'applying'}
+                                  onClick={dayMemoPullPreview.applyPreview}
+                                >
+                                  {dayMemoPullPreview.applyState === 'applying' ? 'DayMemoを反映中…' : '確認したDayMemoをこの端末へ追加'}
+                                </button>
+                              </div>
+                            ) : null}
+                            <button type="button" className="health-secondary-button cloud-sync-button" onClick={dayMemoPullPreview.clearPreview} disabled={dayMemoPullPreview.applyState === 'applying'}>
                               確認結果を破棄
                             </button>
                           </>
+                        ) : null}
+                        {dayMemoPullPreview.applyState === 'completed' && dayMemoPullPreview.applyResult ? (
+                          <p className="cloud-day-memo-success" role="status">
+                            DayMemoを{dayMemoPullPreview.applyResult.appliedCount}件追加しました。現在は{dayMemoPullPreview.applyResult.localTotalCount}件です。
+                          </p>
                         ) : null}
                         {dayMemoPullPreview.safeErrorMessage ? <p className="cloud-pairing-error" role="alert">{dayMemoPullPreview.safeErrorMessage}</p> : null}
                         {dayMemoPullPreview.safeErrorMessage && dayMemoPullPreview.previewState !== 'pulling' ? (

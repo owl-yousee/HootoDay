@@ -3,6 +3,8 @@ import { supabaseClient } from '../lib/supabaseClient'
 import type { DayMemo } from '../types/dayMemo'
 import type {
   DayMemoPullComparison,
+  DayMemoPullApplyResult,
+  DayMemoPullApplyState,
   DayMemoPullPreviewItem,
   DayMemoPullPreviewState,
   DayMemoPullPreviewSummary,
@@ -10,6 +12,8 @@ import type {
 import type { SyncConnection } from '../types/sync'
 import { fromDateKey } from '../utils/date'
 import { loadDayMemoSyncMetadata } from '../utils/dayMemoSyncStorage'
+import { saveDayMemoPullApplyBackup } from '../utils/dayMemoPullApplyBackupStorage'
+import { readDayMemoStorageSnapshot, replaceStoredDayMemosVerified } from '../utils/dayMemoStorage'
 import { isUuid } from '../utils/syncConnectionStorage'
 
 interface UseDayMemoPullPreviewInput {
@@ -17,6 +21,7 @@ interface UseDayMemoPullPreviewInput {
   isConfigured: boolean
   isSignedIn: boolean
   connection: SyncConnection | null
+  adoptVerifiedStoredDayMemos: (memos: DayMemo[]) => void
 }
 
 interface RemoteDayMemoRecord {
@@ -33,6 +38,7 @@ interface PullPreviewData {
   items: DayMemoPullPreviewItem[]
   summary: DayMemoPullPreviewSummary
   remoteRecords: RemoteDayMemoRecord[]
+  localStorageSnapshot: string
 }
 
 const PAGE_LIMIT = 100
@@ -111,7 +117,7 @@ function localSignature(memos: DayMemo[]): string {
   return JSON.stringify(memos.map((memo) => [memo.date, memo.updatedAt, memo.content]).sort(([a], [b]) => a.localeCompare(b)))
 }
 
-function buildPreview(remoteRecords: RemoteDayMemoRecord[], localMemos: DayMemo[]): PullPreviewData | null {
+function buildPreview(remoteRecords: RemoteDayMemoRecord[], localMemos: DayMemo[]): Omit<PullPreviewData, 'localStorageSnapshot'> | null {
   if (!localMemos.every((memo) => isValidDayMemo(memo))) return null
   const localByDate = new Map<string, DayMemo>()
   for (const memo of localMemos) {
@@ -179,10 +185,18 @@ function messageForState(state: DayMemoPullPreviewState): string | null {
   }
 }
 
-export function useDayMemoPullPreview({ dayMemos, isConfigured, isSignedIn, connection }: UseDayMemoPullPreviewInput) {
+export function useDayMemoPullPreview({
+  dayMemos,
+  isConfigured,
+  isSignedIn,
+  connection,
+  adoptVerifiedStoredDayMemos,
+}: UseDayMemoPullPreviewInput) {
   const [previewState, setPreviewState] = useState<DayMemoPullPreviewState>('unavailable')
   const [preview, setPreview] = useState<PullPreviewData | null>(null)
   const [safeErrorMessage, setSafeErrorMessage] = useState<string | null>(null)
+  const [applyState, setApplyState] = useState<DayMemoPullApplyState>('idle')
+  const [applyResult, setApplyResult] = useState<DayMemoPullApplyResult | null>(null)
   const previewLocalSignature = useRef<string | null>(null)
   const requestGeneration = useRef(0)
   const currentLocalSignature = useMemo(() => localSignature(dayMemos), [dayMemos])
@@ -202,6 +216,8 @@ export function useDayMemoPullPreview({ dayMemos, isConfigured, isSignedIn, conn
     setPreview(null)
     previewLocalSignature.current = null
     setSafeErrorMessage(null)
+    setApplyState('idle')
+    setApplyResult(null)
     setPreviewState(memberReady ? 'idle' : 'unavailable')
   }, [connection?.workspaceId, memberReady])
 
@@ -288,7 +304,14 @@ export function useDayMemoPullPreview({ dayMemos, isConfigured, isSignedIn, conn
           setSafeErrorMessage(messageForState('validation_error'))
           return
         }
-        setPreview(nextPreview)
+        const storageSnapshot = readDayMemoStorageSnapshot(window.localStorage)
+        if (storageSnapshot.status !== 'ready'
+          || localSignature(storageSnapshot.memos) !== requestLocalSignature) {
+          setPreviewState('recovery_required')
+          setSafeErrorMessage(messageForState('recovery_required'))
+          return
+        }
+        setPreview({ ...nextPreview, localStorageSnapshot: storageSnapshot.serialized })
         previewLocalSignature.current = currentLocalSignature
         setPreviewState(records.length === 0
           ? 'empty_remote'
@@ -313,8 +336,111 @@ export function useDayMemoPullPreview({ dayMemos, isConfigured, isSignedIn, conn
     setPreview(null)
     previewLocalSignature.current = null
     setSafeErrorMessage(null)
+    setApplyState('idle')
+    setApplyResult(null)
     setPreviewState(memberReady ? 'idle' : 'unavailable')
   }, [memberReady])
+
+  const canApplyPreview = Boolean(
+    memberReady
+    && previewState === 'preview_ready'
+    && preview
+    && preview.summary.remoteOnlyCount > 0
+    && preview.summary.localOnlyCount === 0
+    && preview.summary.differentCount === 0
+    && preview.summary.remoteTombstoneCount === 0
+    && preview.summary.remoteTombstoneLocalExistsCount === 0
+    && preview.summary.remoteTombstoneLocalMissingCount === 0
+    && applyState !== 'applying'
+    && applyState !== 'completed',
+  )
+
+  const applyPreview = useCallback(() => {
+    if (!canApplyPreview || !preview || !connection?.workspaceId || applyState === 'applying') return
+    setSafeErrorMessage(null)
+    setApplyState('applying')
+
+    if (!memberReady
+      || connection.deviceRole !== 'child'
+      || connection.workspaceRole !== 'member'
+      || connection.pairingStatus !== 'member') {
+      setApplyState('connection_changed')
+      setSafeErrorMessage('接続状態が変わったため、DayMemoの反映を中止しました。もう一度確認してください。')
+      return
+    }
+
+    const currentSignature = localSignature(dayMemos)
+    const currentStorage = readDayMemoStorageSnapshot(window.localStorage)
+    if (previewLocalSignature.current !== currentSignature
+      || currentStorage.status !== 'ready'
+      || currentStorage.serialized !== preview.localStorageSnapshot
+      || localSignature(currentStorage.memos) !== currentSignature) {
+      setApplyState('local_changed')
+      setSafeErrorMessage('確認後にこの端末のDayMemoが変わったため、反映を中止しました。もう一度確認してください。')
+      return
+    }
+
+    const metadata = loadDayMemoSyncMetadata(window.localStorage)
+    if ((metadata.status === 'ready' && (metadata.metadata.workspaceId !== connection.workspaceId || metadata.metadata.pushBlock !== null))
+      || metadata.status === 'storage_unavailable'
+      || metadata.status === 'metadata_invalid') {
+      setApplyState('metadata_invalid')
+      setSafeErrorMessage('同期設定を安全に確認できないため、DayMemoの反映を中止しました。')
+      return
+    }
+
+    const remoteOnlyRecords = preview.remoteRecords.filter((record) => record.deletedAt === null
+      && preview.items.some((item) => item.date === record.entityId && item.comparison === 'remote_only'))
+    if (remoteOnlyRecords.length !== preview.summary.remoteOnlyCount
+      || remoteOnlyRecords.some((record) => record.payload === null)
+      || new Set(remoteOnlyRecords.map((record) => record.entityId)).size !== remoteOnlyRecords.length) {
+      setApplyState('preview_invalid')
+      setSafeErrorMessage('確認結果を安全に再検証できなかったため、反映を中止しました。')
+      return
+    }
+
+    const nextMemos = [
+      ...dayMemos.map((memo) => ({ ...memo })),
+      ...remoteOnlyRecords.map((record) => ({ ...record.payload! })),
+    ].sort((left, right) => left.date.localeCompare(right.date))
+    if (new Set(nextMemos.map((memo) => memo.date)).size !== nextMemos.length) {
+      setApplyState('preview_invalid')
+      setSafeErrorMessage('日付の重複を検出したため、DayMemoの反映を中止しました。')
+      return
+    }
+
+    const backupResult = saveDayMemoPullApplyBackup(window.localStorage, connection.workspaceId, dayMemos)
+    if (backupResult !== 'saved' && backupResult !== 'reused') {
+      setApplyState('backup_failed')
+      setSafeErrorMessage('反映前バックアップを安全に保存できなかったため、DayMemoは変更していません。')
+      return
+    }
+
+    const saveResult = replaceStoredDayMemosVerified(window.localStorage, nextMemos, preview.localStorageSnapshot)
+    if (saveResult !== 'saved') {
+      setApplyState(saveResult === 'rollback_failed' ? 'recovery_required' : 'storage_failed')
+      setSafeErrorMessage(saveResult === 'rollback_failed'
+        ? '保存状態を安全に復旧できませんでした。操作を止めて、この画面を再読み込みしないでください。'
+        : 'DayMemoを安全に保存できなかったため、元のデータを維持しました。')
+      return
+    }
+
+    try {
+      adoptVerifiedStoredDayMemos(nextMemos)
+    } catch {
+      setApplyState('recovery_required')
+      setSafeErrorMessage('保存後の画面更新を完了できませんでした。再操作せず確認してください。')
+      return
+    }
+
+    const result = { appliedCount: remoteOnlyRecords.length, localTotalCount: nextMemos.length }
+    requestGeneration.current += 1
+    setPreview(null)
+    previewLocalSignature.current = null
+    setPreviewState('idle')
+    setApplyResult(result)
+    setApplyState('completed')
+  }, [adoptVerifiedStoredDayMemos, applyState, canApplyPreview, connection, dayMemos, memberReady, preview])
 
   return {
     previewState,
@@ -326,5 +452,9 @@ export function useDayMemoPullPreview({ dayMemos, isConfigured, isSignedIn, conn
     maxRecords: MAX_RECORDS,
     pullPreview,
     clearPreview,
+    applyState,
+    applyResult,
+    canApplyPreview,
+    applyPreview,
   }
 }

@@ -67,7 +67,7 @@ function App() {
   const [editingExerciseSession, setEditingExerciseSession] = useState<ExerciseSession | null>(null)
   const [inventoryEventId, setInventoryEventId] = useState<string | null>(null)
   const { events, saveEvent, deleteEvent, replaceEvents } = useEvents()
-  const { dayMemos, saveDayMemo, deleteDayMemo, replaceDayMemos } = useDayMemos()
+  const { dayMemos, saveDayMemo, deleteDayMemo, replaceDayMemos, adoptVerifiedStoredDayMemos } = useDayMemos()
   const { dailyAchievements, saveDailyAchievement, deleteDailyAchievement, replaceDailyAchievements } = useDailyAchievements()
   const {
     monthlyAchievementSelections,
@@ -89,6 +89,7 @@ function App() {
     isConfigured: supabaseAuth.isConfigured,
     isSignedIn: supabaseAuth.isSignedIn,
     connection: supabaseWorkspace.connection,
+    adoptVerifiedStoredDayMemos,
   })
   const { weightRecords, saveWeightRecord, deleteWeightRecord, replaceWeightRecords } = useWeightRecords()
   const { healthProfile, saveHealthProfile, deleteHealthProfile, replaceHealthProfile } = useHealthProfile()

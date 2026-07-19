@@ -85,3 +85,20 @@ export interface DayMemoPullPreviewSummary {
   remoteTombstoneLocalMissingCount: number
   maxChangeSequence: number
 }
+
+export type DayMemoPullApplyState =
+  | 'idle'
+  | 'applying'
+  | 'completed'
+  | 'preview_invalid'
+  | 'local_changed'
+  | 'connection_changed'
+  | 'metadata_invalid'
+  | 'backup_failed'
+  | 'storage_failed'
+  | 'recovery_required'
+
+export interface DayMemoPullApplyResult {
+  appliedCount: number
+  localTotalCount: number
+}

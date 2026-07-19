@@ -2025,3 +2025,15 @@ cleanup後VERIFY結果：
   - 日付単位でremoteのみ、localのみ、内容一致、内容相違、remote tombstoneとlocal有無を比較し、件数・日付・分類・remote revision/change sequenceだけを表示する。
   - B-3cでは`hootoDay.dayMemos`、`hootoDay.dayMemoSync`、pull cursor、pushBlockを変更しない。json_restore/full_reset中でもpull previewは許可するが、pushBlock解除は行わない。
   - 自動pull・自動再試行・ローカル反映・upsert・delete・通常同期は未実装。Supabase実操作、SQL変更、commit、pushは行わず、iPhone実機確認待ち。
+
+## 2026-07-19 Phase B-3d: iPhone子機のDayMemo明示反映（実装済み・実機確認待ち）
+
+- child／member端末で、完全取得・検証済みのpull previewにある `remote_only` のDayMemoだけを、明示確認後にローカルへ追加する処理を実装した。
+- `local_only`、内容一致・相違、tombstoneは変更せず、不安全な分類があるpreviewでは反映ボタンを表示しない。
+- 反映直前に認証・workspace・端末役割・同期metadata・preview・ローカルstate・`hootoDay.dayMemos` のversion 1保存値を再検証する。
+- `hootoDay.dayMemoBeforePullApply` に反映前バックアップを保存して読戻し確認後、`hootoDay.dayMemos` を1回だけ書き込み、読戻し一致後にReact stateへ反映する。
+- 既存の有効なバックアップは無条件に上書きしない。同じworkspace・同じ反映前データの場合だけ安全な再試行用として再利用する。
+- 成功後は本文を含むpreviewをメモリから破棄し、件数だけを完了表示へ残す。pull cursor、revision、change sequence、同期metadataは更新しない。
+- `pushBlock` はアップロード抑止の安全状態なので本Phaseでは解除しない。存在する場合はローカル反映も停止し、後続Phaseで解除条件を設計する。
+- 自動pull、自動反映、自動再試行、upsert／delete RPC、Supabaseへの書き込みは追加していない。SQL・保存version・JSONバックアップ形式も変更していない。
+- 次はiPhone実機で、7件の明示反映、再読み込み後の保持、既存ローカル内容の不変更を確認する。
