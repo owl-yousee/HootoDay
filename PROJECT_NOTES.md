@@ -1942,3 +1942,34 @@ cleanup後VERIFY結果：
 - 設定画面を閉じた場合・再読み込み時・有効期限切れ時には表示中のcodeを破棄し、再発行は明示操作だけで行う
 - iPhone側のcode入力・member参加、DayMemoのpull・upsert・delete、自動同期は未実装
 - 次はPhase B-2aの実機確認後、iPhone側member参加を別Phaseで実装する
+
+### Supabase App Integration Phase B-2b（子機member参加実装済み・実機確認待ち）
+
+- workspace未接続端末の設定画面へ、親機のpairing codeを手動入力して子機参加するUIを追加
+- `consume_app_pairing_code(input_code, device_label)`はユーザーが参加ボタンを押した場合だけ1回呼び、自動実行・自動再試行を行わない
+- 戻り値は実定義どおりuuid単値を正本とし、互換的な単一objectまたは1要素配列もUUIDを厳密検証できた場合だけ受理する
+- RPC成功とworkspace ID検証後だけ、既存`hootoDay.syncConnection`へ`child`・`member`として保存する
+- pairing codeとcode IDは永続保存せず、成功後は入力stateから消去する。保存失敗・戻り値不明時はcodeを自動再送しない
+- owner端末は従来のcode発行UI、member端末は子機接続済み表示、未接続端末だけは親機作成と子機参加の選択肢を表示する
+- SQL変更、DayMemo同期、リアルタイム同期、workspace切替、member管理は未実装
+- iPhone実機でのmember参加・再読み込み復元はユーザー確認待ち。commit・push未実施
+
+#### LAN内HTTPでのdevice UUID初期化修正
+
+- iPhone SafariからLAN内HTTPで開いた場合、`crypto.randomUUID()`を利用できず未接続metadataの初期化が失敗する可能性を確認
+- `crypto.randomUUID()`を優先し、利用不可・例外・不正結果の場合だけ`crypto.getRandomValues()`によるRFC 4122 UUID v4生成へfallbackする
+- fallbackはversion 4・RFC 4122 variantビットを設定し、既存UUID validator通過後だけ使用する。`Math.random()`は使用しない
+- 既存の正常な`hootoDay.syncConnection`は先に読み込むためdevice IDやworkspace・role情報を再生成しない
+- localStorageキー、version 1保存構造、JSONバックアップ形式は変更しない
+- 初期化失敗をUUID生成不可、localStorage利用不可、metadata不正、原因不明へ安全に区分
+- pairing RPCは今回未実行。SQL変更なし。修正後のiPhone実機再確認待ちで、commit・push未実施
+
+#### pairing完了後のローカル接続復旧
+
+- iPhone実機で`consume_app_pairing_code`を1回実行後、RPC errorではなくローカル接続保存前後の`recovery_required`へ移行した。DB側member追加とcode消費は完了済みの可能性が高いためcode再送を禁止
+- RPC戻り値をUUID単値、1行配列、既知object、空、複数、不明型、UUID不正へ区分し、成功確認できない結果を保存しない
+- `connectAsMember`の結果を`saved`、`metadata_invalid`、`storage_unavailable`、`precondition_failed`、`unexpected_failure`へ区分
+- 未接続端末へ明示的な「参加状態を確認して復旧」を追加し、自動実行・自動再試行を行わない
+- 復旧は現在の匿名AuthユーザーIDと`role = member`で`app_workspace_members`をSELECTするだけとし、候補がちょうど1件かつworkspace UUID正常の場合だけ既存metadataへ保存
+- 復旧操作ではconsume RPC、INSERT、UPDATE、DELETEを呼ばず、候補0件・複数件・RLS/通信エラー・不正結果・保存失敗では復旧しない
+- SQL・RLS・policyは変更せず、DayMemo同期も未実装。iPhone実機での復旧確認待ちでcommit・push未実施

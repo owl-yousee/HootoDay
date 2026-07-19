@@ -4,8 +4,8 @@ import { SunIcon } from '@phosphor-icons/react/Sun'
 import { XIcon } from '@phosphor-icons/react/X'
 import { useEffect, useRef, type MouseEvent, type SyntheticEvent } from 'react'
 import type { SupabaseAuthState, SupabaseConfigurationState } from '../hooks/useSupabaseAuth'
-import { useSupabasePairing } from '../hooks/useSupabasePairing'
-import type { SupabaseWorkspaceState } from '../hooks/useSupabaseWorkspace'
+import { useSupabasePairing, useSupabasePairingJoin } from '../hooks/useSupabasePairing'
+import type { ConnectAsMemberResult, SupabaseWorkspaceState } from '../hooks/useSupabaseWorkspace'
 import type { HealthProfile } from '../types/health'
 import type { SyncConnection } from '../types/sync'
 import type { AppliedTheme, ThemePreference } from '../types/theme'
@@ -31,6 +31,7 @@ interface ThemeSettingsProps {
     workspaceState: SupabaseWorkspaceState
     workspaceConnected: boolean
     createWorkspace: () => Promise<void>
+    connectAsMember: (workspaceId: string) => ConnectAsMemberResult
     safeErrorMessage: string | null
   }
   onClose: () => void
@@ -131,6 +132,12 @@ export function ThemeSettings({
     isConfigured: supabaseAuth.isConfigured,
     isSignedIn: supabaseAuth.isSignedIn,
     connection: supabaseWorkspace.connection,
+  })
+  const supabasePairingJoin = useSupabasePairingJoin({
+    isConfigured: supabaseAuth.isConfigured,
+    isSignedIn: supabaseAuth.isSignedIn,
+    connection: supabaseWorkspace.connection,
+    connectAsMember: supabaseWorkspace.connectAsMember,
   })
 
   useEffect(() => {
@@ -270,9 +277,21 @@ export function ThemeSettings({
             <div className="cloud-workspace-panel">
               {supabaseWorkspace.workspaceState === 'created' ? (
                 <>
-                  <strong>親機として接続済み</strong>
-                  <p>同期先workspaceは作成済みです。pairingとデータ同期はまだ開始していません。</p>
-                  {supabaseWorkspace.workspaceConnected ? (
+                  {supabaseWorkspace.connection?.workspaceRole === 'member' ? (
+                    <>
+                      <strong>workspaceへの参加が完了しました</strong>
+                      <p>{supabasePairingJoin.joinedByRecovery
+                        ? '既存の参加状態を確認し、このiPhoneの接続情報を復旧しました。DayMemo同期はまだ実装されていません。'
+                        : 'この端末は子機・memberとして接続済みです。DayMemo同期はまだ実装されていません。'}</p>
+                    </>
+                  ) : (
+                    <>
+                      <strong>親機として接続済み</strong>
+                      <p>同期先workspaceは作成済みです。pairingとデータ同期はまだ開始していません。</p>
+                    </>
+                  )}
+                  {supabaseWorkspace.workspaceConnected
+                    && supabaseWorkspace.connection?.workspaceRole === 'owner' ? (
                     <div className="cloud-pairing-panel">
                       <h4>iPhoneを接続</h4>
                       {supabasePairing.pairingState === 'issued' && supabasePairing.pairingCode ? (
@@ -332,6 +351,55 @@ export function ThemeSettings({
                   >
                     このPCを親機として同期先を作成
                   </button>
+                  <div className="cloud-pairing-join-panel">
+                    <h4>iPhoneを接続する</h4>
+                    <p>親機に表示された接続コードを入力して、既存workspaceへ子機として参加します。</p>
+                    <label className="cloud-pairing-label" htmlFor="cloud-pairing-code-input">
+                      接続コード
+                    </label>
+                    <input
+                      id="cloud-pairing-code-input"
+                      className="cloud-pairing-input"
+                      type="text"
+                      value={supabasePairingJoin.inputCode}
+                      onChange={(event) => supabasePairingJoin.setInputCode(event.target.value)}
+                      disabled={supabasePairingJoin.inputLocked}
+                      maxLength={128}
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      inputMode="text"
+                      autoComplete="off"
+                    />
+                    {supabasePairingJoin.safeErrorMessage ? (
+                      <p className="cloud-pairing-error" role="alert">
+                        {supabasePairingJoin.safeErrorMessage}
+                      </p>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="health-primary-button cloud-sync-button"
+                      onClick={() => { void supabasePairingJoin.joinWorkspace() }}
+                      disabled={!supabasePairingJoin.canSubmit}
+                    >
+                      {supabasePairingJoin.joinState === 'joining' ? '参加中…' : 'このiPhoneを接続'}
+                    </button>
+                    <div className={`cloud-pairing-recovery${supabasePairingJoin.recoveryRequired ? ' is-required' : ''}`}>
+                      <p>{supabasePairingJoin.recoveryRequired
+                        ? 'pairing処理が完了している可能性があります。接続コードを再送しないでください。'
+                        : 'すでに参加操作を行った端末は、接続コードを再送せず参加状態を確認できます。'}</p>
+                      <button
+                        type="button"
+                        className="cloud-pairing-recovery-button"
+                        onClick={() => { void supabasePairingJoin.recoverMembership() }}
+                        disabled={!supabasePairingJoin.canRecover}
+                      >
+                        {supabasePairingJoin.joinState === 'recovering'
+                          ? '参加状態を確認中…'
+                          : '参加状態を確認して復旧'}
+                      </button>
+                    </div>
+                  </div>
                 </>
               ) : (
                 <>

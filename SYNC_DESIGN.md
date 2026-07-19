@@ -577,3 +577,35 @@ pairing参加時、`consume_app_pairing_code`のDB処理は成功したが、テ
 - 設定画面を閉じるとメモリ状態とタイマーを破棄し、再読み込みでも復元しない。有効期限到達時はcodeを消去し、再発行はユーザーの明示操作を必要とする。
 - このPhaseでは`consume_app_pairing_code`、iPhone member参加、workspace再作成、DayMemo同期RPC、既存ユーザーデータ変更を行わない。
 - 次は親機での実機発行確認後、iPhone側の明示的なcode入力とmember参加をPhase B-2bとして分離する。
+
+### 19.8 アプリ統合 Phase B-2b：子機のpairing code消費とmember参加
+
+- workspace未接続かつ匿名認証済みの端末だけに子機参加フォームを表示し、owner/memberとして接続済みの端末には誤操作可能な参加フォームを表示しない。
+- 入力codeは送信直前に前後空白を除去し、空文字・長すぎる値・英数字以外を拒否する。大文字小文字は変換せず、RPCへ入力どおり渡す。
+- `consume_app_pairing_code(input_code, device_label)`は明示ボタン操作時だけ1回呼ぶ。処理中の連打、自動実行、自動再試行、エラー後の自動再送は行わない。
+- 戻り値は実定義のuuid単値を正本とする。Supabase clientの互換形状として単一objectまたは1要素配列も考慮するが、ちょうど1つのUUIDを安全に取得できない0件・複数件・想定外型は成功扱いにしない。
+- RPC成功後だけ既存`hootoDay.syncConnection` version 1へworkspace ID、`child`、`member`、`pairingStatus: member`、参加時刻を保存する。新しいlocalStorageキーとJSONバックアップ項目は追加しない。
+- RPCが成功した可能性がある状態で戻り値検証またはlocalStorage保存に失敗した場合は確認必要状態とし、使用済みcodeを自動再送しない。
+- pairing codeとcode IDは永続保存せず、成功時に入力stateを消去する。Auth session・tokenは引き続きSupabase Auth標準保存へ任せる。
+- owner端末は従来の発行・10分カウントダウンUIを維持し、member端末は子機接続済みとDayMemo同期未実装を表示する。
+- SQL、DayMemo同期、リアルタイム同期、端末一覧、member削除、workspace切替は変更・実装しない。iPhone実機参加と再読み込み復元はユーザー確認待ちで、commit・pushは未実施である。
+
+#### 19.8.1 LAN内HTTPでのdevice UUID生成fallback
+
+- LAN内HTTPで開いたiPhone Safariでは、非セキュアコンテキストのため`crypto.randomUUID()`が利用できず、新規未接続端末の`hootoDay.syncConnection`初期化が失敗する場合がある。
+- device ID生成は利用可能な`crypto.randomUUID()`を最優先し、利用不可・例外・UUID検証不合格の場合だけ`crypto.getRandomValues()`による16バイト乱数へfallbackする。
+- fallback UUIDはbyte 6のversionを4、byte 8のvariantをRFC 4122形式へ設定し、文字列化後に既存UUID validatorを通過した場合だけ採用する。`Math.random()`、時刻、固定値、端末情報、連番は使用しない。
+- `crypto`または`getRandomValues()`も利用できない場合は安全にUUID生成不可として停止し、UUID実値や内部例外を表示・記録しない。
+- 既存storage値がある場合は新規生成処理へ進まず、そのdevice ID、workspace ID、device/workspace role、pairing状態、接続時刻を変更しない。
+- localStorageキーとversion 1保存構造、JSONバックアップ形式は維持する。初期化結果はUUID生成不可、storage読み書き不可、metadata不正、原因不明へ区分し、安全な一般文言だけをUIへ渡す。
+- この修正ではpairing RPC、Supabase接続、SQLを実行・変更しない。iPhone実機での再読み込みと子機参加は修正後に再確認し、commit・pushはユーザー確認後とする。
+
+#### 19.8.2 pairing完了後の明示的なローカル復旧
+
+- iPhone実機で`consume_app_pairing_code`がRPC errorなしで完了した後、戻り値検証または`hootoDay.syncConnection`保存段階で確認必要状態となった。member追加とcode消費済みの可能性が高いため、同じcodeとconsume RPCを再実行しない。
+- consume戻り値は正式なuuid単値を最優先し、互換形状は1行配列または既知キーを持つobjectだけを許可する。空、複数、不明型、UUID不正を個別状態にし、成功扱いしない。
+- ローカル保存は`saved`、`metadata_invalid`、`storage_unavailable`、`precondition_failed`、`unexpected_failure`を保持し、booleanへ情報を潰さない。
+- 明示操作の復旧ではSupabase Authで現在の匿名ユーザーを確認し、既存RLS下で`app_workspace_members`を`user_id = 現在ユーザー`かつ`role = member`に限定してSELECTする。
+- 1ユーザーは複数workspaceへ所属可能なため、復旧候補がちょうど1件でworkspace IDがUUID検証を通過した場合だけ、既存device IDを使って`child`・`member`接続をローカル保存する。0件・複数件・owner role・不正結果・RLS/通信エラーでは復旧しない。
+- 復旧処理はSELECTとローカル保存だけで、consume RPC、DB INSERT・UPDATE・DELETE、自動復旧、自動再試行を行わない。pairing codeとcode IDも保存しない。
+- SQL・RLS・policy、親機機能、JSONバックアップ、DayMemo同期は変更しない。iPhone実機確認待ちで、commit・pushは未実施である。
