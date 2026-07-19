@@ -1899,3 +1899,14 @@ cleanup後VERIFY結果：
 - `.env`と`.sync-test-state.json`は秘密情報を含むため、共有・commit禁止
 - Supabase側cleanup後VERIFYが成功したため、この文書記録のcommit・push完了後にフォルダ全体を削除可能
 - フォルダ削除対象には`.env`、state、テストスクリプト、`node_modules`、packageファイル、UUIDを含む秘密SQLを含む
+
+### Supabase App Integration Phase A-1（client土台実装済み・接続未実施）
+
+- `@supabase/supabase-js`を追加
+- 環境変数は`VITE_SUPABASE_URL`と`VITE_SUPABASE_PUBLISHABLE_KEY`を使用し、どちらも未設定を許容
+- 両方が有効な場合だけSupabase clientを生成し、未設定・片側設定・不正なHTTPS URLではclientを生成しない
+- clientモジュールのimportだけでは通信・認証・RPCを開始しない
+- service roleは使用せず、秘密値や環境変数の実値はコード・文書へ記録しない
+- UI、匿名認証、workspace、pairing、DayMemo同期、既存localStorage、JSONバックアップは未変更・未実装
+- Supabase実環境への接続確認は未実施
+- 次のPhaseは、設定画面の接続状態表示と明示的な匿名認証

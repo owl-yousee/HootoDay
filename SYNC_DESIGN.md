@@ -537,3 +537,13 @@ pairing参加時、`consume_app_pairing_code`のDB処理は成功したが、テ
 - 専用2テーブルのRLS有効・policy 0件、専用RPCのSECURITY DEFINER・固定search_path、PUBLIC/anon実行不可・authenticated実行可、table・sequence直接権限なしも維持している。
 - rollbackは未実行。アプリ側同期実装と統合テストは未着手であり、localStorage保護、空iPhone初回pull、初回自動push禁止、JSON復元後の自動push禁止、conflict、cursor、通信断等はアプリ実装後に検証する。
 - リポジトリ外`HootoDay-Sync-Test`は文書記録のcommit・push完了まで保持しており、`.env`、state、テストスクリプト、依存関係、秘密SQLを含めて後からフォルダ全体を削除可能である。
+
+### 19.4 アプリ統合 Phase A-1：Supabase client土台
+
+- アプリ依存へ`@supabase/supabase-js`を追加した。
+- client設定には`VITE_SUPABASE_URL`と`VITE_SUPABASE_PUBLISHABLE_KEY`を使用する。service roleは使用しない。
+- 環境変数は未設定を許容し、両方が有効でURLがHTTPSとして解釈できる場合だけclientを生成する。未設定・片側設定・不正URLではclientを生成しない。
+- clientモジュールのimportだけでは通信、匿名認証、session取得、workspace・pairing、RPCを開始しない。
+- 認証情報の独自保存、同期metadata、既存localStorage、JSONバックアップ、UI、DayMemo処理は変更していない。
+- Supabase実環境への接続確認は未実施である。
+- 次のPhaseは設定画面の接続状態表示と、ユーザー操作による明示的な匿名認証とする。DayMemoのpull・upsert・deleteはまだ実装しない。
