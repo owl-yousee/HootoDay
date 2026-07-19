@@ -4658,6 +4658,10 @@
 .cloud-sync-message { padding: 11px 12px; border: 1px solid var(--color-border); border-radius: 11px; background: var(--color-surface-soft); }
 .cloud-sync-message p, .cloud-sync-note { margin: 0; color: var(--color-text-muted); font-size: 0.76rem; line-height: 1.6; }
 .cloud-sync-note { margin-top: 10px; }
+.cloud-workspace-panel { margin-top: 12px; padding: 12px; border: 1px solid var(--color-border); border-radius: 11px; background: var(--color-surface-soft); }
+.cloud-workspace-panel strong { display: block; color: var(--color-text); font-size: 0.82rem; }
+.cloud-workspace-panel p { margin: 5px 0 0; color: var(--color-text-muted); font-size: 0.74rem; line-height: 1.6; }
+.cloud-workspace-panel .cloud-sync-button { margin-top: 10px; }
 .cloud-sync-button { width: 100%; margin-top: 12px; }
 .cloud-sync-button:disabled { cursor: not-allowed; opacity: 0.58; }
 .cloud-sync-button:focus-visible { outline: 3px solid color-mix(in srgb, var(--color-focus) 38%, transparent); outline-offset: 2px; }

@@ -557,3 +557,13 @@ pairing参加時、`consume_app_pairing_code`のDB処理は成功したが、テ
 - 認証済みは匿名Auth sessionを取得できた状態だけを意味する。workspace作成、pairing、DayMemo同期、同期metadataは未実装である。
 - Supabase Auth標準のsession保存へ任せ、JWT・refresh tokenをHootoDay独自stateやlocalStorageへ複製しない。
 - 次はローカル実環境変数による匿名認証の実機確認を行い、その後workspace・pairing Phase Bへ進む。
+
+### 19.6 アプリ統合 Phase B-1：PC親機workspaceの作成・復元
+
+- 端末固有の接続metadataとして`hootoDay.syncConnection` version 1を追加する。このキーは通常JSONバックアップ、formatVersion 2、JSON復元の対象に含めない。
+- metadataはworkspace ID、端末固有device ID、parent/child、owner/member、pairing状態、接続時刻だけを保持し、JWT、refresh token、pairing code、cursor、revision、pending operationは保存しない。
+- device IDは初回だけ`crypto.randomUUID()`で生成し、正常なversion 1 metadataから再読み込み時に復元する。不正・version不一致のmetadataは自動修復・自動workspace作成せず、確認必要状態とする。
+- PC親機workspaceは匿名認証済みユーザーの明示操作からだけ`create_app_workspace(workspace_name, device_label)`を1回呼び、scalar UUID戻り値と保存成功を確認した後だけ`parent`・`owner`として接続metadataへ反映する。
+- RPC error、通信結果不明、想定外の戻り形状、localStorage保存失敗ではworkspaceが作成済みの可能性を考慮し、自動再実行を許可しない。
+- workspace作成だけではiPhoneは未参加で、pairing、DayMemo送受信、自動同期、既存localStorageデータ変更は開始しない。
+- 次のPhaseはpairing code発行とiPhone member参加とし、DayMemo同期はその後に分離する。

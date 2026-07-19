@@ -4,6 +4,7 @@ import { SunIcon } from '@phosphor-icons/react/Sun'
 import { XIcon } from '@phosphor-icons/react/X'
 import { useEffect, useRef, type MouseEvent, type SyntheticEvent } from 'react'
 import type { SupabaseAuthState, SupabaseConfigurationState } from '../hooks/useSupabaseAuth'
+import type { SupabaseWorkspaceState } from '../hooks/useSupabaseWorkspace'
 import type { HealthProfile } from '../types/health'
 import type { AppliedTheme, ThemePreference } from '../types/theme'
 import { formatCalculationSex } from '../utils/healthProfile'
@@ -21,6 +22,12 @@ interface ThemeSettingsProps {
     isConfigured: boolean
     isSignedIn: boolean
     signInAnonymously: () => Promise<void>
+    safeErrorMessage: string | null
+  }
+  supabaseWorkspace: {
+    workspaceState: SupabaseWorkspaceState
+    workspaceConnected: boolean
+    createWorkspace: () => Promise<void>
     safeErrorMessage: string | null
   }
   onClose: () => void
@@ -112,6 +119,7 @@ export function ThemeSettings({
   onOpenProfile,
   onOpenDataManagement,
   supabaseAuth,
+  supabaseWorkspace,
   onClose,
 }: ThemeSettingsProps) {
   const dialogRef = useRef<HTMLDialogElement>(null)
@@ -172,6 +180,7 @@ export function ThemeSettings({
   const isAuthActionDisabled = !supabaseAuth.isConfigured
     || supabaseAuth.authState === 'checking'
     || supabaseAuth.authState === 'signing_in'
+  const isWorkspaceCreationDisabled = supabaseWorkspace.workspaceState !== 'not_created'
 
   return (
     <dialog
@@ -248,20 +257,56 @@ export function ThemeSettings({
             <p>{cloudSyncPresentation.description}</p>
           </div>
           {supabaseAuth.isSignedIn ? (
-            <p className="cloud-sync-note">まだ同期先の作成・接続は行っていません。データ同期も開始していません。</p>
+            <div className="cloud-workspace-panel">
+              {supabaseWorkspace.workspaceState === 'created' ? (
+                <>
+                  <strong>親機として接続済み</strong>
+                  <p>同期先workspaceは作成済みです。pairingとデータ同期はまだ開始していません。</p>
+                </>
+              ) : supabaseWorkspace.workspaceState === 'creating' ? (
+                <>
+                  <strong>同期先を作成中</strong>
+                  <p>完了するまでこの画面を閉じずにお待ちください。</p>
+                  <button type="button" className="health-primary-button cloud-sync-button" disabled>
+                    同期先を作成中…
+                  </button>
+                </>
+              ) : supabaseWorkspace.workspaceState === 'not_created' ? (
+                <>
+                  <strong>同期先未作成</strong>
+                  <p>この操作ではまだ予定やメモなどのデータは送信されません。</p>
+                  <button
+                    type="button"
+                    className="health-primary-button cloud-sync-button"
+                    onClick={() => { void supabaseWorkspace.createWorkspace() }}
+                    disabled={isWorkspaceCreationDisabled}
+                  >
+                    このPCを親機として同期先を作成
+                  </button>
+                </>
+              ) : (
+                <>
+                  <strong>{supabaseWorkspace.workspaceState === 'recovery_required' ? '同期先の確認が必要' : '同期先エラー'}</strong>
+                  <p>{supabaseWorkspace.safeErrorMessage ?? '同期先情報を確認できませんでした。'}</p>
+                </>
+              )}
+            </div>
           ) : supabaseAuth.isConfigured ? (
-            <button
-              type="button"
-              className="health-primary-button cloud-sync-button"
-              onClick={() => { void supabaseAuth.signInAnonymously() }}
-              disabled={isAuthActionDisabled}
-            >
-              {supabaseAuth.authState === 'signing_in'
-                ? '接続中…'
-                : supabaseAuth.authState === 'error'
-                  ? '匿名認証を再試行'
-                  : '匿名認証を開始'}
-            </button>
+            <>
+              <p className="cloud-sync-note">同期先を作成するには、先に匿名認証を完了してください。</p>
+              <button
+                type="button"
+                className="health-primary-button cloud-sync-button"
+                onClick={() => { void supabaseAuth.signInAnonymously() }}
+                disabled={isAuthActionDisabled}
+              >
+                {supabaseAuth.authState === 'signing_in'
+                  ? '接続中…'
+                  : supabaseAuth.authState === 'error'
+                    ? '匿名認証を再試行'
+                    : '匿名認証を開始'}
+              </button>
+            </>
           ) : null}
         </section>
 

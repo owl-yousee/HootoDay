@@ -1921,3 +1921,14 @@ cleanup後VERIFY結果：
 - workspace、pairing、DayMemoのpull・upsert・delete RPCは未実装
 - 環境変数未設定時は未設定表示となり、Auth APIを呼ばない
 - 次は実環境変数をローカルへ設定して匿名認証を実機確認し、その後workspace・pairing Phase Bへ進む
+
+### Supabase App Integration Phase B-1（PC親機workspace実装済み・実機確認待ち）
+
+- `hootoDay.syncConnection` version 1を端末固有の接続metadataとして追加し、通常JSONバックアップ対象外とした
+- `deviceId`は初回だけ`crypto.randomUUID()`で生成して保持し、再読み込み時に再生成しない
+- workspace作成は匿名認証済みPCでの明示ボタン操作からだけ実行
+- `create_app_workspace(workspace_name, device_label)`のscalar UUID戻り値を検証し、成功後だけworkspace IDを保存
+- PCを`parent`・`owner`として記録し、pairing statusを`owner`、作成時刻を`pairedAt`へ保存
+- metadata不正、RPC結果不明、scalar戻り値不正、保存失敗では自動再実行せず確認必要状態にする
+- workspace作成時点ではpairing code発行・iPhone参加・DayMemo同期を開始しない
+- 次はpairing code発行とiPhone member参加。DayMemo同期はまだ未実装
