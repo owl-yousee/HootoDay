@@ -2139,3 +2139,18 @@ cleanup後VERIFY結果：
 - iPhone子機・memberで実機確認済み。更新候補1件・変更なし6件・危険分類0件を確認後、full pull preflight、pending operation保存、1件upsertが成功した。対象日は2026-07-15、新revisionは2、change sequenceは13だった。
 - 送信後の再読み込みでは更新候補0件・変更なし7件となり、remote revision／change sequenceとlocal baselineの更新、local DayMemo維持、PCへの自動反映なしを確認した。conflict、response unknown、自動再試行、deleteは発生していない。
 - UI改善候補として、成功結果の「対象日付」「新しいrevision」「change sequence」を、それぞれ独立した1行としてより明確に表示する。今回は表示コードを変更せず、後続改善メモとして記録のみ行う。
+
+## Phase B-3e4準備: local-only DayMemoの安全な新規upload条件
+
+- 現在の`local_only`は「localに有効なDayMemoがあり、confirmed metadataのbaselinesに同日がない」というローカル分類にすぎない。remoteにrecordがないことや、過去のtombstoneではないことまでは意味しない。
+- version 2 metadataだけでは、A「remote未作成の完全な新規」、B「remoteにtombstoneが残る日付」、C「baseline欠落・remote状態不明」を区別できない。baselineは過去に確認した状態であり、confirmed validatorはactive baselineだけを許可するため、tombstone不在の証明にはならない。
+- 新規候補の確定には、同一workspaceをcursor 0からtombstone込みで完全full pullし、対象日に通常recordもtombstoneもなく、baselineにも存在しないことを確認する。部分取得、上限到達、重複、cursor異常、validation errorでは`unknown_local_only`として停止する。
+- 正式な分類案は、`local_new_candidate`（localあり・baselineなし・remoteなし）、`remote_deleted_candidate`（localあり・remote tombstoneあり）、`unknown_local_only`（完全取得前または整合性を証明できない）とする。Phase B-3e2の`local_only`はpreview上の暫定分類として維持し、remote preflight後に細分化する。
+- `local_new_candidate`のupload条件は、version 2・workspace binding一致・baselineStatus confirmed・pendingOperationなし・pushBlockなし・local validator通過・React/localStorage一致・full pull完全取得・baselineなし・remote通常recordなし・tombstoneなしである。候補1件から開始し、自動送信しない。
+- 完全な新規作成は`base_revision = 0`で、成功結果はrevision 1を必須とする。remoteにtombstoneがある場合、SQLは既存rowのrevisionと0が一致しないためconflictとなり、新規作成として扱えない。tombstone復活には最新tombstone revisionを使う明示処理が必要で、delete／tombstone Phaseと分離する。
+- operation IDはpreviewやfull pullでは生成せず、1件の送信準備を明示確定した時点で既存UUID utilityにより1個生成する。RPC前にpendingOperationへ保存・read-backし、response unknown／conflictでは同じIDを保持して自動再送・再発行しない。複数件対応時も日付ごとに別IDが必要である。
+- 初回uploadはworkspace全体が空であることを入口で確認する一括初期化フロー、local-only uploadは既存workspaceへ1件追加する通常運用フローである。RPC引数・結果validator・pending保存は共通化できるが、候補判定、full pull preflight、initialUpload履歴は分離する。
+- `json_restore`または`full_reset`のpushBlock中はlocal-only uploadを禁止する。読み取り専用full pullと分類確認は可能だが、解除Phase完了後にlocal・metadata・remoteを再取得して再判定する。空localや復元データを新規作成・削除要求へ自動変換しない。
+- PC／iPhoneでfull pull、候補判定、operation準備、1件upsert、結果検証、baseline追加は共通Hook／utility化できる。端末固有差は表示位置と説明だけとし、owner/memberで独自の書き込み権限差を追加しない。
+- 推奨PhaseはB-3e4a「local-onlyのfull pull分類preview」、B-3e4b「安全な新規候補1件の明示upsert」、B-3e4c「複数件の逐次処理」、B-3f「delete・tombstone・明示復活」とする。次に実装すべき最小単位はB-3e4aであり、まだupsertやmetadata変更を行わない。
+- 今回は調査・設計文書更新のみ。src、SQL、package、localStorage、metadataは変更せず、Supabase操作、commit、pushは行っていない。
