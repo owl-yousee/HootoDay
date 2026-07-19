@@ -101,6 +101,7 @@ export function useSupabaseWorkspace(isSignedIn: boolean) {
   }, [connection, isSignedIn, workspaceState])
 
   return {
+    connection,
     workspaceState,
     workspaceConnected: workspaceState === 'created' && Boolean(connection?.workspaceId),
     createWorkspace,

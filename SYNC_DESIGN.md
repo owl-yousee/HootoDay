@@ -567,3 +567,13 @@ pairing参加時、`consume_app_pairing_code`のDB処理は成功したが、テ
 - RPC error、通信結果不明、想定外の戻り形状、localStorage保存失敗ではworkspaceが作成済みの可能性を考慮し、自動再実行を許可しない。
 - workspace作成だけではiPhoneは未参加で、pairing、DayMemo送受信、自動同期、既存localStorageデータ変更は開始しない。
 - 次のPhaseはpairing code発行とiPhone member参加とし、DayMemo同期はその後に分離する。
+
+### 19.7 アプリ統合 Phase B-2a：親機からのpairing code発行
+
+- pairing code発行は、Supabase設定済み・匿名認証済み・有効なworkspace IDを持つ`parent`・`owner`端末だけに許可する。
+- 設定画面の明示操作から`create_app_pairing_code(target_workspace_id, valid_minutes)`を1回だけ呼び、`valid_minutes`は10とする。自動発行・自動再試行は行わない。
+- 1行の戻り値または単一objectを安全に正規化し、非空のpairing code、有効な将来日時、UUID形式のcode IDを検証する。RPC errorや結果不明時は、発行済みの可能性を考慮して自動再発行しない。
+- pairing codeと有効期限は設定画面コンポーネントのメモリ内だけで保持する。端末metadata、localStorage、sessionStorage、IndexedDB、URL、console、JSONバックアップへ保存・出力しない。
+- 設定画面を閉じるとメモリ状態とタイマーを破棄し、再読み込みでも復元しない。有効期限到達時はcodeを消去し、再発行はユーザーの明示操作を必要とする。
+- このPhaseでは`consume_app_pairing_code`、iPhone member参加、workspace再作成、DayMemo同期RPC、既存ユーザーデータ変更を行わない。
+- 次は親機での実機発行確認後、iPhone側の明示的なcode入力とmember参加をPhase B-2bとして分離する。

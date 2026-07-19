@@ -1932,3 +1932,13 @@ cleanup後VERIFY結果：
 - metadata不正、RPC結果不明、scalar戻り値不正、保存失敗では自動再実行せず確認必要状態にする
 - workspace作成時点ではpairing code発行・iPhone参加・DayMemo同期を開始しない
 - 次はpairing code発行とiPhone member参加。DayMemo同期はまだ未実装
+
+### Supabase App Integration Phase B-2a（親機pairing code発行実装済み・実機確認待ち）
+
+- 親機・ownerとして接続済みの設定画面に、iPhone接続用pairing codeの明示発行UIを追加
+- `create_app_pairing_code(target_workspace_id, valid_minutes)`はユーザーがボタンを押した場合だけ1回呼び、有効時間は10分に固定
+- 戻り値のpairing code、有効期限、code IDを検証し、想定外の結果では自動再発行せず確認必要状態にする
+- pairing codeと有効期限は設定画面のメモリ内だけで扱い、localStorage、sessionStorage、IndexedDB、JSONバックアップへ保存しない
+- 設定画面を閉じた場合・再読み込み時・有効期限切れ時には表示中のcodeを破棄し、再発行は明示操作だけで行う
+- iPhone側のcode入力・member参加、DayMemoのpull・upsert・delete、自動同期は未実装
+- 次はPhase B-2aの実機確認後、iPhone側member参加を別Phaseで実装する

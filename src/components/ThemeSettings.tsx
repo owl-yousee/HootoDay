@@ -4,8 +4,10 @@ import { SunIcon } from '@phosphor-icons/react/Sun'
 import { XIcon } from '@phosphor-icons/react/X'
 import { useEffect, useRef, type MouseEvent, type SyntheticEvent } from 'react'
 import type { SupabaseAuthState, SupabaseConfigurationState } from '../hooks/useSupabaseAuth'
+import { useSupabasePairing } from '../hooks/useSupabasePairing'
 import type { SupabaseWorkspaceState } from '../hooks/useSupabaseWorkspace'
 import type { HealthProfile } from '../types/health'
+import type { SyncConnection } from '../types/sync'
 import type { AppliedTheme, ThemePreference } from '../types/theme'
 import { formatCalculationSex } from '../utils/healthProfile'
 
@@ -25,6 +27,7 @@ interface ThemeSettingsProps {
     safeErrorMessage: string | null
   }
   supabaseWorkspace: {
+    connection: SyncConnection | null
     workspaceState: SupabaseWorkspaceState
     workspaceConnected: boolean
     createWorkspace: () => Promise<void>
@@ -124,6 +127,11 @@ export function ThemeSettings({
 }: ThemeSettingsProps) {
   const dialogRef = useRef<HTMLDialogElement>(null)
   const pendingInternalCloseEventsRef = useRef(0)
+  const supabasePairing = useSupabasePairing({
+    isConfigured: supabaseAuth.isConfigured,
+    isSignedIn: supabaseAuth.isSignedIn,
+    connection: supabaseWorkspace.connection,
+  })
 
   useEffect(() => {
     const dialog = dialogRef.current
@@ -181,6 +189,8 @@ export function ThemeSettings({
     || supabaseAuth.authState === 'checking'
     || supabaseAuth.authState === 'signing_in'
   const isWorkspaceCreationDisabled = supabaseWorkspace.workspaceState !== 'not_created'
+  const pairingMinutes = Math.floor(supabasePairing.remainingSeconds / 60)
+  const pairingSeconds = supabasePairing.remainingSeconds % 60
 
   return (
     <dialog
@@ -262,6 +272,45 @@ export function ThemeSettings({
                 <>
                   <strong>親機として接続済み</strong>
                   <p>同期先workspaceは作成済みです。pairingとデータ同期はまだ開始していません。</p>
+                  {supabaseWorkspace.workspaceConnected ? (
+                    <div className="cloud-pairing-panel">
+                      <h4>iPhoneを接続</h4>
+                      {supabasePairing.pairingState === 'issued' && supabasePairing.pairingCode ? (
+                        <>
+                          <p className="cloud-pairing-code" aria-label="接続コード">
+                            {supabasePairing.pairingCode}
+                          </p>
+                          <p className="cloud-pairing-remaining" role="timer">
+                            残り {pairingMinutes}分{String(pairingSeconds).padStart(2, '0')}秒
+                          </p>
+                          <p>このコードは一時的なものです。接続するiPhone以外には共有しないでください。</p>
+                          <p className="cloud-pairing-pending">iPhoneの参加はまだ完了していません。</p>
+                        </>
+                      ) : supabasePairing.pairingState === 'issuing' ? (
+                        <>
+                          <p>接続コードを発行しています。</p>
+                          <button type="button" className="health-primary-button cloud-sync-button" disabled>
+                            発行中…
+                          </button>
+                        </>
+                      ) : supabasePairing.pairingState === 'recovery_required' ? (
+                        <p role="alert">{supabasePairing.safeErrorMessage}</p>
+                      ) : supabasePairing.pairingState === 'unavailable' ? null : (
+                        <>
+                          <p>{supabasePairing.pairingState === 'expired'
+                            ? '接続コードの有効期限が切れました。必要な場合だけ再発行してください。'
+                            : 'iPhoneで入力する10分間有効な接続コードを発行します。'}</p>
+                          <button
+                            type="button"
+                            className="health-primary-button cloud-sync-button"
+                            onClick={() => { void supabasePairing.issuePairingCode() }}
+                          >
+                            {supabasePairing.pairingState === 'expired' ? '接続コードを再発行' : '接続コードを発行'}
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  ) : null}
                 </>
               ) : supabaseWorkspace.workspaceState === 'creating' ? (
                 <>
