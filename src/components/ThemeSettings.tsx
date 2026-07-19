@@ -6,6 +6,7 @@ import { useEffect, useRef, type MouseEvent, type SyntheticEvent } from 'react'
 import type { SupabaseAuthState, SupabaseConfigurationState } from '../hooks/useSupabaseAuth'
 import type { useDayMemoInitialUpload } from '../hooks/useDayMemoInitialUpload'
 import type { useDayMemoLocalOnlyPreview } from '../hooks/useDayMemoLocalOnlyPreview'
+import type { useDayMemoLocalOnlyUpload } from '../hooks/useDayMemoLocalOnlyUpload'
 import type { useDayMemoPullPreview } from '../hooks/useDayMemoPullPreview'
 import type { useDayMemoBaselineRebase } from '../hooks/useDayMemoBaselineRebase'
 import type { useDayMemoSyncBaseline } from '../hooks/useDayMemoSyncBaseline'
@@ -48,6 +49,7 @@ interface ThemeSettingsProps {
   dayMemoUpdatePreview: ReturnType<typeof useDayMemoUpdatePreview>
   dayMemoUpdateUpload: ReturnType<typeof useDayMemoUpdateUpload>
   dayMemoLocalOnlyPreview: ReturnType<typeof useDayMemoLocalOnlyPreview>
+  dayMemoLocalOnlyUpload: ReturnType<typeof useDayMemoLocalOnlyUpload>
   onClose: () => void
 }
 
@@ -174,6 +176,7 @@ export function ThemeSettings({
   dayMemoUpdatePreview,
   dayMemoUpdateUpload,
   dayMemoLocalOnlyPreview,
+  dayMemoLocalOnlyUpload,
   onClose,
 }: ThemeSettingsProps) {
   const dialogRef = useRef<HTMLDialogElement>(null)
@@ -558,18 +561,59 @@ export function ThemeSettings({
                         </>
                       ) : null}
                       {dayMemoLocalOnlyPreview.previewState === 'preview_ready' ? (
-                        <p className="cloud-day-memo-success" role="status">local-only候補の分類が完了しました。送信判断は次のPhaseで行います。</p>
+                        <>
+                          <p className="cloud-day-memo-success" role="status">local-only候補の分類が完了しました。</p>
+                          {dayMemoLocalOnlyPreview.summary?.localNewCandidateCount === 1
+                            && dayMemoLocalOnlyPreview.summary.candidateCount === 1
+                            && dayMemoLocalOnlyUpload.state === 'idle' ? (
+                            <button type="button" className="health-secondary-button cloud-sync-button" onClick={() => { void dayMemoLocalOnlyUpload.runPreflight() }}>
+                              新規DayMemo候補の同期先を最終確認
+                            </button>
+                          ) : <p className="cloud-sync-note">安全な新規候補が1件だけの場合に限り、送信準備へ進めます。</p>}
+                        </>
                       ) : null}
+                      {dayMemoLocalOnlyUpload.state === 'preflighting' ? <button type="button" className="health-secondary-button cloud-sync-button" disabled>同期先を最終確認中…</button> : null}
+                      {dayMemoLocalOnlyUpload.state === 'preflight_ready' ? (
+                        <div className="cloud-day-memo-update-upload-step">
+                          <p className="cloud-day-memo-success" role="status">対象日付に通常recordも削除済みrecordもありません。</p>
+                          <button type="button" className="health-secondary-button cloud-sync-button" onClick={dayMemoLocalOnlyUpload.prepareUpload}>
+                            この新規DayMemoを送信準備
+                          </button>
+                        </div>
+                      ) : null}
+                      {dayMemoLocalOnlyUpload.state === 'preparing' ? <p>operation IDとpending operationを安全に保存しています…</p> : null}
+                      {dayMemoLocalOnlyUpload.state === 'prepared' ? (
+                        <div className="cloud-day-memo-apply-confirmation">
+                          <strong>新規DayMemo 1件の送信準備が完了しました</strong>
+                          <p>base revision 0で1件だけ追加します。自動再試行や削除済みrecordの復活は行いません。</p>
+                          <button type="button" className="health-primary-button cloud-sync-button" onClick={() => { void dayMemoLocalOnlyUpload.uploadPrepared() }}>
+                            このDayMemoを同期先へ追加
+                          </button>
+                        </div>
+                      ) : null}
+                      {dayMemoLocalOnlyUpload.state === 'uploading' ? <p>新規DayMemo 1件を同期先へ追加しています。画面を閉じずにお待ちください…</p> : null}
+                      {dayMemoLocalOnlyUpload.state === 'completed' && dayMemoLocalOnlyUpload.result ? (
+                        <div className="cloud-day-memo-update-upload-result" role="status">
+                          <p className="cloud-day-memo-success">新規DayMemoの作成が完了しました。</p>
+                          <ul className="cloud-day-memo-preview-summary">
+                            <li>対象日付：{dayMemoLocalOnlyUpload.result.date}</li>
+                            <li>revision：{dayMemoLocalOnlyUpload.result.revision}</li>
+                            <li>change sequence：{dayMemoLocalOnlyUpload.result.changeSequence}</li>
+                          </ul>
+                          <p>この端末のDayMemoは変更していません。</p>
+                        </div>
+                      ) : null}
+                      {dayMemoLocalOnlyUpload.safeErrorMessage ? <p className="cloud-pairing-error" role="alert">{dayMemoLocalOnlyUpload.safeErrorMessage}</p> : null}
                       {dayMemoLocalOnlyPreview.previewState === 'no_candidates' ? (
                         <p className="cloud-sync-note" role="status">baselineに存在しないローカルDayMemoはありません。</p>
                       ) : null}
                       {dayMemoLocalOnlyPreview.safeErrorMessage ? <p className="cloud-pairing-error" role="alert">{dayMemoLocalOnlyPreview.safeErrorMessage}</p> : null}
-                      {dayMemoLocalOnlyPreview.summary || dayMemoLocalOnlyPreview.items.length > 0 ? (
-                        <button type="button" className="health-secondary-button cloud-sync-button" onClick={dayMemoLocalOnlyPreview.discardPreview}>
+                      {(dayMemoLocalOnlyPreview.summary || dayMemoLocalOnlyPreview.items.length > 0) && !dayMemoLocalOnlyUpload.hasPendingOperation ? (
+                        <button type="button" className="health-secondary-button cloud-sync-button" onClick={() => { dayMemoLocalOnlyUpload.reset(); dayMemoLocalOnlyPreview.discardPreview() }}>
                           確認結果を破棄
                         </button>
                       ) : null}
-                      <p className="cloud-sync-note">本文は表示・保存しません。upsert・delete・operation ID生成・metadata更新は行いません。</p>
+                      <p className="cloud-sync-note">本文やoperation IDは表示しません。新規upsertは明示操作で1件だけ行い、delete・自動再試行は行いません。</p>
                     </div>
                   ) : null}
                   {supabaseWorkspace.connection?.workspaceRole === 'member' ? (

@@ -22,6 +22,7 @@ import { WeightRecordDialog } from './components/WeightRecordDialog'
 import { useDayMemos } from './hooks/useDayMemos'
 import { useDayMemoInitialUpload } from './hooks/useDayMemoInitialUpload'
 import { useDayMemoLocalOnlyPreview } from './hooks/useDayMemoLocalOnlyPreview'
+import { useDayMemoLocalOnlyUpload } from './hooks/useDayMemoLocalOnlyUpload'
 import { useDayMemoPullPreview } from './hooks/useDayMemoPullPreview'
 import { useDayMemoBaselineRebase } from './hooks/useDayMemoBaselineRebase'
 import { useDayMemoSyncBaseline } from './hooks/useDayMemoSyncBaseline'
@@ -119,6 +120,14 @@ function App() {
     isConfigured: supabaseAuth.isConfigured,
     isSignedIn: supabaseAuth.isSignedIn,
     connection: supabaseWorkspace.connection,
+  })
+  const dayMemoLocalOnlyUpload = useDayMemoLocalOnlyUpload({
+    dayMemos,
+    isConfigured: supabaseAuth.isConfigured,
+    isSignedIn: supabaseAuth.isSignedIn,
+    connection: supabaseWorkspace.connection,
+    getSingleNewCandidateSnapshot: dayMemoLocalOnlyPreview.getSingleNewCandidateSnapshot,
+    discardLocalOnlyPreview: dayMemoLocalOnlyPreview.discardPreview,
   })
   const dayMemoUpdateUpload = useDayMemoUpdateUpload({
     dayMemos,
@@ -456,6 +465,7 @@ function App() {
           dayMemoUpdatePreview={dayMemoUpdatePreview}
           dayMemoUpdateUpload={dayMemoUpdateUpload}
           dayMemoLocalOnlyPreview={dayMemoLocalOnlyPreview}
+          dayMemoLocalOnlyUpload={dayMemoLocalOnlyUpload}
           onClose={() => setIsThemeSettingsOpen(false)}
         />
       )}

@@ -39,6 +39,14 @@ export interface DayMemoLocalOnlyPreviewSummary {
   unknownLocalOnlyCount: number
 }
 
+export interface DayMemoLocalOnlyUploadCandidateSnapshot {
+  workspaceId: string
+  candidate: DayMemo
+  localStorageSerialized: string
+  localMemos: DayMemo[]
+  metadataRaw: string
+}
+
 interface UseDayMemoLocalOnlyPreviewInput {
   dayMemos: DayMemo[]
   isConfigured: boolean
@@ -99,6 +107,7 @@ export function useDayMemoLocalOnlyPreview({ dayMemos, isConfigured, isSignedIn,
   const [items, setItems] = useState<DayMemoLocalOnlyPreviewItem[]>([])
   const [summary, setSummary] = useState<DayMemoLocalOnlyPreviewSummary | null>(null)
   const [safeErrorMessage, setSafeErrorMessage] = useState<string | null>(null)
+  const [uploadSnapshot, setUploadSnapshot] = useState<DayMemoLocalOnlyUploadCandidateSnapshot | null>(null)
   const runIdRef = useRef(0)
   const currentLocalSignature = useMemo(() => localSignature(dayMemos), [dayMemos])
   const eligible = isConfigured && isSignedIn && connectionIsEligible(connection)
@@ -108,6 +117,7 @@ export function useDayMemoLocalOnlyPreview({ dayMemos, isConfigured, isSignedIn,
     setItems([])
     setSummary(null)
     setSafeErrorMessage(null)
+    setUploadSnapshot(null)
     setPreviewState(eligible ? 'idle' : 'unavailable')
   }, [eligible])
 
@@ -116,6 +126,7 @@ export function useDayMemoLocalOnlyPreview({ dayMemos, isConfigured, isSignedIn,
     setItems([])
     setSummary(null)
     setSafeErrorMessage(null)
+    setUploadSnapshot(null)
     if (!eligible || !connection?.workspaceId) {
       setPreviewState('unavailable')
       return
@@ -149,6 +160,7 @@ export function useDayMemoLocalOnlyPreview({ dayMemos, isConfigured, isSignedIn,
     setItems([])
     setSummary(null)
     setSafeErrorMessage(null)
+    setUploadSnapshot(null)
 
     const fail = (state: DayMemoLocalOnlyPreviewState) => {
       if (runIdRef.current !== runId) return
@@ -197,11 +209,33 @@ export function useDayMemoLocalOnlyPreview({ dayMemos, isConfigured, isSignedIn,
       })
       setItems(classified)
       setSummary(summarize(classified))
+      const localNew = classified.filter((item) => item.classification === 'local_new_candidate')
+      setUploadSnapshot(classified.length === 1 && localNew.length === 1 ? {
+        workspaceId: metadata.workspaceId,
+        candidate: { ...candidates[0] },
+        localStorageSerialized: stored.serialized,
+        localMemos: stored.memos.map((memo) => ({ ...memo })),
+        metadataRaw: loaded.raw,
+      } : null)
       setPreviewState('preview_ready')
     } catch {
       fail('pull_failed')
     }
   }, [connection?.workspaceId, currentLocalSignature, eligible, previewState])
+
+  const getSingleNewCandidateSnapshot = useCallback((): DayMemoLocalOnlyUploadCandidateSnapshot | null => {
+    if (previewState !== 'preview_ready'
+      || summary?.candidateCount !== 1
+      || summary.localNewCandidateCount !== 1
+      || summary.remoteDeletedCandidateCount !== 0
+      || summary.unknownLocalOnlyCount !== 0
+      || !uploadSnapshot) return null
+    return {
+      ...uploadSnapshot,
+      candidate: { ...uploadSnapshot.candidate },
+      localMemos: uploadSnapshot.localMemos.map((memo) => ({ ...memo })),
+    }
+  }, [previewState, summary, uploadSnapshot])
 
   return {
     eligible,
@@ -211,5 +245,6 @@ export function useDayMemoLocalOnlyPreview({ dayMemos, isConfigured, isSignedIn,
     safeErrorMessage,
     previewLocalOnly,
     discardPreview,
+    getSingleNewCandidateSnapshot,
   }
 }

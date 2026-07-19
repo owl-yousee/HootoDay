@@ -2160,4 +2160,12 @@ cleanup後VERIFY結果：
 - full pull完了後、remote recordもtombstoneもない日を`local_new_candidate`、tombstoneがある日を`remote_deleted_candidate`、通常record存在または安全確認不能を`unknown_local_only`へ分類する。分類は送信許可を意味しない。
 - preview結果は日付と分類だけをReact stateへ保持し、本文、payload、UUID、operation IDは表示・永続化しない。破棄または再読み込みで消え、DayMemo・baseline・cursor・metadataを変更しない。
 - upsert、delete、operation ID生成、pendingOperation作成、自動pull、自動再試行は未実装のままである。
+
+### Phase B-3e4b: local_new_candidate 1件の明示新規upload
+
+- B-3e4aのpreviewが`local_new_candidate`ちょうど1件かつ他分類0件の場合だけ、別の明示操作で共通full pull preflightを再実行する。対象日に通常recordまたはtombstoneがあれば停止する。
+- preflight完了後の明示準備で初めてUUID v4 operation IDを生成し、base revision 0のpendingOperationを保存・read-backする。preview段階では生成・保存しない。
+- 送信は保存済みoperation IDで`hooto_day_upsert_sync_record`を1回だけ呼び、status applied、conflict false、revision 1、増加したchange sequence、payload一致、deleted_at nullを共通validatorで確認する。
+- 成功時だけ対象日のbaselineを追加し、cursor、成功日時を更新してpendingOperationを解消する。local DayMemo、他baseline、初回upload履歴、workspace、migration、pushBlockは維持する。
+- conflict、response unknown、RPC後metadata保存失敗では自動再試行や新operation ID発行を行わず、pending情報を消さず安全停止する。delete、tombstone復活、複数件処理は未実装である。
 - 今回は調査・設計文書更新のみ。src、SQL、package、localStorage、metadataは変更せず、Supabase操作、commit、pushは行っていない。
