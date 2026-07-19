@@ -1,0 +1,452 @@
+# HootoDay 同期設計
+
+## 1. 文書の位置付け
+
+この文書は、HootoDayのPC親機とiPhone子機の間で保存データを安全に同期するための正式設計である。同期実装は段階的に導入し、既存のlocalStorage単体動作、localStorageの各`version: 1`形式、JSONバックアップ`formatVersion: 2`および旧`formatVersion: 1`の復元互換を維持する。
+
+本設計時点ではSupabaseライブラリ、SQL、同期UI、環境変数、Service Workerを実装しない。
+
+## 2. 基本方針
+
+- localStorageを各端末の正式な保存先として維持する。
+- SupabaseはPCとiPhoneの差分を受け渡す同期媒体として使用する。
+- アプリ起動時にクラウドだけを正としてローカル全体を即時上書きしない。
+- 同期に失敗しても、ローカルでの入力、閲覧、編集、削除を継続できる。
+- 同期はレコード単位の差分で行い、データ種別ごとに段階的に有効化する。
+- 最初の同期対象は`DayMemo`だけとし、手動同期で安全性を検証する。
+- `hootoDay.theme`、選択日、表示月、dialog、検索条件などの端末・画面状態は同期しない。
+- Service Worker、バックグラウンド同期、自動同期、オフライン送信キューは後続Phaseとする。
+- ブラウザではanon keyだけを使用し、service role keyを配置しない。
+- anon keyの公開を前提とし、RLSによって所属していないworkspaceのデータを読めない構造にする。
+- 同期導入によって既存localStorageデータへクラウド専用メタデータを大量に混在させない。
+
+## 3. workspace・member・device
+
+### 3.1 workspace
+
+workspaceはHootoDayデータの共有単位である。
+
+- ユーザー本人のPCとiPhoneは同じworkspaceへ所属する。
+- workspaceは`app_id`を持ち、HootoDayの識別子は`hooto_day`とする。
+- HootoPost・HootoSongと同じSupabaseプロジェクトを使用しても、`app_id`とworkspaceでデータを分離する。
+- 異なるアプリの同期レコードを同一workspaceとして混在させない。
+- workspaceの作成、所有者設定、削除は通常の公開INSERT/DELETEへ任せず、安全なRPCまたは本人所有条件で制御する。
+
+### 3.2 member
+
+memberはSupabase Authの匿名ユーザーとworkspaceの所属関係を表す。
+
+- `auth.uid()`をworkspaceへ紐付ける。
+- roleは最低限`owner`と`member`を持つ。
+- 最初に設定するPCをownerとする。
+- ペアリングしたiPhoneをmemberとする。
+- 個人利用でも、RLS判定と端末接続解除を安全に行うためmember構造を維持する。
+- member追加は公開INSERTを許可せず、ペアリングRPCだけが行う。
+
+### 3.3 device
+
+deviceは同期履歴の確認と端末識別に使用し、権限の根拠にはしない。
+
+- PCとiPhoneを区別する`device_id`を端末内で生成する。
+- 将来のlocalStorageキーは`hootoDay.syncDeviceId`とする。
+- `device_name`は「自宅PC」「iPhone」などの任意表示名とする。
+- 権限判定は常に`auth.uid()`とworkspace memberで行う。
+- `device_id`は同期レコードの発生元、監査、再送調査に使用する。
+- 今回はキーもdeviceも実装しない。
+
+## 4. 匿名ログインとペアリング
+
+### 4.1 PC親機
+
+1. Supabaseへ匿名ログインする。
+2. `app_id = hooto_day`のworkspaceを作成する。
+3. ログイン中の`auth.uid()`をowner memberとして登録する。
+4. ownerだけが短時間有効なペアリングコードを発行する。
+5. 表示されたコードをiPhoneへ入力する。
+
+### 4.2 iPhone子機
+
+1. PCとは別の匿名ユーザーとしてログインする。
+2. ペアリングコードを入力する。
+3. security definer RPCでコードを検証する。
+4. RPC内でiPhoneの`auth.uid()`を同じworkspaceのmemberへ追加する。
+5. コードを使用済みにして即時無効化する。
+6. RLSの範囲内で同じworkspaceのHootoDayデータを同期できるようにする。
+
+### 4.3 ペアリングコード
+
+- 文字数は8文字を標準とし、6～8文字の範囲を許容する。
+- 文字集合は`ABCDEFGHJKLMNPQRSTUVWXYZ23456789`とし、`I`、`O`、`0`、`1`など紛らわしい文字を除く。
+- DBには平文を保存せず、十分なランダム性を持つコードのhashだけを保存する。
+- 有効期限を短時間に限定する。
+- 一度だけ使用可能とし、使用成功時に同一トランザクションで無効化する。
+- ownerだけが発行・失効できる。
+- RPCで試行回数、期限、使用済み状態、対象アプリ、発行workspaceを検証する。
+- 総当たり対策として短時間の試行制限、失敗回数記録、連続失敗時の一時拒否を設ける。
+- コードやhashをログ、エラー文、URLへ出さない。
+
+## 5. 初回同期の最重要規則
+
+**空のiPhoneが、データ入りPCを空で上書きしてはならない。**
+
+### 5.1 クラウドが空、PCにデータ、iPhoneが空
+
+- ownerのPCデータを初回アップロードする。
+- iPhoneはアップロード完了後にクラウドから取得する。
+- iPhoneの空配列を削除や全置換として送信しない。
+
+### 5.2 クラウドにデータ、端末ローカルが空
+
+- クラウドをローカルへ取得する。
+- 空のローカル状態をクラウド削除として扱わない。
+
+### 5.3 クラウドとローカルの両方にデータがある
+
+- 自動的な全置換を行わない。
+- 初回同期方向と差分件数を表示し、レコード単位で比較する。
+- DayMemoは日付単位で同一・片側のみ・競合を分類する。
+- 競合があれば同期結果の確定前にユーザーへ選択させる。
+
+### 5.4 全データ初期化後
+
+- ローカルが空になった事実だけでクラウド全削除を行わない。
+- 「この端末のデータを初期化」と「workspaceのクラウドデータも削除」を別操作にする。
+- クラウド全削除には二重確認と再認証相当の確認を要求する。
+
+### 5.5 JSONバックアップ復元後
+
+- 復元直後のデータを自動でクラウド全置換しない。
+- 次回同期前に差分プレビューを表示する。
+- 復元データを反映する場合も、レコード単位のupsertとtombstoneで処理する。
+
+## 6. 採用するテーブル方式
+
+### 6.1 比較
+
+#### A：データ種別ごとの個別テーブル
+
+例：`hooto_day_memos`、`hooto_day_events`、`hooto_day_weight_records`
+
+利点：
+
+- DB制約と列型で各データを強く検証できる。
+- SQL集計や個別データ調査が分かりやすい。
+- TypeScript型とDB列を対応させやすい。
+
+欠点：
+
+- 15種類以上についてテーブル、RLS、RPC、差分取得処理を繰り返し作る必要がある。
+- 今日中のDayMemoパイロットまでの準備量が多い。
+- 共通のrevision、tombstone、再送制御が分散する。
+
+#### B：共通同期テーブル
+
+例：`hooto_day_sync_records`
+
+利点：
+
+- revision、tombstone、差分取得、RLS、再送制御を一元化できる。
+- DayMemoから他データへ段階的に広げやすい。
+- 無料枠でテーブルやRealtime設定を増やしすぎない。
+- 同じ同期エンジンと監査方法を再利用できる。
+
+欠点：
+
+- `payload`の型安全性をDB列だけでは保証できない。
+- 種別ごとのバリデーションをTypeScriptとRPCで厳格に行う必要がある。
+- SQLでの業務集計には向かない。
+- 在庫・販売のような整合性が重要な処理には不十分である。
+
+### 6.2 正式採用
+
+Phase 2～4の一般データには**Bの共通同期テーブル方式**を採用する。
+
+採用理由は、DayMemoで安全な同期試験へ進みやすく、15種類以上へ同期エンジンを再利用でき、RLS・revision・tombstoneを共通化できるためである。型安全性は`entity_type`ごとのTypeScript validator、送信前検証、受信後検証、許可されたentity_typeのDB制約で補う。不正payloadはlocalStorageへ反映せず、同期エラーとして隔離する。
+
+在庫・販売系は、共通テーブルへ安易に追加しない。Phase 5でトランザクション、冪等性、売上修正を設計し、専用テーブルと台帳方式を採用する。A方式を一般データへ今すぐ採用しない理由は、初期工数とRLSの重複が大きく、パイロットの検証範囲を広げるためである。
+
+## 7. 共通同期レコード
+
+`hooto_day_sync_records`は少なくとも次の項目を持つ。
+
+| 項目 | 役割 |
+|---|---|
+| `workspace_id` | 所属workspace。RLSと一意制約の境界に使う |
+| `entity_type` | `day_memo`などデータ種別を表す許可済み識別子 |
+| `entity_id` | 既存ローカルID。DayMemoだけは1日1件のため`date`を使用 |
+| `payload` | 既存ローカルレコード本体を保持するJSON |
+| `client_updated_at` | 端末が記録した更新日時。表示・調査用であり単独の勝敗判定には使わない |
+| `server_updated_at` | DB側で設定する更新日時。差分取得と監査に使う |
+| `deleted_at` | tombstone。nullでなければ削除済み |
+| `updated_by` | 更新した`auth.uid()` |
+| `source_device_id` | 更新元端末。権限ではなく監査と再送調査に使う |
+| `revision` | サーバーが単調増加させるレコード単位の版番号 |
+
+追加原則：
+
+- 一意制約は`workspace_id + entity_type + entity_id`とする。
+- 同じ送信の再試行で重複しないよう、同一entityへのupsertと操作IDによる冪等性を用いる。
+- `server_updated_at`、`revision`、`updated_by`はクライアント任意値を信用せずDBで設定する。
+- payloadへworkspace、revision、削除状態などのクラウド専用情報を重複保存しない。
+- pullしたpayloadは既存の各storage validator相当で検証してからlocalStorageへ反映する。
+
+## 8. DayMemo同期パイロット
+
+### 8.1 現行型との対応
+
+実コードの`DayMemo`は次の3項目である。
+
+- `date: string`
+- `content: string`
+- `updatedAt: string`
+
+独立した`id`はないため、`entity_type = day_memo`、`entity_id = date`（`YYYY-MM-DD`）を正式仕様とする。payloadは既存の`DayMemo`そのものとし、localStorageの`hootoDay.dayMemos`、`version: 1`、`memos`配列を変更しない。
+
+### 8.2 ローカル変更の扱い
+
+- 新規・編集：同じ日付を同じentityとしてupsert候補にする。
+- 空欄保存による削除：ローカル配列から除外し、同期層では同じentityのtombstone候補として記録する。
+- JSON復元：自動pushせず、次の手動同期で差分プレビューを要求する。
+- 全初期化：自動で全tombstoneを作らず、端末初期化状態として扱う。
+- 同期層が未実装・未接続でも既存保存処理はそのまま動作する。
+
+### 8.3 手動同期
+
+最初は設定画面の「同期する」操作だけで同期する。
+
+1. 同期開始時点のDayMemo localStorage値をメモリまたは一時バックアップとして保持する。
+2. 前回同期状態と現在のローカルを比較し、変更・削除候補を収集する。
+3. 各変更を`base_revision`付きでクラウドへpushする。
+4. 最終同期位置以降のレコードとtombstoneをpullする。
+5. entity_id単位でローカル・クラウド・前回同期状態を3-way mergeする。
+6. 統合結果を既存DayMemo validatorで検証する。
+7. 競合がなければ`replaceDayMemos`相当でlocalStorageへ保存する。
+8. 成功後だけ同期位置と同期状態を更新する。
+
+通信、認証、検証、競合解決に失敗した場合は、同期開始前のlocalStorageを変更しない。候補キーは次のとおりとし、今回は追加しない。
+
+- `hootoDay.syncCursor`：最後に正常取得したサーバー差分位置
+- `hootoDay.syncState`：entityごとの最後に確認したrevision、内容hash、削除状態
+
+## 9. revisionと競合規則
+
+### 9.1 revision
+
+- 各同期レコードはサーバー管理の整数`revision`を持つ。
+- 初回作成はrevision 1とする。
+- 端末は最後に同期したrevisionを`base_revision`として更新RPCへ送る。
+- 現在revisionとbase revisionが一致した場合だけ更新し、成功時にrevisionを増やす。
+- 不一致なら上書きせず競合として返す。
+- 端末時計の`updatedAt`や`client_updated_at`だけで勝敗を決めない。
+- 同じ操作IDと内容の再送は成功済み結果として扱い、revisionを重複して増やさない。
+
+### 9.2 今日のパイロットでの最小安全規則
+
+- 片側だけが前回同期内容から変化した場合は、その変更を採用する。
+- 両側が同一内容へ変化した場合は競合なしとして統合する。
+- 両側が別内容へ変化した場合は自動上書きせず競合一覧へ出す。
+- 削除と未変更が競合した場合は削除を採用する。
+- 削除と編集が競合した場合は自動決定せず、削除版と編集版の両方を提示する。
+- 競合が1件でも未解決なら、そのentityをlocalStorageへ上書きしない。
+- 同期前バックアップから復旧可能にする。
+
+### 9.3 最低限扱うケース
+
+| 状況 | 処理 |
+|---|---|
+| PC編集、iPhone未変更 | PC版を採用 |
+| iPhone編集、PC未変更 | iPhone版を採用 |
+| 同じ日を別内容へ編集 | 競合として両方を保持 |
+| PC削除、iPhone編集 | 削除対編集の競合 |
+| iPhone削除、PC未変更 | tombstoneを採用 |
+| 端末時計のずれ | revision基準のため時計だけで上書きしない |
+| 同じ操作を再送 | 操作IDで冪等に処理 |
+| オフライン中に複数回編集 | 端末内の最終ローカル内容を1候補とし、base revisionからの差分として送る |
+
+### 9.4 将来の正式競合解決
+
+- 競合一覧で日付、端末、更新日時、双方の本文を表示する。
+- 「PC版を採用」「iPhone版を採用」「内容を編集して統合」を選べるようにする。
+- 解決時は最新revisionをbaseとして新revisionを作成する。
+- 競合解決履歴を監査可能にする。
+- DayMemoは黙ってlast-write-winsにしない。
+
+## 10. 削除とtombstone
+
+- DBから同期レコードを即時物理削除しない。
+- 削除はpayloadの空データ化ではなく`deleted_at`設定とrevision増加で表す。
+- pullは通常レコードとtombstoneの両方を含む。
+- 新しいtombstoneを受信した端末は同じentity_idのローカルDayMemoを削除する。
+- 古い端末が削除前revisionを基に再送した場合は競合とし、復活させない。
+- DayMemoの空文字保存による削除は、ローカルでは既存どおり配列から除外し、同期時には同じ日付entityのtombstoneとして送る。
+- tombstoneの保持期間は最低90日を初期候補とし、全登録端末の同期状況を確認できるまでは物理削除しない。
+- 期限後の物理削除は将来の保守処理とし、クライアントから直接実行しない。
+
+## 11. RLS
+
+- Supabaseの`authenticated` roleを使用する。匿名ログインユーザーも`auth.uid()`を持つ。
+- workspace memberだけが所属workspaceをSELECTできる。
+- workspace memberだけが、そのworkspaceの許可されたHootoDay同期レコードをINSERT・UPDATEできる。
+- RLSは`workspace_id`、memberの`user_id = auth.uid()`、`app_id = hooto_day`を検証する。
+- member追加の公開INSERT policyを作らない。
+- ペアリングはsecurity definer RPC経由に限定する。
+- workspace作成も安全なRPC、または作成者本人をownerにする原子的な処理で行う。
+- ownerだけがペアリングコードを発行・失効できる。
+- 他workspaceのUUIDを知っていても読み書きできない。
+- 同期レコードのDELETE policyは原則作らず、`deleted_at`更新を使う。
+- security definer関数は`search_path`を固定し、対象schemaを明示する。
+- RPC内で`auth.uid()`、workspace所属、role、app_id、有効期限を必ず再検証する。
+- service role keyを前提にしたブラウザ処理を作らない。
+
+## 12. Supabaseテーブル候補
+
+### 12.1 候補
+
+- `app_workspaces`
+- `app_workspace_members`
+- `app_pairing_codes`
+- `app_devices`
+- `hooto_day_sync_records`
+
+### 12.2 共通テーブルと専用テーブル
+
+HootoPost・HootoSongですでに安全な`app_workspaces`、`app_workspace_members`、`app_pairing_codes`、`app_devices`相当が存在し、app_id分離と必要なRLSを満たす場合は共通利用を優先する。認証・ペアリングの重複実装を避けられるためである。
+
+ただし、既存テーブルの列、制約、RLS、RPCが本設計を満たさない場合は勝手に変更せず、HootoDay専用名を検討する。同期payloadはアプリ固有であるため、`hooto_day_sync_records`を専用テーブルとする。
+
+次のSQL Phaseでは、同名テーブル、RPC、RLS、schema、migration履歴を先に読み取り確認する。既存テーブルの削除、再作成、列変更、policy置換は事前バックアップと明示的な移行計画なしに行わない。
+
+## 13. 同期Phase
+
+### Sync Phase 1：接続基盤
+
+実装範囲：Supabase client、匿名認証、workspace、member、device、ペアリング、RLS、同期設定画面。データ同期は行わない。
+
+完了条件：
+
+- service roleなしでPCとiPhoneが別の匿名user idを取得できる。
+- PCがowner、iPhoneがmemberとして同じHootoDay workspaceへ所属できる。
+- 他workspaceをSELECT/INSERT/UPDATEできないRLSテストが成功する。
+- ペアリングコードが期限、1回限り、owner限定で機能する。
+- 接続失敗時も既存localStorage操作が継続する。
+
+### Sync Phase 2：DayMemo手動同期
+
+実装範囲：DayMemo push/pull、初回同期保護、revision、tombstone、検証、エラー表示。
+
+完了条件：
+
+- 空のiPhoneがPCのDayMemoを消さない。
+- PC/iPhone双方の新規・編集・削除が手動同期で反映される。
+- 同時編集と削除対編集が自動上書きされず競合になる。
+- 同期失敗時にlocalStorageが同期開始前の状態を保つ。
+- 再送で重複レコードを作らない。
+
+### Sync Phase 3：予定・実績
+
+対象：`DailyAchievement`、`MonthlyAchievementSelection`、`CalendarEvent`。
+
+完了条件：
+
+- entity IDと参照関係を維持して同期できる。
+- 月のベスト参照先を削除した場合を安全に処理できる。
+- 予定の日付移動、編集、削除が復活や重複なしで同期できる。
+
+### Sync Phase 4：健康記録
+
+対象：`HealthProfile`、`WeightRecord`、`SleepRecord`、`MealRecord`、`MealTemplate`、`ExerciseSession`、`DailyConditionRecord`。
+
+完了条件：
+
+- 1日1件型、複数件型、singleton型を区別して同期できる。
+- 食事定型の並び順競合を検出できる。
+- 保存済みの推定値を勝手に再計算しない。
+- 健康内容をログや不要な通知へ出さない。
+
+### Sync Phase 5：在庫・販売
+
+対象：`Product`、`InventoryMovement`、`EventSalesRecord`、`BoothSalesRecord`。
+
+完了条件：
+
+- 専用テーブルと在庫台帳のトランザクション設計が完了する。
+- 同じ販売確定の再送が在庫を二重に減らさない。
+- 売上修正、取消、サンプル配布を監査可能な差分として扱える。
+- PC/iPhone同時操作で負在庫や二重計上を発生させない。
+
+### Sync Phase 6：自動同期と保守
+
+実装範囲：自動同期、オフラインキュー、Service Worker連携検討、競合解決UI、tombstone保守。
+
+完了条件：
+
+- 再接続時に安全に再送できる。
+- バックグラウンド処理がlocalStorage単体動作を妨げない。
+- 競合をユーザーが確認・解決できる。
+- tombstone物理削除前に未同期端末を保護できる。
+
+## 14. 同期設定UI
+
+将来、既存設定画面へ次を追加する。
+
+- 同期状態：未接続、接続済み、同期中、エラー、競合あり
+- 端末役割：PC親機、iPhone子機
+- workspace接続状態
+- 最終同期日時
+- 現在の同期対象データ
+- 「今すぐ同期」
+- ペアリングコード発行
+- ペアリングコード入力
+- 接続解除
+- 同期エラー概要
+- 競合件数と競合確認入口
+
+安全原則：
+
+- 接続解除でlocalStorageデータを削除しない。
+- 端末の接続解除とworkspace削除を分ける。
+- クラウド全削除は二重確認する。
+- 初回同期前に方向を明示する。
+- 「PCからクラウドへ送る」「クラウドからこの端末へ受け取る」を区別する。
+- 自動推測だけで危険な全置換を実行しない。
+- 同期対象と同期されないtheme・画面状態を表示する。
+
+## 15. 環境変数
+
+将来使用する変数名は次の2つだけとする。
+
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
+
+値は`.env.local`へ保存し、Git管理しない。`.env.example`には値を入れず変数名だけを記載する。anon keyは公開される前提でRLSを必須とする。service role用の環境変数は作らない。URLやkeyを`PROJECT_NOTES.md`やソースコードへ貼らない。今回は環境変数ファイルを作成しない。
+
+## 16. 既存保存・バックアップとの互換
+
+- localStorageの構造化データ15キーはすべて既存の`version: 1`を維持する。
+- `hootoDay.theme`は同期対象外とし、端末ごとの設定を維持する。
+- JSONバックアップの`formatVersion: 2`を変更しない。
+- 旧`formatVersion: 1`の復元互換を維持する。
+- 同期用候補キーは現行JSONバックアップ対象へ自動追加しない。
+- JSON復元と全初期化をクラウド全置換・全削除へ直結させない。
+- Supabase障害、未設定、未接続でも既存HookとlocalStorageだけで動作できる。
+
+## 17. 実装前チェックリスト
+
+- [ ] 既存Supabaseテーブルを確認した
+- [ ] 既存RPCを確認した
+- [ ] 既存RLS policyを確認した
+- [ ] HootoPost・HootoSongとの名前衝突を確認した
+- [ ] app識別子`hooto_day`を確定した
+- [ ] 一般データは共通同期テーブル、在庫は後続専用設計と確定した
+- [ ] 初回同期で空端末が既存データを消さない規則を確定した
+- [ ] tombstoneの形式と保持期間を確定した
+- [ ] revision、base revision、操作IDの方式を確定した
+- [ ] pairing codeの文字数、hash、有効期限、試行制限を確定した
+- [ ] 既存localStorageを変更しないことを確認した
+- [ ] JSON formatVersion 2と旧v1互換を維持することを確認した
+- [ ] 既存SQLのバックアップ方法を確認した
+- [ ] rollback SQLを準備した
+- [ ] PC側で最新JSONバックアップを取得した
+- [ ] iPhone側に同期前データがあるか確認した
+- [ ] RLSの他workspace拒否テストを準備した
+- [ ] service roleをフロントエンドで使用しないことを確認した

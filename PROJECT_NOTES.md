@@ -1662,3 +1662,22 @@
 - 320pxまで2列と横超過なしを確認し、PWA・将来のWebViewアプリ化でも同じ表面表示を使用する
 - localStorage、JSONバックアップ、TXT・Markdown、全データ初期化の形式変更なし
 - 日付・時刻の表示崩れ解消を実機確認済み。picker操作はnative input直接タップ方式へ更新済み
+
+### Sync Design Phase（設計完了・実装未着手）
+
+- 今後のHootoDay同期実装の正式仕様として`SYNC_DESIGN.md`を作成
+- localStorageを各端末の正式保存先として維持し、SupabaseはPC・iPhone間の同期媒体として使用する方針
+- Supabase Authのanonymous sign-inと、`workspace`・`member`・`device`による端末接続を設計
+- 最初のPCをowner、ペアリングしたiPhoneをmemberとし、短時間・1回限りのpairing codeをsecurity definer RPCで処理する方針
+- owner/member限定RLSとし、service roleをフロントエンドで使用しない
+- 最初の同期パイロットはDayMemoだけに限定し、手動push/pull、初回同期保護、入力検証、エラー時のlocalStorage非変更を設計
+- 空のiPhoneがデータ入りPCを空で上書きしないことを初回同期の最重要規則として確定
+- 共通同期レコード、revisionとbase revision、tombstone、再送の冪等性、競合時の自動上書き禁止を設計
+- DayMemoには独立IDがないため、日付を同期上の`entity_id`として使用する
+- 一般データは共通同期テーブル方式を採用し、在庫・販売同期は専用トランザクションと冪等性が必要な最後のPhaseに分離
+- `hootoDay.theme`と画面状態は同期対象外
+- Service Worker、自動同期、バックグラウンド同期は後続Phaseで検討
+- 既存localStorageの各version 1形式は変更しない
+- JSONバックアップformatVersion 2と旧formatVersion 1復元互換は変更しない
+- 次工程は既存hooto-platformのテーブル・RPC・RLS確認と、非破壊のSQL設計
+- commitはユーザー確認後に行う
