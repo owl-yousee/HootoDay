@@ -444,3 +444,12 @@ HootoPost系の旧同期方式と推定され、PUBLIC EXECUTEである。HootoD
 - この比較はPRECHECK取得対象が一致したことを示すもので、DB全要素の完全同一証明ではない。共通HootoSong・HootoPost基盤への変更は取得対象の署名上確認されなかった。
 - 実データやworkspaceは作成しておらず、既存workspace/member/pairing基盤を流用してHootoDay専用objectだけを追加するB案を維持する。
 - authenticated clientによる16ケースの同期実操作テストとアプリ同期実装は未着手であり、次工程で分離して実施する。
+
+## 18. 既存共通基盤を利用した実操作確認（2026年7月19日）
+
+- 既存`app_workspaces`、`app_workspace_members`、pairing RPCを変更せず、anon keyとanonymous authenticated clientでowner・member・non-memberの接続・認可を確認した。
+- HootoDay専用W1と別workspace拒否用W2だけを新規利用し、既存HootoSong・HootoPost workspaceおよび他アプリデータは使用していない。
+- ownerのworkspace作成、pairing code発行、member参加、owner/memberのHootoDay RPC正常操作が成功した。
+- non-memberからW1、W1 memberからW2へのpull・upsert・deleteはすべてworkspace membershipエラーで拒否された。
+- pairing consume成功後にclient側の戻り値形状誤判定でローカルstateだけ未保存となったが、consumeを再実行せずmembership RPCでDB成功を確認して安全に復旧した。
+- 以上により、既存接続基盤を非破壊で流用し、HootoDay専用同期テーブル・RPCを分離するB案のRPC単体動作を確認した。アプリ統合後のlocalStorage保護と実端末同期は未確認である。

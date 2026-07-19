@@ -1783,3 +1783,69 @@
 - rollbackは未実行。実データ、同期用workspace、テストデータは今回作成していない
 - authenticated clientによるowner/member/非member、競合、冪等再送、tombstone等の16ケースは未検証
 - アプリコードへの同期実装は未着手
+
+### HootoDay Sync authenticated client実操作テスト（2026年7月19日完了）
+
+- HootoDayリポジトリ外の一時Node.jsクライアントと`@supabase/supabase-js`を使用し、ローカル`.env`からSupabase URLと公開用anon keyを取得して実施
+- service roleは使用せず、anonymous sign-inしたowner・member・non-memberの3ユーザーを使用
+- ownerはHootoDay同期検証用W1の作成者・PC役、memberはpairingでW1へ参加したiPhone役、non-memberはW1へ参加しない拒否確認役とした
+- 別workspace拒否確認用として、non-memberがownerとなるW2を使用
+- 既存HootoSong・HootoPost workspaceおよび他アプリのデータは使用していない
+- テストentityは、作成・更新・競合・tombstone・復活用の`2099-01-15`と、冪等再送・operation ID異内容再利用拒否用の`2099-01-16`に限定
+- workspace ID、user ID、operation ID、JWT、anon key、pairing code等の実値は文書へ記録しない
+
+事前準備結果：
+
+1. DashboardでAnonymous Sign-Insが有効であることを確認
+2. anon keyによる匿名認証とowner・member・non-memberの3セッション作成に成功
+3. ownerによるW1作成とpairing code発行に成功
+4. memberによるW1参加に成功
+5. `consume_app_pairing_code`成功後、テストクライアント側がuuid単値の戻り形状を誤判定し、DB側参加は完了していたがローカルstateだけ未保存となった
+6. 同じpairing codeやconsume RPCは再実行せず、memberセッションから`is_app_workspace_member`を呼んでW1参加済みを確認し、ローカルstateだけを安全に復旧
+7. non-memberによるW2作成に成功
+
+authenticated clientで確認した16ケース：
+
+1. ownerがW1へ`2099-01-15`をbase revision 0でupsertし、`applied`、revision 1、change sequence採番、payload・削除状態を確認
+2. memberがcursor 0から初回pullし、owner作成DayMemoのrevision・change sequence・payload一致を確認
+3. memberが現在revisionで更新し、revisionの1増加、change sequence増加、payload更新を確認
+4. ownerが更新前の古いrevisionでupsertし、`conflict`と最新payload・revision・change sequence返却、record本体不変を確認
+5. 専用entity`2099-01-16`で同一operation ID・同一requestを再送し、revision・change sequence・server updated time不変と保存済み結果返却を確認
+6. 同じoperation IDでpayload本文だけを変更し、different requestエラーによる拒否と既存record不変を確認
+7. memberが`2099-01-15`を最新revisionでdeleteし、物理DELETEではなくpayload NULL・deleted_at設定・revisionとchange sequence増加を確認
+8. 新しいoperation IDで既存tombstoneを再削除し、`applied`だがrevision・change sequence・payload NULL・deleted_atが不変であることを確認
+9. ownerがtombstone作成前cursorからpullし、payload NULLのtombstoneとrevision・change sequence・deleted_at一致を確認
+10. tombstone化前の古いrevisionで復活を試し、`conflict`、payload NULL・deleted_at・revision・change sequence維持を確認
+11. 最新tombstone revisionで明示upsertし、`applied`、payload復活、deleted_at NULL、revision・change sequence増加を確認
+12. non-memberによるW1 pullがworkspace membershipエラーとなり、データを取得できないことを確認
+13. non-memberによるW1 upsert・deleteがともにworkspace membershipエラーとなり、member pullでrevision・change sequence・payload・削除状態不変を確認
+14. W1 memberによるW2 pull・upsert・deleteがすべてworkspace membershipエラーとなり、W2へrecord・tombstoneを作成しないことを確認
+15. 既存memberと空ローカル配列、cursor 0で空端末相当の初回pullだけを行い、W1の2 entityを取得。upsert・delete・operation ID生成を行わず、空状態を削除要求へ変換しないRPC呼出順を確認
+16. 正常な3キーへ`unexpectedKey`だけを追加したpayloadがキー検証で拒否され、operation履歴追加・record更新・採番より前に停止し、pullでクラウドrecord不変を確認
+
+総合結果：
+
+- 予定したRPC単体16ケースはすべて完了
+- owner・memberの正常操作、non-member・別workspaceの拒否、revision競合、operation IDの冪等再送と異内容再利用拒否を確認
+- tombstone作成・再削除・pull・古いrevision復活拒否・最新revision明示復活を確認
+- 空端末相当の初回pullでクラウド削除操作が発生しないことと、不正payload失敗時にクラウドrecordが変化しないことを確認
+- SQL Editorや管理権限ではなく、anon keyとanonymous authenticated client経由で確認。service roleは不使用
+- RPC単体テストは完了したが、アプリ側同期実装は未着手で、アプリ統合テストも未実施
+
+アプリ実装後に残る確認：
+
+- 実際のiPhone localStorageが空の状態で初回pullだけを行い、初回pull前に自動pushしないこと
+- 空iPhoneのローカル空状態をクラウド削除へ変換しないこと
+- pull結果をvalidator通過後だけlocalStorageへ反映すること
+- 同期失敗時に既存localStorageを変更せず、conflict時にローカルDayMemoを自動上書きしないこと
+- JSONバックアップ復元直後に自動pushせず、ローカル全初期化をクラウド全削除へ連動させないこと
+- cursorとrevisionを端末へ安全に保存して再起動後も継続できること
+- 通信断・認証切れ・途中失敗時のUIと再試行、PC初回uploadの明示操作、実アプリでのPC・iPhone間同期
+
+テスト用データの現在状態：
+
+- W1・W2、匿名ユーザー3名、pairing履歴、同期record、operation履歴はテスト用として現在も残している
+- cleanupは結果記録後に方法と対象を別途確認し、既存HootoSong・HootoPostデータへ触れず、対象を限定して手動実施する
+- 全件削除や曖昧な条件による削除は行わず、cleanup完了まではテスト用stateを削除しない
+- リポジトリ外テストフォルダの`.env`と`.sync-test-state.json`は秘密情報を含むため共有・commit禁止
+- Supabase同期SQL適用、構造VERIFY、APPLY前後PRECHECK一致、authenticated client RPC実操作テストまで完了。rollbackとcleanupは未実施

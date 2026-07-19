@@ -502,3 +502,24 @@ hooto-platformの既存構造を確認した結果、当初の共通同期設計
 - APPLY後PRECHECKを`HootoDay_Supabase_PRECHECK_after_APPLY_2026-07-19.csv`として保存し、適用前後が26行・5列で完全一致した。これは取得対象の共通4テーブル構造署名と共通RPC 6件のdefinition hashが変化していないことを示す比較資料であり、DB全要素の完全同一を証明するものではない。
 - 実データ、同期用workspace、テストデータは作成していない。共通HootoSong・HootoPost基盤への変更はPRECHECK取得対象の署名上確認されなかった。
 - authenticated clientによるowner/member/非member、競合、冪等再送、tombstone、初回空端末保護など16ケースの実操作テストは未実施である。アプリコードへの同期実装も未着手である。
+
+### 19.2 authenticated client実操作テスト結果（2026年7月19日）
+
+リポジトリ外の一時Node.jsクライアント、`@supabase/supabase-js`、公開用anon key、anonymous sign-inしたowner・member・non-memberを使用し、専用W1・W2とDayMemoテストentityだけで16ケースを実施した。service role、既存HootoSong・HootoPost workspace、他アプリデータは使用していない。
+
+RPC単体で次の設計保証を確認した。
+
+- ownerによる新規作成、memberによるpull・revision一致更新が成功する。
+- revision不一致は`conflict`となり、最新recordを返してクラウド本体を変更しない。
+- 同一operation ID・同一requestは保存済み結果を返し、revision・change sequence・server時刻を増やさない。異内容再利用は例外で拒否する。
+- deleteは物理削除ではなくpayload NULLのtombstoneを作り、既存tombstone再削除はno-opとなる。
+- pullはtombstoneを含み、古いrevisionからの復活を拒否し、最新tombstone revisionによる明示復活だけを許可する。
+- non-memberのW1 pull・upsert・deleteと、W1 memberのW2 pull・upsert・deleteをworkspace membershipエラーで拒否する。
+- cursor 0と空ローカル配列による初回pullだけで2件の現行recordを取得し、upsert・delete・operation ID生成を行わないことを確認した。
+- 許可外payloadキーはfingerprint・operation履歴追加・mutation・採番より前に拒否され、その後のpullでクラウドrecord不変を確認した。
+
+pairing参加時、`consume_app_pairing_code`のDB処理は成功したが、テストクライアントがuuid単値の戻り形状を誤判定してローカルstateだけ保存できない事象が一度発生した。同じcodeやconsume RPCを再実行せず、`is_app_workspace_member`で参加済みを確認してstateを復旧した。アプリ実装ではRPC戻り型を実定義どおり扱い、DB成功後のローカル記録失敗から安全に復旧できる設計が必要である。
+
+現在確認できた空端末・失敗時保護はRPC呼出順とクラウドDB不変までである。次はアプリ統合後に、実iPhone localStorageでの初回pull優先、初回自動push禁止、受信validator後だけの保存、失敗・conflict時のlocalStorage非変更、JSON復元直後の自動push禁止、全初期化とクラウド削除の分離、cursor・revision永続化、通信断・認証切れUIを再確認する。
+
+テスト用workspace、匿名ユーザー、pairing履歴、同期record、operation履歴はcleanup未実施で残っている。cleanupは対象を限定して別途手動設計し、既存HootoSong・HootoPostデータと現行recordを誤削除しない。アプリ側同期実装と統合テスト、rollbackも未実施である。
