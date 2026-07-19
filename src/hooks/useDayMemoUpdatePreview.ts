@@ -49,14 +49,21 @@ export interface DayMemoUpdatePreviewSummary {
   lastPulledChangeSequence: number
 }
 
-interface DayMemoUpdatePreviewSnapshot {
+export interface DayMemoUpdateUploadCandidateSnapshot {
   workspaceId: string
   baselineConfirmedAt: string
   lastPulledChangeSequence: number
-  candidateDates: string[]
-  candidates: Array<{ date: string; localUpdatedAt: string; baseRevision: number; content: string }>
+  candidate: {
+    date: string
+    localUpdatedAt: string
+    content: string
+    baseRevision: number
+    baselineChangeSequence: number
+    baselineRemoteUpdatedAt: string
+  }
   localStorageSerialized: string
   localMemos: DayMemo[]
+  metadataRaw: string
 }
 
 interface UseDayMemoUpdatePreviewInput {
@@ -171,7 +178,7 @@ export function useDayMemoUpdatePreview({ dayMemos, isConfigured, isSignedIn, co
   const [previewState, setPreviewState] = useState<DayMemoUpdatePreviewState>('unavailable')
   const [items, setItems] = useState<DayMemoUpdatePreviewItem[]>([])
   const [summary, setSummary] = useState<DayMemoUpdatePreviewSummary | null>(null)
-  const [previewSnapshot, setPreviewSnapshot] = useState<DayMemoUpdatePreviewSnapshot | null>(null)
+  const [previewSnapshot, setPreviewSnapshot] = useState<DayMemoUpdateUploadCandidateSnapshot | null>(null)
   const [safeErrorMessage, setSafeErrorMessage] = useState<string | null>(null)
   const currentLocalSignature = useMemo(() => localSignature(dayMemos), [dayMemos])
   const eligible = isConfigured && isSignedIn && connectionIsEligible(connection)
@@ -285,17 +292,25 @@ export function useDayMemoUpdatePreview({ dayMemos, isConfigured, isSignedIn, co
       }
       const candidates = result.items.filter((item) => item.classification === 'modified_candidate').map((item) => {
         const memo = stored.memos.find((candidate) => candidate.date === item.date)!
-        return { date: item.date, localUpdatedAt: memo.updatedAt, baseRevision: item.baseRevision!, content: memo.content }
+        const baseline = metadata.baselines[item.date]
+        return {
+          date: item.date,
+          localUpdatedAt: memo.updatedAt,
+          baseRevision: item.baseRevision!,
+          content: memo.content,
+          baselineChangeSequence: item.baselineChangeSequence!,
+          baselineRemoteUpdatedAt: baseline.remoteUpdatedAt,
+        }
       })
-      setPreviewSnapshot({
+      setPreviewSnapshot(candidates.length === 1 ? {
         workspaceId: metadata.workspaceId,
         baselineConfirmedAt: metadata.baselineConfirmedAt,
         lastPulledChangeSequence: metadata.lastPulledChangeSequence,
-        candidateDates: candidates.map((candidate) => candidate.date),
-        candidates,
+        candidate: { ...candidates[0] },
         localStorageSerialized: stored.serialized,
         localMemos: stored.memos.map((memo) => ({ ...memo })),
-      })
+        metadataRaw: loaded.raw,
+      } : null)
       setItems(result.items)
       setSummary(completeSummary)
       setPreviewState(candidates.length > 0 ? 'preview_ready' : 'no_changes')
@@ -304,6 +319,21 @@ export function useDayMemoUpdatePreview({ dayMemos, isConfigured, isSignedIn, co
       setSafeErrorMessage(messageForState('error'))
     }
   }, [connection?.workspaceId, currentLocalSignature, eligible, previewState])
+
+  const getSingleCandidateSnapshot = useCallback((): DayMemoUpdateUploadCandidateSnapshot | null => {
+    if (previewState !== 'preview_ready'
+      || summary?.modifiedCandidateCount !== 1
+      || summary.localOnlyCount !== 0
+      || summary.missingLocalCount !== 0
+      || summary.tombstoneCount !== 0
+      || summary.metadataInvalidCount !== 0
+      || !previewSnapshot) return null
+    return {
+      ...previewSnapshot,
+      candidate: { ...previewSnapshot.candidate },
+      localMemos: previewSnapshot.localMemos.map((memo) => ({ ...memo })),
+    }
+  }, [previewSnapshot, previewState, summary])
 
   return {
     eligible,
@@ -314,5 +344,6 @@ export function useDayMemoUpdatePreview({ dayMemos, isConfigured, isSignedIn, co
     safeErrorMessage,
     checkForUpdates,
     discardPreview,
+    getSingleCandidateSnapshot,
   }
 }

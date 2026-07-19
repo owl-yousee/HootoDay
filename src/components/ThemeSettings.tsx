@@ -9,6 +9,7 @@ import type { useDayMemoPullPreview } from '../hooks/useDayMemoPullPreview'
 import type { useDayMemoBaselineRebase } from '../hooks/useDayMemoBaselineRebase'
 import type { useDayMemoSyncBaseline } from '../hooks/useDayMemoSyncBaseline'
 import type { useDayMemoUpdatePreview } from '../hooks/useDayMemoUpdatePreview'
+import type { useDayMemoUpdateUpload } from '../hooks/useDayMemoUpdateUpload'
 import { useSupabasePairing, useSupabasePairingJoin } from '../hooks/useSupabasePairing'
 import type { ConnectAsMemberResult, SupabaseWorkspaceState } from '../hooks/useSupabaseWorkspace'
 import type { HealthProfile } from '../types/health'
@@ -44,6 +45,7 @@ interface ThemeSettingsProps {
   dayMemoSyncBaseline: ReturnType<typeof useDayMemoSyncBaseline>
   dayMemoBaselineRebase: ReturnType<typeof useDayMemoBaselineRebase>
   dayMemoUpdatePreview: ReturnType<typeof useDayMemoUpdatePreview>
+  dayMemoUpdateUpload: ReturnType<typeof useDayMemoUpdateUpload>
   onClose: () => void
 }
 
@@ -168,6 +170,7 @@ export function ThemeSettings({
   dayMemoSyncBaseline,
   dayMemoBaselineRebase,
   dayMemoUpdatePreview,
+  dayMemoUpdateUpload,
   onClose,
 }: ThemeSettingsProps) {
   const dialogRef = useRef<HTMLDialogElement>(null)
@@ -459,18 +462,62 @@ export function ThemeSettings({
                         </>
                       ) : null}
                       {dayMemoUpdatePreview.previewState === 'preview_ready' ? (
-                        <p className="cloud-day-memo-success" role="status">既存DayMemoの更新候補を確認しました。通常アップロードは次のPhaseです。</p>
+                        <>
+                          <p className="cloud-day-memo-success" role="status">既存DayMemoの更新候補を確認しました。</p>
+                          {dayMemoUpdatePreview.summary?.modifiedCandidateCount === 1 && dayMemoUpdateUpload.state === 'idle' ? (
+                            <button
+                              type="button"
+                              className="health-secondary-button cloud-sync-button"
+                              onClick={() => { void dayMemoUpdateUpload.runPreflight() }}
+                            >
+                              同期先の更新状態を確認
+                            </button>
+                          ) : dayMemoUpdatePreview.summary?.modifiedCandidateCount !== 1 ? <p className="cloud-sync-note">更新候補が1件ではないため、今回の送信対象にはできません。</p> : null}
+                        </>
                       ) : null}
+                      {dayMemoUpdateUpload.state === 'preflighting' ? <button type="button" className="health-secondary-button cloud-sync-button" disabled>同期先を確認中…</button> : null}
+                      {dayMemoUpdateUpload.state === 'preflight_ready' ? (
+                        <div className="cloud-day-memo-update-upload-step">
+                          <p className="cloud-day-memo-success" role="status">同期先のrevision・change sequence・更新日時がbaselineと一致しました。</p>
+                          <button type="button" className="health-secondary-button cloud-sync-button" onClick={dayMemoUpdateUpload.prepareUpload}>
+                            この1件の送信を準備
+                          </button>
+                        </div>
+                      ) : null}
+                      {dayMemoUpdateUpload.state === 'preparing' ? <p>operation IDとpending operationを安全に保存しています…</p> : null}
+                      {dayMemoUpdateUpload.state === 'prepared' ? (
+                        <div className="cloud-day-memo-apply-confirmation">
+                          <strong>1件の送信準備が完了しました</strong>
+                          <p>この操作で既存remote DayMemo 1件だけを更新します。自動再試行は行いません。</p>
+                          <button type="button" className="health-primary-button cloud-sync-button" onClick={() => { void dayMemoUpdateUpload.uploadPrepared() }}>
+                            この1件を同期先へ送信
+                          </button>
+                        </div>
+                      ) : null}
+                      {dayMemoUpdateUpload.state === 'uploading' ? <p>1件を同期先へ送信しています。画面を閉じずにお待ちください…</p> : null}
+                      {dayMemoUpdateUpload.state === 'completed' && dayMemoUpdateUpload.result ? (
+                        <div className="cloud-day-memo-update-upload-result" role="status">
+                          <p className="cloud-day-memo-success">1件を同期先へ送信しました。</p>
+                          <ul className="cloud-day-memo-preview-summary">
+                            <li>対象日付：{dayMemoUpdateUpload.result.date}</li>
+                            <li>新しいrevision：{dayMemoUpdateUpload.result.revision}</li>
+                            <li>change sequence：{dayMemoUpdateUpload.result.changeSequence}</li>
+                          </ul>
+                          <p>この端末のDayMemoは変更していません。PC側へはまだ自動反映されません。</p>
+                          <p className="cloud-sync-note">自動同期ではありません。PC側では送信前に同期先を再確認してください。</p>
+                        </div>
+                      ) : null}
+                      {dayMemoUpdateUpload.safeErrorMessage ? <p className="cloud-pairing-error" role="alert">{dayMemoUpdateUpload.safeErrorMessage}</p> : null}
                       {dayMemoUpdatePreview.previewState === 'no_changes' ? (
                         <p className="cloud-sync-note" role="status">更新候補はありません。</p>
                       ) : null}
                       {dayMemoUpdatePreview.safeErrorMessage ? <p className="cloud-pairing-error" role="alert">{dayMemoUpdatePreview.safeErrorMessage}</p> : null}
-                      {dayMemoUpdatePreview.hasFreshSnapshot || dayMemoUpdatePreview.summary ? (
-                        <button type="button" className="health-secondary-button cloud-sync-button" onClick={dayMemoUpdatePreview.discardPreview}>
+                      {(dayMemoUpdatePreview.hasFreshSnapshot || dayMemoUpdatePreview.summary) && !dayMemoUpdateUpload.hasPendingOperation ? (
+                        <button type="button" className="health-secondary-button cloud-sync-button" onClick={() => { dayMemoUpdateUpload.reset(); dayMemoUpdatePreview.discardPreview() }}>
                           確認結果を破棄
                         </button>
                       ) : null}
-                      <p className="cloud-sync-note">本文は表示・保存しません。自動同期、operation ID作成、upsert、deleteは行いません。</p>
+                      <p className="cloud-sync-note">本文は表示・metadata保存しません。upsertは明示操作で1件だけ行い、delete・自動再試行は行いません。</p>
                     </div>
                   ) : null}
                   {supabaseWorkspace.connection?.workspaceRole === 'member' ? (

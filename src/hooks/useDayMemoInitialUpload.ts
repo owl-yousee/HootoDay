@@ -15,6 +15,11 @@ import {
   setDayMemoPushBlock,
 } from '../utils/dayMemoSyncStorage'
 import { fromDateKey } from '../utils/date'
+import {
+  isAppliedDayMemoSyncResult,
+  isConflictDayMemoSyncResult,
+  normalizeDayMemoSyncResult,
+} from '../utils/dayMemoSyncUpsertResult'
 import { isUuid } from '../utils/syncConnectionStorage'
 import { createUuidV4 } from '../utils/uuid'
 
@@ -38,19 +43,6 @@ export type DayMemoInitialUploadState =
 interface PreviewSnapshot {
   dates: string[]
   updatedAtByDate: Record<string, string>
-}
-
-interface SyncResultRecord {
-  status: string
-  workspace_id: string
-  entity_type: string
-  entity_id: string
-  revision: number
-  change_sequence: number
-  server_updated_at: string
-  deleted_at: string | null
-  payload: unknown
-  conflict: boolean
 }
 
 interface UseDayMemoInitialUploadInput {
@@ -99,12 +91,7 @@ function snapshotMatches(snapshot: PreviewSnapshot, memos: DayMemo[]): boolean {
     && current.dates.every((date) => current.updatedAtByDate[date] === snapshot.updatedAtByDate[date])
 }
 
-function normalizeOne(value: unknown): unknown {
-  if (Array.isArray(value)) return value.length === 1 ? value[0] : null
-  return value
-}
-
-function isRemoteResult(value: unknown, workspaceId: string): value is SyncResultRecord {
+function isRemoteResult(value: unknown, workspaceId: string): boolean {
   if (!isRecord(value)) return false
   return value.status === 'current'
     && value.workspace_id === workspaceId
@@ -121,38 +108,6 @@ function isRemoteResult(value: unknown, workspaceId: string): value is SyncResul
     && typeof value.conflict === 'boolean'
     && value.conflict === false
     && ((value.deleted_at === null && isRecord(value.payload)) || (value.deleted_at !== null && value.payload === null))
-}
-
-function isAppliedResult(value: unknown, workspaceId: string, memo: DayMemo): value is SyncResultRecord {
-  if (!isRecord(value) || !isRecord(value.payload)) return false
-  const keys = Object.keys(value.payload).sort()
-  return value.status === 'applied'
-    && value.workspace_id === workspaceId
-    && value.entity_type === 'day_memo'
-    && value.entity_id === memo.date
-    && value.revision === 1
-    && Number.isSafeInteger(value.change_sequence)
-    && Number(value.change_sequence) >= 1
-    && isIsoDateTime(value.server_updated_at)
-    && value.deleted_at === null
-    && value.conflict === false
-    && JSON.stringify(keys) === JSON.stringify(['content', 'date', 'updatedAt'])
-    && value.payload.date === memo.date
-    && value.payload.content === memo.content
-    && value.payload.updatedAt === memo.updatedAt
-}
-
-function isConflictResult(value: unknown, workspaceId: string, date: string): value is SyncResultRecord {
-  return isRecord(value)
-    && value.status === 'conflict'
-    && value.workspace_id === workspaceId
-    && value.entity_type === 'day_memo'
-    && value.entity_id === date
-    && value.conflict === true
-    && Number.isSafeInteger(value.revision)
-    && Number(value.revision) >= 1
-    && Number.isSafeInteger(value.change_sequence)
-    && Number(value.change_sequence) >= 1
 }
 
 function stateFromMetadata(metadata: DayMemoSyncMetadataV1 | null): DayMemoInitialUploadState {
@@ -434,8 +389,8 @@ export function useDayMemoInitialUpload({
         return
       }
 
-      const result = normalizeOne(data)
-      if (isConflictResult(result, connection.workspaceId, date)) {
+      const result = normalizeDayMemoSyncResult(data)
+      if (isConflictDayMemoSyncResult(result, connection.workspaceId, date)) {
         progress = {
           ...progress,
           initialUploadStatus: 'partial',
@@ -454,7 +409,7 @@ export function useDayMemoInitialUpload({
         setSafeErrorMessage('同期先に同じ日付のデータがあるため停止しました。ローカル内容は変更していません。')
         return
       }
-      if (!isAppliedResult(result, connection.workspaceId, memo)) {
+      if (!isAppliedDayMemoSyncResult(result, connection.workspaceId, memo, 0, 0)) {
         progress = {
           ...progress,
           initialUploadStatus: 'partial',

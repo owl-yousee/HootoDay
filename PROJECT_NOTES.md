@@ -2129,3 +2129,13 @@ cleanup後VERIFY結果：
 - metadataは既存validatorを通し、書き込み後のread-back成功時だけconfirmedとする。失敗時は既存の検証付き置換処理で元のmismatch metadataへrollbackする。
 - previewの本文・remote結果・local snapshotはReactメモリ内だけに保持し、破棄またはページ再読み込みで復元しない。UIには日付、分類、件数だけを表示する。
 - PC実機確認は未実施。SQL、package、JSONバックアップ形式の変更、commit／pushは行っていない。
+- Phase B-3e3として、confirmed baselineに対する既存remote DayMemo 1件の明示upsertを追加した。実機対象はiPhone子機・memberの更新候補1件である。
+- 更新候補preview後、別の明示操作でcursor 0から共通full pullを行い、remote revision・change sequence・payload updatedAtが保存済みbaselineと一致する場合だけ送信準備へ進む。
+- 送信準備の明示操作でUUID v4 operation IDを1個だけ生成し、本文を含まないpendingOperationをRPC前に保存・read-backする。さらに送信直前にstatusをsendingへ保存してから、1件だけ直列upsertする。
+- upsert結果はstatus、workspace、entity、revision、change sequence、日時、deleted、conflict、payloadを厳格検証し、成功時だけ対象baseline、cursor、成功日時を更新してpendingOperationを解消する。
+- conflictとresponse unknownはpendingOperationを維持して安全停止し、自動再試行、新operation ID発行、競合解決を行わない。RPC成功後のmetadata保存失敗も未送信状態へ戻さず、再確認が必要な状態とする。
+- local DayMemoとPC側DayMemoは変更せず、PCへの自動pullも行わない。delete、local-only新規upload、複数件upload、pushBlock解除、SQL変更はない。
+- iPhone実機確認、commit、pushは未実施。
+- iPhone子機・memberで実機確認済み。更新候補1件・変更なし6件・危険分類0件を確認後、full pull preflight、pending operation保存、1件upsertが成功した。対象日は2026-07-15、新revisionは2、change sequenceは13だった。
+- 送信後の再読み込みでは更新候補0件・変更なし7件となり、remote revision／change sequenceとlocal baselineの更新、local DayMemo維持、PCへの自動反映なしを確認した。conflict、response unknown、自動再試行、deleteは発生していない。
+- UI改善候補として、成功結果の「対象日付」「新しいrevision」「change sequence」を、それぞれ独立した1行としてより明確に表示する。今回は表示コードを変更せず、後続改善メモとして記録のみ行う。
