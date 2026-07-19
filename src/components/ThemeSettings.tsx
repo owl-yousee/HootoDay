@@ -6,6 +6,7 @@ import { useEffect, useRef, type MouseEvent, type SyntheticEvent } from 'react'
 import type { SupabaseAuthState, SupabaseConfigurationState } from '../hooks/useSupabaseAuth'
 import type { useDayMemoInitialUpload } from '../hooks/useDayMemoInitialUpload'
 import type { useDayMemoPullPreview } from '../hooks/useDayMemoPullPreview'
+import type { useDayMemoSyncBaseline } from '../hooks/useDayMemoSyncBaseline'
 import { useSupabasePairing, useSupabasePairingJoin } from '../hooks/useSupabasePairing'
 import type { ConnectAsMemberResult, SupabaseWorkspaceState } from '../hooks/useSupabaseWorkspace'
 import type { HealthProfile } from '../types/health'
@@ -38,6 +39,7 @@ interface ThemeSettingsProps {
   }
   dayMemoInitialUpload: ReturnType<typeof useDayMemoInitialUpload>
   dayMemoPullPreview: ReturnType<typeof useDayMemoPullPreview>
+  dayMemoSyncBaseline: ReturnType<typeof useDayMemoSyncBaseline>
   onClose: () => void
 }
 
@@ -45,6 +47,17 @@ interface CloudSyncPresentation {
   label: string
   description: string
   tone: 'neutral' | 'success' | 'error'
+}
+
+const BASELINE_STATE_LABELS: Record<ReturnType<typeof useDayMemoSyncBaseline>['baselineState'], string> = {
+  unavailable: '利用不可',
+  idle: '未確認',
+  confirming: '確認中',
+  confirmed: '確認済み',
+  mismatch: '不一致',
+  remote_empty: '同期先が空',
+  recovery_required: '確認が必要',
+  error: '確認失敗',
 }
 
 function getCloudSyncPresentation(
@@ -139,6 +152,7 @@ export function ThemeSettings({
   supabaseWorkspace,
   dayMemoInitialUpload,
   dayMemoPullPreview,
+  dayMemoSyncBaseline,
   onClose,
 }: ThemeSettingsProps) {
   const dialogRef = useRef<HTMLDialogElement>(null)
@@ -292,6 +306,42 @@ export function ThemeSettings({
             <div className="cloud-workspace-panel">
               {supabaseWorkspace.workspaceState === 'created' ? (
                 <>
+                  {dayMemoSyncBaseline.eligible ? (
+                    <div className="cloud-day-memo-baseline-panel">
+                      <h4>通常同期の準備</h4>
+                      <p>同期先の全DayMemoとこの端末を比較し、通常更新に必要なbaselineだけを保存します。DayMemo本文は表示せず、Supabaseへの書き込みも行いません。</p>
+                      <p>baseline状態：{BASELINE_STATE_LABELS[dayMemoSyncBaseline.baselineState]}</p>
+                      <button
+                        type="button"
+                        className="health-secondary-button cloud-sync-button"
+                        disabled={dayMemoSyncBaseline.baselineState === 'confirming'}
+                        onClick={() => { void dayMemoSyncBaseline.confirmBaseline() }}
+                      >
+                        {dayMemoSyncBaseline.baselineState === 'confirming' ? '同期状態を確認中…' : '同期状態を確認'}
+                      </button>
+                      {dayMemoSyncBaseline.summary ? (
+                        <ul className="cloud-day-memo-preview-summary">
+                          <li>同期先：{dayMemoSyncBaseline.summary.remoteCount}件</li>
+                          <li>この端末：{dayMemoSyncBaseline.summary.localCount}件</li>
+                          <li>内容一致：{dayMemoSyncBaseline.summary.matchingCount}件</li>
+                          <li>同期先のみ：{dayMemoSyncBaseline.summary.remoteOnlyCount}件</li>
+                          <li>この端末のみ：{dayMemoSyncBaseline.summary.localOnlyCount}件</li>
+                          <li>内容相違：{dayMemoSyncBaseline.summary.differentCount}件</li>
+                          <li>削除済み：{dayMemoSyncBaseline.summary.tombstoneCount}件</li>
+                          <li>baseline確認済み：{dayMemoSyncBaseline.baselineState === 'confirmed' ? dayMemoSyncBaseline.summary.matchingCount : 0}件</li>
+                          <li>cursor：{dayMemoSyncBaseline.summary.lastPulledChangeSequence}</li>
+                        </ul>
+                      ) : null}
+                      {dayMemoSyncBaseline.baselineState === 'confirmed' ? (
+                        <p className="cloud-day-memo-success" role="status">baselineを確認して保存しました。通常アップロードはまだ未実装です。</p>
+                      ) : null}
+                      {dayMemoSyncBaseline.metadata?.pushBlock ? (
+                        <p className="cloud-sync-note">同期確認は完了しても、アップロード禁止状態は継続しています。</p>
+                      ) : null}
+                      {dayMemoSyncBaseline.safeErrorMessage ? <p className="cloud-pairing-error" role="alert">{dayMemoSyncBaseline.safeErrorMessage}</p> : null}
+                      <p className="cloud-sync-note">自動同期・自動再試行・upsert・deleteは行いません。</p>
+                    </div>
+                  ) : null}
                   {supabaseWorkspace.connection?.workspaceRole === 'member' ? (
                     <>
                       <strong>workspaceへの参加が完了しました</strong>

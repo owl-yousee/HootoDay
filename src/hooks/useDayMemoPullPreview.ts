@@ -14,6 +14,13 @@ import { fromDateKey } from '../utils/date'
 import { loadDayMemoSyncMetadata } from '../utils/dayMemoSyncStorage'
 import { saveDayMemoPullApplyBackup } from '../utils/dayMemoPullApplyBackupStorage'
 import { readDayMemoStorageSnapshot, replaceStoredDayMemosVerified } from '../utils/dayMemoStorage'
+import {
+  DAY_MEMO_PULL_MAX_RECORDS,
+  DAY_MEMO_PULL_MAX_PAGES,
+  DAY_MEMO_PULL_PAGE_LIMIT,
+  validateRemoteDayMemoRecord,
+  type RemoteDayMemoRecord,
+} from '../utils/dayMemoSyncPull'
 import { isUuid } from '../utils/syncConnectionStorage'
 
 interface UseDayMemoPullPreviewInput {
@@ -24,16 +31,6 @@ interface UseDayMemoPullPreviewInput {
   adoptVerifiedStoredDayMemos: (memos: DayMemo[]) => void
 }
 
-interface RemoteDayMemoRecord {
-  workspaceId: string
-  entityId: string
-  revision: number
-  changeSequence: number
-  serverUpdatedAt: string
-  deletedAt: string | null
-  payload: DayMemo | null
-}
-
 interface PullPreviewData {
   items: DayMemoPullPreviewItem[]
   summary: DayMemoPullPreviewSummary
@@ -41,9 +38,9 @@ interface PullPreviewData {
   localStorageSnapshot: string
 }
 
-const PAGE_LIMIT = 100
-const MAX_PAGES = 20
-const MAX_RECORDS = PAGE_LIMIT * MAX_PAGES
+const PAGE_LIMIT = DAY_MEMO_PULL_PAGE_LIMIT
+const MAX_PAGES = DAY_MEMO_PULL_MAX_PAGES
+const MAX_RECORDS = DAY_MEMO_PULL_MAX_RECORDS
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
 const ISO_DATE_TIME_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?(Z|[+-]\d{2}:\d{2})$/
 
@@ -70,47 +67,6 @@ function isValidDayMemo(value: unknown, expectedDate?: string): value is DayMemo
     && value.content.length <= 2000
     && value.content === value.content.trim()
     && isIsoDateTime(value.updatedAt)
-}
-
-function validateRemoteRecord(value: unknown, workspaceId: string): RemoteDayMemoRecord | null {
-  if (!isRecord(value)
-    || value.status !== 'current'
-    || value.workspace_id !== workspaceId
-    || value.entity_type !== 'day_memo'
-    || typeof value.entity_id !== 'string'
-    || !DATE_PATTERN.test(value.entity_id)
-    || !fromDateKey(value.entity_id)
-    || !Number.isSafeInteger(value.revision)
-    || Number(value.revision) < 1
-    || !Number.isSafeInteger(value.change_sequence)
-    || Number(value.change_sequence) < 1
-    || !isIsoDateTime(value.server_updated_at)
-    || typeof value.conflict !== 'boolean'
-    || value.conflict) return null
-
-  if (value.deleted_at === null) {
-    if (!isValidDayMemo(value.payload, value.entity_id)) return null
-    return {
-      workspaceId,
-      entityId: value.entity_id,
-      revision: Number(value.revision),
-      changeSequence: Number(value.change_sequence),
-      serverUpdatedAt: value.server_updated_at,
-      deletedAt: null,
-      payload: { ...value.payload },
-    }
-  }
-
-  if (!isIsoDateTime(value.deleted_at) || value.payload !== null) return null
-  return {
-    workspaceId,
-    entityId: value.entity_id,
-    revision: Number(value.revision),
-    changeSequence: Number(value.change_sequence),
-    serverUpdatedAt: value.server_updated_at,
-    deletedAt: value.deleted_at,
-    payload: null,
-  }
 }
 
 function localSignature(memos: DayMemo[]): string {
@@ -285,7 +241,7 @@ export function useDayMemoPullPreview({
 
       let nextCursor = cursor
       for (const value of data) {
-        const record = validateRemoteRecord(value, connection.workspaceId)
+        const record = validateRemoteDayMemoRecord(value, connection.workspaceId)
         if (!record || record.changeSequence <= nextCursor || entityKeys.has(record.entityId) || changeSequences.has(record.changeSequence)) {
           setPreviewState('validation_error')
           setSafeErrorMessage(messageForState('validation_error'))

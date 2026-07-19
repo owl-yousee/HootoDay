@@ -43,6 +43,77 @@ export interface DayMemoSyncMetadataV1 {
   lastSuccessfulSyncAt: string | null
 }
 
+export type DayMemoInitialUploadStatusV2 =
+  | 'not_started'
+  | 'prepared'
+  | 'uploading'
+  | 'partially_completed'
+  | 'completed'
+  | 'recovery_required'
+
+export interface DayMemoInitialUploadEntryV2 {
+  status: DayMemoUploadEntryStatus
+  operationId: string | null
+  preparedUpdatedAt: string
+  baseRevision: number
+  remoteRevision: number | null
+  remoteChangeSequence: number | null
+  errorCode: DayMemoSyncErrorCode | null
+}
+
+export interface DayMemoRemoteBaselineV2 {
+  date: string
+  remoteRevision: number
+  remoteChangeSequence: number
+  remoteUpdatedAt: string
+  baselineLocalUpdatedAt: string | null
+  deletedAt: string | null
+}
+
+export interface DayMemoPendingOperationV2 {
+  kind: 'upsert'
+  date: string
+  operationId: string
+  baseRevision: number
+  preparedLocalUpdatedAt: string
+  preparedAt: string
+  status: 'prepared' | 'sending' | 'response_unknown' | 'conflict' | 'recovery_required'
+}
+
+export type DayMemoBaselineStatusV2 =
+  | 'not_confirmed'
+  | 'confirming'
+  | 'confirmed'
+  | 'mismatch'
+  | 'remote_empty'
+  | 'recovery_required'
+
+export interface DayMemoSyncMetadataV2 {
+  version: 2
+  workspaceId: string
+  initialUpload: {
+    status: DayMemoInitialUploadStatusV2
+    preparedAt: string | null
+    completedAt: string | null
+    targetDates: string[]
+    entries: Record<string, DayMemoInitialUploadEntryV2>
+  }
+  baselines: Record<string, DayMemoRemoteBaselineV2>
+  lastPulledChangeSequence: number
+  baselineStatus: DayMemoBaselineStatusV2
+  baselineConfirmedAt: string | null
+  pendingOperation: DayMemoPendingOperationV2 | null
+  pushBlock: null | { reason: DayMemoPushBlockReason; blockedAt: string }
+  lastSuccessfulSyncAt: string | null
+  migration: {
+    sourceVersion: 1 | 2
+    status: 'completed'
+    migratedAt: string
+  }
+}
+
+export type DayMemoSyncMetadata = DayMemoSyncMetadataV1 | DayMemoSyncMetadataV2
+
 export type DayMemoPullPreviewState =
   | 'unavailable'
   | 'idle'

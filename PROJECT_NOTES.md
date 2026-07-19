@@ -2037,3 +2037,65 @@ cleanup後VERIFY結果：
 - `pushBlock` はアップロード抑止の安全状態なので本Phaseでは解除しない。存在する場合はローカル反映も停止し、後続Phaseで解除条件を設計する。
 - 自動pull、自動反映、自動再試行、upsert／delete RPC、Supabaseへの書き込みは追加していない。SQL・保存version・JSONバックアップ形式も変更していない。
 - 次はiPhone実機で、7件の明示反映、再読み込み後の保持、既存ローカル内容の不変更を確認する。
+
+## 2026-07-19 Phase B-3e準備: DayMemo通常更新uploadの調査・設計確定
+
+### 現状調査
+
+- PC親機の `hootoDay.dayMemoSync` version 1 は、初回upload対象日ごとの `remoteRevision`、`remoteChangeSequence`、upload時点の `preparedUpdatedAt` を `entries` に保持している。今回の7件は初回upload成功後なので、PC側では各日付のrevision 1とchange sequenceを再読込できる。
+- PC側の `lastPulledChangeSequence` は初期値0のままで、初回upload成功時にも更新されない。`lastSuccessfulSyncAt` は各upload成功時に更新される。
+- iPhone子機のB-3c previewはrevision/change sequenceをReact memory内にだけ保持し、B-3d反映後も `hootoDay.dayMemoSync`、pull cursor、日付別revisionを永続化していない。反映前バックアップは元のDayMemo復旧用であり、remote baselineではない。
+- したがって現状のiPhoneは通常upsert用の正しいbase revisionを再読込後に取得できない。PCだけ先行して別仕様で通常uploadを始めると端末間metadataが分岐するため、共通処理の前にbaseline保存を実装する。
+- DayMemoの手入力経路（DayMemo dialogと予定編集画面内メモ）は保存ごとに `updatedAt = new Date().toISOString()` を設定する。JSON復元・全初期化はpushBlockを設定する。pull反映ではremote payloadのupdatedAtを保持する。
+
+### metadata判断
+
+- version 1の `entries` は初回upload専用で、`baseRevision`が0固定、appliedはrevision 1固定、targetDatesも初回upload進捗と一体である。通常同期の日付別baseline、tombstone、pending operationを正規に表現できない。
+- 任意フィールドをversion 1へ黙って追加する案は、validatorと保存済みschemaの意味が変わり、端末ごとの差異を見落としやすいため採用しない。
+- Phase B-3eでは `hootoDay.dayMemoSync` version 2を設計し、version 1から明示的・検証付きで移行する。実装とmigrationは今回行わない。
+- version 2ではworkspace binding、初回upload履歴、pushBlock、lastSuccessfulSyncAtを維持し、日付別に少なくともremote revision、remote change sequence、remote payload updatedAt、端末へ採用したbaseline updatedAt、tombstone状態を保持する。本文、token、Auth session、device IDは重複保存しない。
+- operation IDは通常uploadの明示確定時、RPCより前に1件分だけ永続化する。base revision、対象日、preparedUpdatedAt、schema version、状態も保存してread-back後にRPCを許可する。本文はmetadataへ複製しない。
+
+### 通常更新の安全仕様
+
+- 端末時計やupdatedAtの大小だけを競合判定の正本にしない。revisionを正本とし、updatedAtはローカル変更検出とpayload検証に使う。
+- 初期実装では明示previewのたびにcursor 0からworkspace全体をpage取得する。現行pull RPCにはentity ID指定がなく、全件取得がSQL変更なしで特定日付の欠落・tombstone・最新revisionを確認できる最小の確実な方法である。
+- `lastPulledChangeSequence`以降だけの差分pullは、baselineとcursorの永続化が完成した後に最適化として導入する。保存済みrevisionが古くても上書きせず、RPCのbase revision不一致を最終防壁としてconflict停止する。
+- 通常upload候補は、(1) remoteに現行recordがあり、保存済みbaseline revisionが現在remote revisionと一致し、local updatedAtがbaseline updatedAtから変化した1件、または (2) full pullでrecordもtombstoneも存在しないことを確認できたlocal-only新規1件に限定する。
+- localとremoteが同一、remote-only、remote tombstone、保存済みbaselineとremote revision不一致、pushBlock中、response unknown中、conflict確認中はuploadしない。delete/tombstoneはB-3fへ分離する。
+- upload直前に同じpreview snapshot、localStorage、React state、接続・membership、workspace、device、metadata、pushBlockを再検証する。1回の明示操作で1件だけ直列upsertし、自動upload・自動再試行は行わない。
+- conflict時はローカルもremoteも変更せず、その日以降のuploadを停止する。operation IDを作り直さず、最新remoteを明示pull previewして日付・revision・change sequenceだけを表示する。競合解決UIは別Phaseとする。
+- response unknownでは同じrequestを完全再現できる保証がない限りblind retryしない。まず明示pullでremote結果を確認し、同一payload・期待revisionなら適用済みとして確定できる設計にする。
+- pushBlock解除は通常uploadと同時実装しない。JSON復元・全初期化後の安全なbaseline再確立とユーザー確認を独立Phaseで設計する。
+
+### 推奨Phase分割
+
+1. B-3e1: version 2 metadata型・validator・version 1 migrationと、PC/iPhone双方のfull pull baseline保存だけを実装する。local DayMemoとSupabaseは変更しない。
+2. B-3e2: 明示pull previewとbaselineから通常更新候補を1件だけ判定する。まだuploadしない。
+3. B-3e3: remote既存recordの明示1件upsert、operation事前保存、結果検証、conflict停止を実装する。
+4. B-3e4: full pullでremote record/tombstone不在を確認できたlocal-only新規1件のuploadを追加する。
+5. B-3e5: conflict確認・response unknown確認フローを追加する。自動解決は行わない。
+6. B-3f: delete・tombstoneを別実装とする。
+
+次に実装すべき最小PhaseはB-3e1である。既存DayMemoを変更せず、Supabaseへ書き込まず、version 1を破棄せず検証付きmigration案とremote baseline保存を先に確立する。
+
+## 2026-07-19 Phase B-3e1: metadata version 2とbaseline確認（実装済み・実機確認待ち）
+
+- `hootoDay.dayMemoSync` version 2の型・validator・保存utilityを追加した。workspace binding、初回upload履歴、日付別remote baseline、full pull cursor、baseline状態、将来用pending operation、pushBlock、最終同期時刻、migration状態を表現する。DayMemo本文、token、Auth session、device IDは保存しない。
+- version 1は破棄せず、明示的な「同期状態を確認」操作の開始時だけversion 2へ移行する。workspace、全entry、pushBlock、最終成功時刻を検証して保持し、保存後read-backに失敗した場合は元の生データへrollbackする。
+- PCのapplied済み初回upload entryは、revision・change sequence・preparedUpdatedAtと現在local updatedAtが一致する場合だけ暫定baselineへ移す。ただしmigrationだけではconfirmedにせず、cursor 0からのfull pull完全一致を必須とする。iPhoneのrevisionは推測しない。
+- owner親機とmember子機に共通の明示baseline確認を追加した。pullは1ページ100件、最大20ページ・2000件を直列取得し、workspace、payload、日時、revision、change sequence、厳密な昇順、重複、cursor前進、完全取得を検証する。自動pull・自動再試行は行わない。
+- remoteとlocalについて件数・日付・content・updatedAtが完全一致し、remote-only、local-only、内容相違、tombstoneがすべて0件の場合だけ、日付別revision・change sequence・updatedAtと最大cursorをbaselineとして保存する。本文は比較中のメモリだけで扱い、UIには件数とcursorだけを表示する。
+- remote空かつlocal空は`remote_empty`として記録する。その他の不一致、不完全pull、保存失敗、途中local変更はconfirmedにせず停止する。partial結果からcursorやbaselineを推測しない。
+- `pushBlock`中も安全状態の確認は可能だが、block自体は保持し、自動解除しない。通常upsert、delete、tombstone反映、競合解決、local DayMemo変更は未実装である。
+- 既存の初回upload、子機pull preview、remote-only明示反映、JSON復元・全初期化guard、localStorageキー名、DayMemo version 1、syncConnection version 1、JSONバックアップ形式は維持する。
+- SQL、RLS、policy、RPC、packageは変更していない。Supabase実接続・pull実行、PC/iPhone実機確認、stage・commit・pushは行っていない。
+
+### Phase B-3e1 PC実機確認で判明したmigration validator矛盾と修正
+
+- PC親機で最初の「同期状態を確認」を明示実行したところ、full pull前に`recovery_required`となった。原因は、version 1のapplied entryから作った暫定baselineがchange sequence 1以上を持つ一方、未pullの`lastPulledChangeSequence`は0であり、version 2 validatorが全状態へ`baseline change sequence <= cursor`を要求していたためである。
+- cursorの意味をbaseline状態ごとに分離した。`not_confirmed`と`confirming`では、基本形式・日付・revision・change sequence・日時・sequence重複を検証した暫定baselineをcursor 0のまま保持できる。migrationだけで`confirmed`や通常upload可能状態にはしない。
+- `confirmed`では、全baseline sequenceがcursor以下、少なくとも最大baseline sequenceがcursorと一致、確認日時あり、active baselineのみ、local baseline updatedAtあり、という厳格条件を維持する。remote/localとも0件の`remote_empty`だけcursor 0を許可する。
+- migration結果を、旧metadata不正、変換結果不正、保存失敗、read-back失敗、rollback失敗へ分離した。confirming保存、pull RPC、pull validator、remote/local不一致、baseline完成metadata不正、baseline保存/read-back、local状態変化、pending operationも内部理由を区別し、UIには秘密情報を含まない文言だけを表示する。
+- version 1 JSON、初回upload履歴、workspace binding、pushBlock、local DayMemo、反映前バックアップは維持する。新しいoperation IDやlocalStorageキーは作らず、Supabaseへの書込み、pushBlock解除、通常uploadは行わない。
+- 修正後のPC実機再確認は未実施である。SQL変更、Supabase実操作、stage・commit・pushも行っていない。

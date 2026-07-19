@@ -22,6 +22,7 @@ import { WeightRecordDialog } from './components/WeightRecordDialog'
 import { useDayMemos } from './hooks/useDayMemos'
 import { useDayMemoInitialUpload } from './hooks/useDayMemoInitialUpload'
 import { useDayMemoPullPreview } from './hooks/useDayMemoPullPreview'
+import { useDayMemoSyncBaseline } from './hooks/useDayMemoSyncBaseline'
 import { useDailyAchievements } from './hooks/useDailyAchievements'
 import { useConditionRecords } from './hooks/useConditionRecords'
 import { useEvents } from './hooks/useEvents'
@@ -90,6 +91,12 @@ function App() {
     isSignedIn: supabaseAuth.isSignedIn,
     connection: supabaseWorkspace.connection,
     adoptVerifiedStoredDayMemos,
+  })
+  const dayMemoSyncBaseline = useDayMemoSyncBaseline({
+    dayMemos,
+    isConfigured: supabaseAuth.isConfigured,
+    isSignedIn: supabaseAuth.isSignedIn,
+    connection: supabaseWorkspace.connection,
   })
   const { weightRecords, saveWeightRecord, deleteWeightRecord, replaceWeightRecords } = useWeightRecords()
   const { healthProfile, saveHealthProfile, deleteHealthProfile, replaceHealthProfile } = useHealthProfile()
@@ -414,6 +421,7 @@ function App() {
           supabaseWorkspace={supabaseWorkspace}
           dayMemoInitialUpload={dayMemoInitialUpload}
           dayMemoPullPreview={dayMemoPullPreview}
+          dayMemoSyncBaseline={dayMemoSyncBaseline}
           onClose={() => setIsThemeSettingsOpen(false)}
         />
       )}
