@@ -1730,3 +1730,56 @@
 - 次は新規HootoDay専用テーブル・RPC・policyの適用SQL、rollback SQL、検証SQLを作成する
 - Supabaseへの変更やSQL実行はまだ行っていない
 - commitはユーザー確認後に行う
+
+### HootoDay Sync SQL Design Phase（設計時点：PRECHECK・適用・rollback・検証SQL作成済み、Supabase未適用）
+
+- Supabase適用前の最新JSONバックアップ取得済み
+- DayMemo限定の`hooto_day_sync_records`を設計
+- operation IDは別の`hooto_day_sync_operations`で管理し、適用結果・競合結果の同一再送を冪等化
+- request全体の正規化JSONBを組み込みMD5でfingerprint化し、同じoperation IDの異なる内容を拒否
+- operation履歴は無期限保存せず推奨30日。今回は自動cleanupを追加せず、cleanup後は該当IDの冪等保証が失われる
+- 専用sequenceの`change_sequence`をpull cursorの正本とし、成功mutationのcommit順をadvisory lockで直列化
+- contentは一般的なASCII・Unicode空白を含めてtrim済み・非空をDBでも検証
+- revisionとbase revision一致による競合検出、payload NULLのtombstoneを採用
+- 専用`hooto_day_upsert_sync_record`、`hooto_day_delete_sync_record`、`hooto_day_pull_sync_records`を設計
+- `auth.uid()`とworkspace member確認を各SECURITY DEFINER RPC内で実施
+- 専用テーブルはRLSを有効化し、direct write・direct readを許可せず同期をRPCへ統一
+- RPCのsearch_pathを固定し、authenticatedだけへEXECUTEを許可。PUBLIC・anonはREVOKE
+- 空配列やレコード不在を削除と解釈せず、空iPhoneは初回pullのみとする保護方針を明記
+- rollback SQLは今回のHootoDay専用オブジェクトだけを削除
+- PRECHECK SQLで適用前の共通RPC hash・共通構造署名をCSV保存し、適用後VERIFYと比較
+- verify SQLはsequence・fingerprint・権限の構造確認とauthenticated clientでの実操作テストを分離
+- 既存workspace/member/pairing基盤と既存RPCは変更なし
+- `app_workspace_state`と`current_hooto_sync_key_hash()`は不使用
+- localStorage version 1、JSON backup formatVersion 2・旧v1互換を維持
+- Service Workerは未導入、在庫・販売同期は対象外
+- 次はSQLレビューとSupabaseへの手動適用
+- commitはユーザー確認後
+- PRECHECKを`BEGIN READ ONLY`で囲み、共通テーブルの詳細カラム属性を曖昧性のないJSONB署名へ補強
+- PRECHECK比較は取得対象の署名・RPC hashの一致確認であり、全DB要素や実効権限の完全同一証明ではないことを明記
+- fingerprint内ではSQL NULLがJSON nullへ変換される点と、有効入力の事前検証・operation kind分離で正当なrequest間の曖昧性を防ぐ設計を明記
+- APPLY postflightをsequence属性・ACL、RLS・policy、table権限、change sequence、operation管理、RPC属性・権限までfail-closedで検査するよう補強
+- VERIFYとanon/authenticated client実操作でrole継承を含む実効権限を最終確認する方針を維持
+- この設計時点では、SupabaseへのSQL実行・構造変更は未実施
+
+### HootoDay Sync SQL適用・構造VERIFY（2026年7月19日完了、client実操作未実施）
+
+- `HootoDay_backup_2026-07-19_11-29-50.json`を取得済み
+- APPLY前PRECHECKを実行し、`HootoDay_Supabase_PRECHECK_before_APPLY_2026-07-19.csv`として保存
+- `SUPABASE_HOOTO_DAY_SYNC_APPLY.sql`をSupabase SQL Editorで実行し、`Success. No rows returned`を確認
+- VERIFY A1で必要な共通・専用object 13件がすべて`exists=true`であることを確認
+- VERIFY A2で専用2テーブル全28カラムを確認。`change_sequence bigint NOT NULL`、`request_fingerprint text NOT NULL`、`result_change_sequence bigint NOT NULL`、`created_at timestamptz NOT NULL`を確認
+- VERIFY A3で制約21件を確認。operation ID主キー、workspace CASCADE、user削除時SET NULL、fingerprint形式、revision・change sequence下限、DayMemo限定、payload・tombstone整合、records複合主キーを確認
+- VERIFY A4で専用index 4件を確認。pull cursor indexはunique・valid、operation保持期間判断用indexは非unique・valid・readyで、列順`workspace_id`→`created_at`→`operation_id`、expression・partial条件なしを確認
+- VERIFY A4b・A4cでsequenceがbigint、start/min/increment/cacheが1、maxが9223372036854775807、cycleなしで、期待値判定がすべてtrueであることを確認
+- VERIFY A5で専用2テーブルのRLS有効、policy 0件、DELETE policy 0件、force RLS falseを確認
+- VERIFY A6で専用3 RPCのSECURITY DEFINER、固定search_path、戻り型、change sequence、upsert/deleteのnextval・request fingerprint処理を確認
+- VERIFY A7でRPC EXECUTEがPUBLIC・anonはfalse、authenticatedはtrueであることを確認
+- VERIFY A8・A8bでPUBLIC・anon・authenticatedの専用table全7権限とsequenceのSELECT・UPDATE・USAGEがすべてfalseであることを確認
+- VERIFY A9で共通RPC 6件のsignature・definition hashを取得し、A10で`app_workspace_state`の7カラム構造署名を確認
+- APPLY後PRECHECKを`HootoDay_Supabase_PRECHECK_after_APPLY_2026-07-19.csv`として保存。適用前後は26行・5列で完全一致
+- PRECHECK一致は取得対象の共通4テーブル構造署名と共通RPC 6件のdefinition hashが変化していないことを示す比較資料であり、DB全要素の完全同一を証明するものではない
+- 共通HootoSong・HootoPost基盤への変更はPRECHECK取得対象の署名上確認されない
+- rollbackは未実行。実データ、同期用workspace、テストデータは今回作成していない
+- authenticated clientによるowner/member/非member、競合、冪等再送、tombstone等の16ケースは未検証
+- アプリコードへの同期実装は未着手

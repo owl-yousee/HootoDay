@@ -469,3 +469,36 @@ hooto-platformの既存構造を確認した結果、当初の共通同期設計
 - 次のSQL Phaseでは既存オブジェクトを変更せず、新規HootoDay専用テーブル・RPC・policyとrollback SQLだけを作成する。
 
 詳細な比較、リスク、停止条件は`SUPABASE_REUSE_DECISION.md`を正式判断書とする。
+
+## 19. HootoDay専用同期SQLの確定構成（適用済み・構造検証済み）
+
+専用同期SQLは`SUPABASE_HOOTO_DAY_SYNC_PRECHECK.sql`、`SUPABASE_HOOTO_DAY_SYNC_APPLY.sql`、`SUPABASE_HOOTO_DAY_SYNC_ROLLBACK.sql`、`SUPABASE_HOOTO_DAY_SYNC_VERIFY.sql`の4ファイルとする。2026年7月19日にJSONバックアップと適用前PRECHECKを保存したうえでAPPLYを実行し、構造VERIFYと適用後PRECHECK比較まで完了した。rollbackは未実行である。
+
+- PRECHECKは明示的なread-only transactionで、共通4テーブルについて存在、詳細カラム属性、制約、index、RLS/policyの署名を、共通RPCについてsignatureとdefinition hashを取得する。適用前後で取得対象が一致することを確認する有力な比較資料だが、取得対象外を含む全DB要素の完全同一を数学的に証明するものではない。role継承を含む実効権限と外部依存はVERIFYおよび実際のanon/authenticated client操作で確認する。
+- 同期本体は`hooto_day_sync_records`、冪等性履歴は`hooto_day_sync_operations`へ分離するB案を採用する。A案のcurrent row上のlast operationだけでは、後続更新後の古い再送、競合結果の再送、別entityへのID誤用を十分に判定できない。同じoperation IDの再送は適用・競合とも保存済みの同一結果を返す。workspace、entity、操作種別、user、base revision、schema version、正規化jsonb payload、client時刻、source device、operation IDから組み立てたrequestを組み込み`md5`でfingerprint化し、内容が異なる再利用を拒否する。MD5は同一性検査専用で、認証・認可・秘密情報保護には使用しない。
+- `jsonb_build_object`ではSQL NULLがJSON nullになるため、fingerprint自体が両者を区別するわけではない。有効なupsertはSQL NULL payloadとJSON null payloadを事前に拒否し、deleteは固有の`operation_kind`と固定null入力で分離する。空文字とNULLも入力検証で混同させないため、現在許可する正当なrequest間でこの変換による同一化は起こさない。
+- 同一結果を返すためoperation履歴は過去のresult payloadを保持し得る。無期限保存は前提とせず、当面の推奨保持期間は30日とする。今回は自動DELETE、cleanup RPC、pg_cronを追加しない。将来は`created_at`を基準に30日超を手動または定期cleanupするが、削除したoperation IDの冪等再送保証は失われる。現行recordsとtombstoneはcleanup対象にしない。
+- RPC名は`hooto_day_upsert_sync_record`、`hooto_day_delete_sync_record`、`hooto_day_pull_sync_records`とする。新規作成のbase revisionは`0`、既存更新・削除・tombstoneからの明示復活は現在revisionとの完全一致を必須とする。
+- DayMemo payloadはschema version 1、`date`・`content`・`updatedAt`の3キーだけを許可する。dateとentity IDの一致、実在日、content 1～2000文字、ISO日時をDB側でも検証する。contentは保存前trim済みを必須とし、ASCII空白・tab・CR/LFと一般的なUnicode空白の明示リストをDB側でも除去対象として照合する。JavaScript `trim()`とPostgreSQLのUnicode分類が将来も完全一致するとは断言せず、アプリ側検証も維持する。
+- tombstoneではpayloadをNULLにし、削除済み本文をクラウドへ残し続けない。古いrevisionからの復活は許可しない。
+- pullの正本cursorは専用`hooto_day_sync_change_seq`から採番する`change_sequence`とする。成功する新規・更新・tombstone・明示復活だけがRPC内で`nextval`を呼び、競合、同一operation再送、tombstone再削除は採番しない。sequenceはworkspace間で共通、欠番許容、1～500件、`change_sequence`昇順、tombstone込みとする。sequence採番順とcommit可視化順の逆転を防ぐため、成功mutationは専用transaction advisory lockでcommitまで直列化する。`server_updated_at`は表示・監査用に残しcursorには使わない。
+- 取得・更新・削除はすべて専用RPCへ統一する。専用2テーブルはRLS有効・direct policyなし・direct table権限なしとし、SECURITY DEFINER RPC内で`auth.uid()`とworkspace memberを再検証する。
+- 専用RPCはsearch_pathを`pg_catalog, public`へ固定し、PUBLIC/anonのEXECUTEを剥奪してauthenticatedだけへ許可する。service roleは使用しない。
+- revision、server時刻、updated_byはtriggerではなく専用RPC内で管理し、不要な汎用triggerは追加しない。
+- DBは空配列を削除と解釈せず、明示delete RPCだけがentity単位のtombstoneを作る。アプリ側もPC初回明示upload、空iPhone初回pull、JSON復元直後の自動push禁止、全初期化とcloud削除の分離を守る。
+- rollbackは今回追加する専用3 RPC、2テーブル、sequence、戻り型、付随indexだけを依存順に削除し、既存共通基盤へ触れない。PRECHECKはオブジェクトを作らないためrollback対象外とする。
+- verifyはSQL Editorでの構造・RLS・権限確認と、authenticated clientでのowner/member/非member、競合、冪等、tombstone、初回空端末保護の16ケースを分離する。
+- APPLYのpostflightはCOMMIT前に、専用sequence属性とACL、2テーブルのRLS・policy 0件・直接権限なし、`change_sequence`の型・NOT NULL・CHECK・一意index、operation管理列・主キー・外部キー・CHECK、3 RPCのsignature・戻り型・SECURITY DEFINER・固定search_path・EXECUTE権限を検査する。不一致は例外でtransaction全体をrollbackする。role継承を含む最終的な実効権限はVERIFYとclient実操作でも確認する。
+- app keyは今回追加しない。表示名で識別できるHootoDay専用workspaceを新規作成する暫定運用とし、名称をセキュリティ境界とは扱わない。
+
+### 19.1 2026年7月19日の適用・構造検証結果
+
+- 適用前に`HootoDay_backup_2026-07-19_11-29-50.json`を取得した。
+- APPLY前PRECHECKを実行し、`HootoDay_Supabase_PRECHECK_before_APPLY_2026-07-19.csv`として保存した。
+- `SUPABASE_HOOTO_DAY_SYNC_APPLY.sql`をSQL Editorで実行し、`Success. No rows returned`を確認した。
+- VERIFYのA1～A10をセクション単位で確認した。必要object 13件はすべて存在し、専用2テーブル全28カラム、制約21件、index 4件、専用sequence属性、RLS・policy、専用RPC属性・権限、table・sequence直接権限、共通RPC hash、`app_workspace_state`構造署名が設計どおりであることを確認した。
+- 専用3 RPCはSECURITY DEFINER、`search_path=pg_catalog, public`で、PUBLIC・anonはEXECUTE不可、authenticatedだけEXECUTE可能であることを確認した。
+- 専用2テーブルはRLS有効・policy 0件で、PUBLIC・anon・authenticatedの直接table権限は全対象権限でfalseだった。専用sequenceの直接USAGE・SELECT・UPDATEもすべてfalseだった。
+- APPLY後PRECHECKを`HootoDay_Supabase_PRECHECK_after_APPLY_2026-07-19.csv`として保存し、適用前後が26行・5列で完全一致した。これは取得対象の共通4テーブル構造署名と共通RPC 6件のdefinition hashが変化していないことを示す比較資料であり、DB全要素の完全同一を証明するものではない。
+- 実データ、同期用workspace、テストデータは作成していない。共通HootoSong・HootoPost基盤への変更はPRECHECK取得対象の署名上確認されなかった。
+- authenticated clientによるowner/member/非member、競合、冪等再送、tombstone、初回空端末保護など16ケースの実操作テストは未実施である。アプリコードへの同期実装も未着手である。

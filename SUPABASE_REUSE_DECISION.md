@@ -272,8 +272,8 @@ HootoPost系の旧同期方式と推定され、PUBLIC EXECUTEである。HootoD
 - 一意制約：`workspace_id + entity_type + entity_id`
 - `base_revision`は保存列にせず、更新RPCの引数とする。
 - clientからrevision、server時刻、updated_byを自由設定させない。
-- member向けSELECT policyは許可する。
-- direct INSERT・UPDATE・DELETE policyは作らず、更新は専用SECURITY DEFINER RPCだけにする。
+- 過去案のmember向け直接SELECT policyは不採用とする。SELECTもpull RPCだけに限定する。
+- direct SELECT・INSERT・UPDATE・DELETE policyは作らず、取得・更新は専用SECURITY DEFINER RPCだけにする。
 - RPCはworkspace member、entity type、payload、base revision、operation idを検証する。
 - revision不一致は上書きせず競合情報を返す。
 - conflict metadataは初期テーブルへ常設せず、RPC結果と端末同期stateで保持する。正式競合履歴が必要になった時点で専用テーブルを検討する。
@@ -288,7 +288,7 @@ HootoPost系の旧同期方式と推定され、PUBLIC EXECUTEである。HootoD
 - 既存pairing RPCによるiPhone member追加
 - `hooto_day_sync_records`
 - DayMemoだけを許可するentity type制約
-- workspace member限定SELECT
+- workspace member確認付きpull RPC
 - 専用revision付きupsert/tombstone RPC
 - PCからの初回アップロード
 - クラウドが存在するiPhoneは初回pullのみ
@@ -370,7 +370,7 @@ HootoPost系の旧同期方式と推定され、PUBLIC EXECUTEである。HootoD
 
 - `hooto_day_sync_records`
 - DayMemo専用payload制約・validator方針
-- member限定SELECT policy
+- member確認付きpull RPC（直接SELECT policyは作らない）
 - revision付きupsert/tombstone専用RPC
 - operation idによる再送保護
 - 適用SQLとrollback SQL
@@ -420,3 +420,27 @@ HootoPost系の旧同期方式と推定され、PUBLIC EXECUTEである。HootoD
 - PC JSONバックアップが未取得である。
 
 次工程は、HootoDay専用オブジェクトの適用SQL、その新規要素だけを戻すrollback SQL、RLS・revision・tombstone・再送を確認する検証SQLの作成とする。
+
+## 16. B案の専用SQL具体化（設計時点・適用前）
+
+既存workspace/member/pairing基盤を変更しないB案をPRECHECK・APPLY・ROLLBACK・VERIFYの4つのSQLへ具体化した。適用前検査で専用テーブル、専用sequence、専用戻り型、専用RPC、専用policy名の衝突が1件でもあれば停止し、共通テーブルまたはmember/owner helperが不足している場合も停止する。`IF NOT EXISTS`で不明な既存定義を黙って採用しない。
+
+- 新規追加対象は`hooto_day_sync_records`、`hooto_day_sync_operations`、`hooto_day_sync_result`、専用upsert/delete/pull RPCと付随indexだけとする。
+- operation IDは別履歴テーブル方式を採用する。current rowのlast operationだけを使うA案では後続更新後の古い再送、競合結果、別entityへのID誤用を十分に扱えないため、B案で適用・競合の結果を保存する。同一IDの同時再送はtransaction advisory lockで直列化し、正規化request全体のMD5 fingerprintが一致する場合だけ冪等再送とする。MD5は同一性検査専用である。
+- 同一結果再送のためoperation履歴は過去payloadを保持し得る。無期限保存せず推奨30日とし、`created_at`を将来cleanupの基準にする。今回は自動削除を追加せず、cleanup後は該当operation IDの冪等保証が失われることを前提とする。records・tombstoneはcleanupしない。
+- `hooto_day_sync_records`はDayMemo限定、revision一致更新、payload NULLのtombstone、専用sequenceの`change_sequence`を正本cursorとするpullを提供する。採番とcommit順は専用transaction advisory lockで直列化する。在庫・販売は許可しない。
+- 同期操作はすべてRPC限定とし、専用テーブルはRLS有効・policyなし・direct table権限なしとする。専用RPCだけをauthenticatedへ許可する。
+- `app_workspaces`、`app_workspace_members`、`app_pairing_codes`、既存RPC、既存policy/index/trigger、`app_workspace_state`、`current_hooto_sync_key_hash()`は変更しない。
+- rollback対象は上記のHootoDay専用新規オブジェクトだけで、共通基盤とHootoSong・HootoPostへ触れない。
+- 適用SQL、rollback SQL、verify SQLを作成し、2026年7月19日にJSONバックアップ・適用前PRECHECK保存後、APPLYと構造VERIFYを完了した。rollbackは未実行である。
+- PRECHECKはread-only transactionとして適用前に実行し、共通4テーブルの取得対象構造署名と共通RPCのsignature・definition hashをCSV保存する。APPLY後に同じPRECHECKを再実行してCSVを比較する。一致は取得対象が変わっていないことを示す有力な資料であり、未取得の全属性、role継承を含む実効権限、外部依存まで完全同一と証明するものではない。
+- APPLY内postflightは専用sequence、table、column、constraint、index、RLS/policy、直接ACL、専用RPCの属性・戻り型・固定search_path・EXECUTE権限をCOMMIT前にfail-closedで検査する。VERIFYは適用後の読み取り専用構造確認、PRECHECK再比較、実際のanon/authenticated clientによる実効権限・同期挙動確認を担当する。
+- fingerprintのcanonical JSONBではSQL NULLがJSON nullへ変換される。両者そのものをhash内で区別する方式ではないが、有効なupsertのnull payloadは事前拒否し、deleteは`operation_kind`と固定入力で分離するため、許可済みrequest間の曖昧性は作らない。
+
+## 17. 適用後の再利用判断確認（2026年7月19日）
+
+- APPLY前後のPRECHECKは26行・5列で完全一致し、取得対象の共通4テーブル構造署名と共通RPC 6件のdefinition hashに変更がないことを確認した。
+- VERIFY A1～A10で専用object、全28カラム、制約21件、index 4件、sequence属性、RLS・policy 0件、専用RPCのSECURITY DEFINER・固定search_path・EXECUTE権限、table・sequence直接権限なしを確認した。
+- この比較はPRECHECK取得対象が一致したことを示すもので、DB全要素の完全同一証明ではない。共通HootoSong・HootoPost基盤への変更は取得対象の署名上確認されなかった。
+- 実データやworkspaceは作成しておらず、既存workspace/member/pairing基盤を流用してHootoDay専用objectだけを追加するB案を維持する。
+- authenticated clientによる16ケースの同期実操作テストとアプリ同期実装は未着手であり、次工程で分離して実施する。
