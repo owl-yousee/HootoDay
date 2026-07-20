@@ -20,6 +20,7 @@ import type { useDayMemoRemoteAdoptionVerification } from '../hooks/useDayMemoRe
 import type { useDayMemoLocalOperationPreparationCheck } from '../hooks/useDayMemoLocalOperationPreparationCheck'
 import type { useDayMemoLocalOperationPreparation } from '../hooks/useDayMemoLocalOperationPreparation'
 import type { useDayMemoLocalOperationRemoteCheck } from '../hooks/useDayMemoLocalOperationRemoteCheck'
+import type { useDayMemoLocalOperationSend } from '../hooks/useDayMemoLocalOperationSend'
 import type { useDayMemoMetadataV4Migration } from '../hooks/useDayMemoMetadataV4Migration'
 import type { useDayMemoSyncMetadataMigration } from '../hooks/useDayMemoSyncMetadataMigration'
 import type { useDayMemoDeleteIntent } from '../hooks/useDayMemoDeleteIntent'
@@ -80,6 +81,7 @@ interface ThemeSettingsProps {
   dayMemoLocalOperationPreparationCheck: ReturnType<typeof useDayMemoLocalOperationPreparationCheck>
   dayMemoLocalOperationPreparation: ReturnType<typeof useDayMemoLocalOperationPreparation>
   dayMemoLocalOperationRemoteCheck: ReturnType<typeof useDayMemoLocalOperationRemoteCheck>
+  dayMemoLocalOperationSend: ReturnType<typeof useDayMemoLocalOperationSend>
   dayMemoMetadataV4Migration: ReturnType<typeof useDayMemoMetadataV4Migration>
   onOpenPreparedDayMemo: (date: string) => void
   dayMemoSyncRecoveryApply: ReturnType<typeof useDayMemoSyncRecoveryApply>
@@ -262,6 +264,7 @@ export function ThemeSettings({
   dayMemoLocalOperationPreparationCheck,
   dayMemoLocalOperationPreparation,
   dayMemoLocalOperationRemoteCheck,
+  dayMemoLocalOperationSend,
   dayMemoMetadataV4Migration,
   onOpenPreparedDayMemo,
   dayMemoSyncRecoveryApply,
@@ -864,12 +867,45 @@ export function ThemeSettings({
                             <li>確認日時：{new Date(dayMemoLocalOperationRemoteCheck.result.checkedAt).toLocaleString('ja-JP')}</li>
                           </ul>
                           <p>{dayMemoLocalOperationRemoteCheck.result.nextAction}</p>
-                          <button type="button" className="health-secondary-button cloud-sync-button" onClick={dayMemoLocalOperationRemoteCheck.discard}>
+                          {dayMemoLocalOperationRemoteCheck.result.sendable && dayMemoLocalOperationRemoteCheck.result.operationKind === 'upsert' ? (
+                            <button type="button" className="health-secondary-button cloud-sync-button" disabled={!dayMemoLocalOperationSend.canSend} onClick={() => { void dayMemoLocalOperationSend.send('upsert') }}>
+                              準備済みの保存操作を送信
+                            </button>
+                          ) : dayMemoLocalOperationRemoteCheck.result.sendable && dayMemoLocalOperationRemoteCheck.result.operationKind === 'delete' ? (
+                            <button type="button" className="health-secondary-button cloud-sync-button" disabled={!dayMemoLocalOperationSend.canSend} onClick={() => { void dayMemoLocalOperationSend.send('delete') }}>
+                              準備済みの削除操作を送信
+                            </button>
+                          ) : null}
+                          <button type="button" className="health-secondary-button cloud-sync-button" disabled={dayMemoLocalOperationSend.sending} onClick={dayMemoLocalOperationRemoteCheck.discard}>
                             remote確認結果を破棄
                           </button>
                         </div>
                       ) : null}
                       <p className="cloud-sync-note">結果はこの画面のメモリ内だけに保持します。後続の送信Phaseでもremoteを再確認します。</p>
+                      {dayMemoLocalOperationSend.result ? (
+                        <div role="status">
+                          <p><strong>{dayMemoLocalOperationSend.result.succeeded ? '送信完了' : '送信停止'}</strong></p>
+                          <ul className="cloud-day-memo-preview-summary">
+                            <li>対象日付：{dayMemoLocalOperationSend.result.date ?? '確認不能'}</li>
+                            <li>操作種類：{dayMemoLocalOperationSend.result.operationKind ?? '確認不能'}</li>
+                            <li>判定：{dayMemoLocalOperationSend.result.classification}</li>
+                            <li>snapshot：{dayMemoLocalOperationSend.result.snapshotFresh ? '有効' : '無効'}</li>
+                            <li>送信直前remote確認：{dayMemoLocalOperationSend.result.remoteRechecked ? '実施' : '未実施'}</li>
+                            <li>RPC実行：{dayMemoLocalOperationSend.result.rpcCalled ? '1回' : 'なし'}</li>
+                            <li>RPC成功結果検証：{dayMemoLocalOperationSend.result.rpcResultValidated ? '確認済み' : '未確認'}</li>
+                            <li>baseline更新：{dayMemoLocalOperationSend.result.baselineUpdated ? '完了' : 'なし'}</li>
+                            <li>cursor更新：{dayMemoLocalOperationSend.result.cursorUpdated ? '完了' : 'なし'}</li>
+                            <li>pending解消：{dayMemoLocalOperationSend.result.pendingCleared ? '完了' : '維持'}</li>
+                            <li>delete intent解消：{dayMemoLocalOperationSend.result.intentCleared ? '完了' : '維持または対象外'}</li>
+                            <li>復旧確認：{dayMemoLocalOperationSend.result.recoveryRequired ? '必要' : '不要'}</li>
+                            <li>確認日時：{new Date(dayMemoLocalOperationSend.result.checkedAt).toLocaleString('ja-JP')}</li>
+                          </ul>
+                          <p>{dayMemoLocalOperationSend.result.nextAction}</p>
+                          <button type="button" className="health-secondary-button cloud-sync-button" onClick={dayMemoLocalOperationSend.discard}>
+                            送信結果を破棄
+                          </button>
+                        </div>
+                      ) : null}
                     </div>
                   ) : null}
                   {dayMemoSyncRecoveryCheck.eligible ? (

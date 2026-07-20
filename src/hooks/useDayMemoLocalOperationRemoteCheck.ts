@@ -91,11 +91,11 @@ function recordMatchesBaseline(record: RemoteDayMemoRecord, baseline: DayMemoSyn
   if (record.entityId !== baseline.date
     || record.revision !== baseline.remoteRevision
     || record.changeSequence !== baseline.remoteChangeSequence
-    || record.serverUpdatedAt !== baseline.remoteUpdatedAt
     || record.deletedAt !== baseline.deletedAt) return false
   return baseline.deletedAt === null
     ? record.payload !== null && record.payload.updatedAt === baseline.remoteUpdatedAt
-    : record.payload === null && baseline.baselineLocalUpdatedAt === null
+    : record.payload === null && record.serverUpdatedAt === baseline.remoteUpdatedAt
+      && baseline.baselineLocalUpdatedAt === null
 }
 
 function allRemoteRecordsMatchBaselines(metadata: DayMemoSyncMetadataV4, records: RemoteDayMemoRecord[]): boolean {

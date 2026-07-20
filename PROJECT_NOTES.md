@@ -2439,3 +2439,12 @@ cleanup後VERIFY結果：
 - 公開結果は日付・操作種別・revision・change sequence・分類など安全なscalarだけとし、operation ID、DayMemo本文、payloadはUI・console・文書へ出さない。内部snapshotは後続Phase専用で、metadataまたはDayMemoのraw値が変化すると利用不可になる。
 - preview結果はReact stateだけに保持し、破棄・再読み込みで消える。metadata、pending、intent、baseline、cursor、DayMemoは変更しない。後続B-3f5d2b2でも送信直前にremoteを再確認する。
 - 静的検査後に実機でread-only pullを確認する。CodexによるSupabase接続・RPC実行、stage、commit、pushは未実施。
+## Phase B-3f5d2b2b：有効なremote確認snapshotを使った1件の明示送信（実装、実機未確認）
+
+- B-3f5d2b2aのsendable snapshotとmetadata v4のprepared pendingを再検証し、ユーザーの最終確認後だけ保存または削除RPCを1回実行する。新しいoperation IDは生成しない。
+- RPC直前にfull pullを再取得し、対象外を含むremote全件、対象revision／sequence／timestamp／active-tombstone種別／payload、cursorがsnapshot時から不変である場合だけ送信する。
+- active baselineのremote timestampはpayload `updatedAt`、tombstone baselineはserver timestampとして比較し、B-3f5d2b2aの既存比較も同じ型別契約へ統一した。
+- upsertは現在の検証済みDayMemo payload、deleteは同一operation IDのpendingとlocalDeleteIntentを利用する。RPC結果は既存共通validatorで検証し、成功時だけbaseline、cursor、pending、delete intentをmetadata v4の1回の保存・read-backで整合させる。
+- 通信・応答不明はpendingを`response_unknown`、競合は`conflict`として保持する。remote成功後のmetadata保存失敗は未送信へ戻さず`recovery_required`または既存sending状態でfail-closedとし、自動再送・remote rollbackを行わない。
+- UI結果は安全なscalarだけを表示し、operation ID、本文、payload、UUID、credentialは表示しない。結果破棄はReact stateだけを消去する。
+- CodexによるSupabase接続・認証・pull・upsert・delete・SQL・実機送信は未実施。実upsert/delete、remote成功後local失敗、duplicate uncertain、already applied、複数送信は未確認・未実装である。
