@@ -1533,3 +1533,14 @@ Minimal future files are a focused `useDayMemoRemoteAdoptionPreflight.ts`, the e
 - Local or metadata failure uses existing verified rollback behavior. If rollback or the final storage state cannot be proven, the flow stops as `recovery_required` without automatic retry or speculative reversal.
 - This Phase does not call upsert/delete RPCs, generate or replace an operation ID, change remote data, apply tombstones, merge conflicts, or automatically resolve anything. B-3f5d1c remains responsible for remote tombstone adoption.
 - Static validation and normal-state regression checks are pending at implementation handoff. A real `ready_remote_active` conflict and the explicit adoption action have not been device-tested. Commit and push have not been performed.
+
+## Phase B-3f5d1c: explicit local adoption of one remote tombstone
+
+- Only one `ready_remote_tombstone` result from B-3f5d1a is eligible, and only through the explicit “同期先の削除状態をこの端末へ反映” action. Immediately before persistence, a read-only complete full pull must prove the same tombstone and unchanged target/non-target, metadata, local, pending, intent, baseline, workspace, and authentication snapshots.
+- If the target local DayMemo exists, remove only that date and preserve every other validated memo. If it is already absent, permit metadata-only completion only when the same pending or delete intent plus baseline lineage proves the selected conflict; do not perform a redundant localStorage write.
+- For a local deletion, require the existing verified pre-apply backup and strict local write/read-back before metadata. For metadata-only adoption, revalidate absence and unchanged snapshots before metadata. Metadata-first clearing of fail-closed state is prohibited.
+- Store a tombstone baseline with target revision/sequence, validated deleted time, `baselineLocalUpdatedAt = null`, and remote `serverUpdatedAt` as `remoteUpdatedAt` because the current metadata validator requires a valid timestamp. Advance the cursor only to `max(existing cursor, target sequence)`.
+- Clear only the matching pending operation and target local delete intent inside completed metadata after every applicable local/metadata validation, save, and read-back succeeds. Preserve unrelated baselines/intents and all other metadata fields.
+- Reuse verified rollback utilities. Failure to prove restored local and metadata state enters `recovery_required`; never retry automatically or reverse a verified completed metadata write speculatively.
+- This Phase does not alter remote active adoption, call mutation RPCs, modify remote data, generate an operation ID, resend a local operation, merge, or batch-adopt conflicts.
+- A real safe tombstone conflict, local deletion path, metadata-only path, rollback, and reload persistence remain device-untested. No Supabase operation, commit, or push has been performed during implementation.

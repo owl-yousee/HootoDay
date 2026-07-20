@@ -2377,3 +2377,14 @@ cleanup後VERIFY結果：
 - localまたはmetadata保存失敗時は既存utilityでverified rollbackする。rollbackや最終保存状態を証明できない場合は`recovery_required`で停止し、自動retryや推測による巻き戻しを行わない。
 - upsert/delete RPC、remote変更、operation ID生成・変更、tombstone反映、merge、競合解決は行わない。remote tombstone採用はB-3f5d1cへ分離する。
 - 静的検査と通常状態回帰確認を行う段階であり、実際の`ready_remote_active`競合生成・明示反映は未実施である。commit・pushも未実施である。
+
+## Phase B-3f5d1c：remote tombstone 1件の明示local反映（2026-07-20）
+
+- B-3f5d1aの`ready_remote_tombstone` 1件だけを、明示的な「同期先の削除状態をこの端末へ反映」操作で採用する。保存直前にread-only full pullを再実行し、remote tombstone、対象外日付、metadata raw、local snapshot、pending、intent、baseline、workspace、認証状態がpreflight後から不変であることを再検証する。
+- 対象日のlocal DayMemoがある場合は同日だけを削除し、他日付を完全維持する。対象日が既にない場合は、同じ競合対象をpendingまたはintentとbaseline系譜から証明できる場合だけmetadata-only反映を許可し、localStorageへ不要な空保存を行わない。
+- local削除時は既存の反映前バックアップを保存または安全に再利用し、完成local配列を1回保存・read-backした後だけmetadataを保存する。metadata-only時もlocal不在とsnapshot不変を再確認してからmetadataへ進み、metadata先行で安全状態を解除しない。
+- 完成metadataは対象日をtombstone baselineへ更新する。現行validatorを正本として`remoteUpdatedAt`にはremote `serverUpdatedAt`、`baselineLocalUpdatedAt`にはnull、`deletedAt`には検証済みremote削除日時を保存する。cursorは`max(既存cursor, 対象change sequence)`だけ進める。
+- 対象pendingのnull化と対象localDeleteIntentの削除は、local反映またはmetadata-only条件確認と、完成metadataのvalidator・保存・read-backがすべて成功した時だけ行う。他日付のbaselineとintent、workspace、initialUpload、migration、pushBlockは維持する。
+- localまたはmetadata保存失敗時は既存utilityでverified rollbackする。rollbackや最終保存状態を証明できない場合は`recovery_required`で停止し、自動retryや推測による巻き戻しを行わない。
+- remote active採用処理は変更せず、upsert/delete RPC、remote変更、operation ID生成・変更、local再送、merge、一括採用を追加していない。
+- 実際の`ready_remote_tombstone`競合生成、local削除反映、metadata-only反映、rollback分岐は未実機確認である。Supabase実操作、commit、pushは行っていない。

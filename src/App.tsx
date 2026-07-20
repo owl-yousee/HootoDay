@@ -31,6 +31,7 @@ import { useDayMemoSyncRecoveryApply } from './hooks/useDayMemoSyncRecoveryApply
 import { useDayMemoConflictPreview } from './hooks/useDayMemoConflictPreview'
 import { useDayMemoRemoteAdoptionPreflight } from './hooks/useDayMemoRemoteAdoptionPreflight'
 import { useDayMemoRemoteActiveAdoption } from './hooks/useDayMemoRemoteActiveAdoption'
+import { useDayMemoRemoteTombstoneAdoption } from './hooks/useDayMemoRemoteTombstoneAdoption'
 import { useDayMemoSyncMetadataMigration } from './hooks/useDayMemoSyncMetadataMigration'
 import { useDayMemoDeleteIntent } from './hooks/useDayMemoDeleteIntent'
 import { useDayMemoDeletePreview } from './hooks/useDayMemoDeletePreview'
@@ -229,6 +230,17 @@ function App() {
     connection: supabaseWorkspace.connection,
     preflightResult: dayMemoRemoteAdoptionPreflight.result,
     getReadyActiveSnapshot: dayMemoRemoteAdoptionPreflight.getReadyActiveSnapshot,
+    adoptVerifiedStoredDayMemos,
+    discardPreflight: dayMemoRemoteAdoptionPreflight.discard,
+    discardConflictPreview: dayMemoConflictPreview.discardPreview,
+  })
+  const dayMemoRemoteTombstoneAdoption = useDayMemoRemoteTombstoneAdoption({
+    dayMemos,
+    isConfigured: supabaseAuth.isConfigured,
+    isSignedIn: supabaseAuth.isSignedIn,
+    connection: supabaseWorkspace.connection,
+    preflightResult: dayMemoRemoteAdoptionPreflight.result,
+    getReadyTombstoneSnapshot: dayMemoRemoteAdoptionPreflight.getReadyTombstoneSnapshot,
     adoptVerifiedStoredDayMemos,
     discardPreflight: dayMemoRemoteAdoptionPreflight.discard,
     discardConflictPreview: dayMemoConflictPreview.discardPreview,
@@ -576,6 +588,7 @@ function App() {
           dayMemoConflictPreview={dayMemoConflictPreview}
           dayMemoRemoteAdoptionPreflight={dayMemoRemoteAdoptionPreflight}
           dayMemoRemoteActiveAdoption={dayMemoRemoteActiveAdoption}
+          dayMemoRemoteTombstoneAdoption={dayMemoRemoteTombstoneAdoption}
           dayMemoSyncRecoveryApply={dayMemoSyncRecoveryApply}
           dayMemoSyncMetadataMigration={dayMemoSyncMetadataMigration}
           dayMemoDeleteIntent={dayMemoDeleteIntent}

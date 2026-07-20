@@ -15,6 +15,7 @@ import type { useDayMemoSyncRecoveryApply } from '../hooks/useDayMemoSyncRecover
 import type { useDayMemoConflictPreview } from '../hooks/useDayMemoConflictPreview'
 import type { useDayMemoRemoteAdoptionPreflight } from '../hooks/useDayMemoRemoteAdoptionPreflight'
 import type { useDayMemoRemoteActiveAdoption } from '../hooks/useDayMemoRemoteActiveAdoption'
+import type { useDayMemoRemoteTombstoneAdoption } from '../hooks/useDayMemoRemoteTombstoneAdoption'
 import type { useDayMemoSyncMetadataMigration } from '../hooks/useDayMemoSyncMetadataMigration'
 import type { useDayMemoDeleteIntent } from '../hooks/useDayMemoDeleteIntent'
 import type { useDayMemoDeletePreview } from '../hooks/useDayMemoDeletePreview'
@@ -69,6 +70,7 @@ interface ThemeSettingsProps {
   dayMemoConflictPreview: ReturnType<typeof useDayMemoConflictPreview>
   dayMemoRemoteAdoptionPreflight: ReturnType<typeof useDayMemoRemoteAdoptionPreflight>
   dayMemoRemoteActiveAdoption: ReturnType<typeof useDayMemoRemoteActiveAdoption>
+  dayMemoRemoteTombstoneAdoption: ReturnType<typeof useDayMemoRemoteTombstoneAdoption>
   dayMemoSyncRecoveryApply: ReturnType<typeof useDayMemoSyncRecoveryApply>
   dayMemoSyncMetadataMigration: ReturnType<typeof useDayMemoSyncMetadataMigration>
   dayMemoDeleteIntent: ReturnType<typeof useDayMemoDeleteIntent>
@@ -244,6 +246,7 @@ export function ThemeSettings({
   dayMemoConflictPreview,
   dayMemoRemoteAdoptionPreflight,
   dayMemoRemoteActiveAdoption,
+  dayMemoRemoteTombstoneAdoption,
   dayMemoSyncRecoveryApply,
   dayMemoSyncMetadataMigration,
   dayMemoDeleteIntent,
@@ -476,7 +479,8 @@ export function ThemeSettings({
                                         onChange={() => dayMemoRemoteAdoptionPreflight.selectCandidate(item.date)}
                                         disabled={!dayMemoRemoteAdoptionPreflight.eligible
                                           || dayMemoRemoteAdoptionPreflight.state === 'checking'
-                                          || dayMemoRemoteActiveAdoption.state === 'applying'}
+                                          || dayMemoRemoteActiveAdoption.state === 'applying'
+                                          || dayMemoRemoteTombstoneAdoption.state === 'applying'}
                                       />
                                       この競合をremote採用候補にする
                                     </label>
@@ -548,14 +552,29 @@ export function ThemeSettings({
                                 同期先の内容をこの端末へ反映
                               </button>
                             </div>
-                          ) : dayMemoRemoteAdoptionPreflight.result?.classification === 'ready_remote_tombstone' ? (
-                            <p className="cloud-sync-note">remote tombstoneの反映はB-3f5d1cで扱います。このPhaseではDayMemoを削除しません。</p>
+                          ) : dayMemoRemoteTombstoneAdoption.canApply && dayMemoRemoteAdoptionPreflight.result?.classification === 'ready_remote_tombstone' ? (
+                            <div className="cloud-day-memo-apply-confirmation" role="alert">
+                              <strong>同期先の削除状態をこの端末へ明示反映します</strong>
+                              <p>対象日付：{dayMemoRemoteAdoptionPreflight.result.date}</p>
+                              <p>{dayMemoRemoteAdoptionPreflight.result.localEffect === 'delete'
+                                ? 'この端末の同日DayMemoは削除されます。'
+                                : 'この端末には対象DayMemoがないため、同期情報だけを同期先の削除状態へ合わせます。'}</p>
+                              <p>他の日付と同期先の状態は変更しません。この端末側の未完了操作は採用完了後に解消されます。</p>
+                              <p className="cloud-sync-note">自動同期ではありません。本文はこの画面へ表示しません。</p>
+                              <button type="button" className="health-primary-button cloud-sync-button" onClick={() => { void dayMemoRemoteTombstoneAdoption.applyRemoteTombstone() }}>
+                                同期先の削除状態をこの端末へ反映
+                              </button>
+                            </div>
                           ) : null}
                           {dayMemoRemoteActiveAdoption.state === 'applying' ? (
                             <button type="button" className="health-primary-button cloud-sync-button" disabled>同期先の内容を反映中…</button>
                           ) : null}
                           {dayMemoRemoteActiveAdoption.safeErrorMessage ? <p className="cloud-pairing-error" role="alert">{dayMemoRemoteActiveAdoption.safeErrorMessage}</p> : null}
-                          <button type="button" className="health-secondary-button cloud-sync-button" onClick={dayMemoRemoteAdoptionPreflight.discard} disabled={dayMemoRemoteAdoptionPreflight.state === 'checking' || dayMemoRemoteActiveAdoption.state === 'applying'}>
+                          {dayMemoRemoteTombstoneAdoption.state === 'applying' ? (
+                            <button type="button" className="health-primary-button cloud-sync-button" disabled>同期先の削除状態を反映中…</button>
+                          ) : null}
+                          {dayMemoRemoteTombstoneAdoption.safeErrorMessage ? <p className="cloud-pairing-error" role="alert">{dayMemoRemoteTombstoneAdoption.safeErrorMessage}</p> : null}
+                          <button type="button" className="health-secondary-button cloud-sync-button" onClick={dayMemoRemoteAdoptionPreflight.discard} disabled={dayMemoRemoteAdoptionPreflight.state === 'checking' || dayMemoRemoteActiveAdoption.state === 'applying' || dayMemoRemoteTombstoneAdoption.state === 'applying'}>
                             remote採用確認を破棄
                           </button>
                         </div>
@@ -572,6 +591,20 @@ export function ThemeSettings({
                         <li>端末反映：{dayMemoRemoteActiveAdoption.result.localEffect === 'replace' ? '同日DayMemoを置換' : 'DayMemoを追加'}</li>
                         <li>pending：解消済み</li>
                         <li>削除意図：{dayMemoRemoteActiveAdoption.result.intentResolved ? '解消済み' : '対象なし'}</li>
+                      </ul>
+                      <p>他の日付と同期先は変更していません。自動同期ではありません。</p>
+                    </div>
+                  ) : null}
+                  {dayMemoRemoteTombstoneAdoption.state === 'completed' && dayMemoRemoteTombstoneAdoption.result ? (
+                    <div className="cloud-day-memo-success" role="status">
+                      <h4>remote tombstone採用完了</h4>
+                      <ul className="cloud-day-memo-preview-summary">
+                        <li>対象日付：{dayMemoRemoteTombstoneAdoption.result.date}</li>
+                        <li>revision：{dayMemoRemoteTombstoneAdoption.result.remoteRevision}</li>
+                        <li>change sequence：{dayMemoRemoteTombstoneAdoption.result.remoteChangeSequence}</li>
+                        <li>端末反映：{dayMemoRemoteTombstoneAdoption.result.localEffect === 'delete' ? '同日DayMemoを削除' : 'metadataのみ更新'}</li>
+                        <li>pending：解消済み</li>
+                        <li>削除意図：{dayMemoRemoteTombstoneAdoption.result.intentResolved ? '解消済み' : '対象なし'}</li>
                       </ul>
                       <p>他の日付と同期先は変更していません。自動同期ではありません。</p>
                     </div>
