@@ -2272,3 +2272,11 @@ cleanup後VERIFY結果：
 - Tombstones are not applied automatically. Phase B-3f4a will add read-only full-pull preview and classification; B-3f4b will add one explicit local application with a pre-apply backup and verified rollback; multiple tombstones are deferred to B-3f4c, and resurrection/delete conflicts remain B-3f5.
 - During `json_restore` or `full_reset` push block, read-only preview may run, but local deletion, baseline/cursor updates, intent reconciliation, and block release are prohibited.
 - This step changed documentation only. No source code, SQL, RPC, localStorage, DayMemo, sync metadata, Supabase data, stage, commit, or push operation was performed.
+## Phase B-3f4a：tombstone pull preview（実装済み・実機確認待ち）
+
+- 設定画面の明示操作だけで既存full pull utilityを実行し、remote tombstoneを`remote_deleted_local_active`、`remote_deleted_local_modified`、`remote_deleted_local_missing`、`remote_deleted_unknown`へ分類するpreviewを追加した。
+- remote tombstoneはpayloadなし、有効なdeletedAt・revision・change sequenceを既存validatorで確認する。active反映候補はactive baselineからrevisionが1増加し、change sequenceが前進し、local updatedAtがbaselineと一致する場合だけである。
+- preview結果は日付、分類、remote revision、change sequence、deletedAtだけをReact stateへ保持する。DayMemo本文、payload、UUID、operation ID、認証情報は表示・保存しない。
+- pending operation、pushBlock、metadata/workspace不一致、baseline未確認、pull不完全、確認中のlocal/metadata変化ではfail-closedに停止する。結果破棄と再読み込みではpreviewだけを消去する。
+- local DayMemo、baseline、cursor、localDeleteIntent、pending operation、safety stateは変更しない。upsert/delete、自動pull、自動retry、自動反映、復活、競合解決は実装していない。
+- Supabase実機確認、stage、commit、pushは未実施である。

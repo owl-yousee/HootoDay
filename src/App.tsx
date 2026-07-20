@@ -31,6 +31,7 @@ import { useDayMemoSyncRecoveryApply } from './hooks/useDayMemoSyncRecoveryApply
 import { useDayMemoSyncMetadataMigration } from './hooks/useDayMemoSyncMetadataMigration'
 import { useDayMemoDeleteIntent } from './hooks/useDayMemoDeleteIntent'
 import { useDayMemoDeletePreview } from './hooks/useDayMemoDeletePreview'
+import { useDayMemoTombstonePreview } from './hooks/useDayMemoTombstonePreview'
 import { useDayMemoDeleteUpload } from './hooks/useDayMemoDeleteUpload'
 import { useDayMemoUpdatePreview } from './hooks/useDayMemoUpdatePreview'
 import { useDayMemoUpdateUpload } from './hooks/useDayMemoUpdateUpload'
@@ -99,6 +100,12 @@ function App() {
     adoptVerifiedStoredDayMemos,
   })
   const dayMemoDeletePreview = useDayMemoDeletePreview({
+    isConfigured: supabaseAuth.isConfigured,
+    isSignedIn: supabaseAuth.isSignedIn,
+    connection: supabaseWorkspace.connection,
+  })
+  const dayMemoTombstonePreview = useDayMemoTombstonePreview({
+    dayMemos,
     isConfigured: supabaseAuth.isConfigured,
     isSignedIn: supabaseAuth.isSignedIn,
     connection: supabaseWorkspace.connection,
@@ -518,6 +525,7 @@ function App() {
           dayMemoSyncMetadataMigration={dayMemoSyncMetadataMigration}
           dayMemoDeleteIntent={dayMemoDeleteIntent}
           dayMemoDeletePreview={dayMemoDeletePreview}
+          dayMemoTombstonePreview={dayMemoTombstonePreview}
           dayMemoDeleteUpload={dayMemoDeleteUpload}
           onClose={() => setIsThemeSettingsOpen(false)}
         />

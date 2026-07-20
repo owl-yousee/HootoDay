@@ -1314,3 +1314,11 @@ The comparison uses exact revision/change-sequence lineage; merely seeing a tomb
 4. **B-3f5 — resurrection and delete conflicts:** provide user-decision flows without automatic merge, retry, or resurrection.
 
 The next smallest implementation phase is B-3f4a. This design step changes documentation only and performs no Supabase call, RPC, localStorage/DayMemo/metadata mutation, commit, or push.
+## Phase B-3f4a：tombstone pull preview実装
+
+- owner/parentとmember/childの共通Hookから、設定画面の「削除状態を確認」を押した場合だけcursor 0・100件・最大20ページの既存full pull utilityを呼ぶ。自動実行・自動再試行は行わない。
+- 開始条件は認証済み、workspace接続・binding一致、metadata version 3 validator通過、`baselineStatus = confirmed`、確認日時あり、pending operationなし、pushBlockなし、React stateとDayMemo storage一致である。
+- 完全取得したremote tombstoneだけを対象とし、active baselineの直後revisionかつ新しいchange sequenceでlocal updatedAtがbaselineと一致すれば`remote_deleted_local_active`、local updatedAt相違なら`remote_deleted_local_modified`、localなしなら`remote_deleted_local_missing`、系譜・baselineを安全確認できなければ`remote_deleted_unknown`とする。
+- pull失敗、不完全取得、metadata/local状態変化では部分結果を採用せず安全停止する。previewはReact stateだけに保持し、明示破棄または再読み込みで消去する。
+- UIは件数、日付、分類、remote revision、change sequence、deletedAtだけを表示し、本文、payload、UUID、operation ID、token、内部例外全文は表示しない。
+- 本Phaseは読み取り専用previewだけであり、DayMemo削除、tombstone baseline・cursor・intent・pending・safety state変更、upsert/delete RPC、復活、競合解決、pushBlock解除を行わない。B-3f4bの明示反映は実機preview確認後に分離する。
