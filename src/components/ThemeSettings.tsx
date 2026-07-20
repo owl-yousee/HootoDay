@@ -10,6 +10,7 @@ import type { useDayMemoLocalOnlyUpload } from '../hooks/useDayMemoLocalOnlyUplo
 import type { useDayMemoPullPreview } from '../hooks/useDayMemoPullPreview'
 import type { useDayMemoBaselineRebase } from '../hooks/useDayMemoBaselineRebase'
 import type { useDayMemoSyncBaseline } from '../hooks/useDayMemoSyncBaseline'
+import type { useDayMemoSyncRecoveryCheck } from '../hooks/useDayMemoSyncRecoveryCheck'
 import type { useDayMemoUpdatePreview } from '../hooks/useDayMemoUpdatePreview'
 import type { useDayMemoUpdateUpload } from '../hooks/useDayMemoUpdateUpload'
 import { useSupabasePairing, useSupabasePairingJoin } from '../hooks/useSupabasePairing'
@@ -52,6 +53,7 @@ interface ThemeSettingsProps {
   dayMemoLocalOnlyPreview: ReturnType<typeof useDayMemoLocalOnlyPreview>
   dayMemoLocalOnlyUpload: ReturnType<typeof useDayMemoLocalOnlyUpload>
   dayMemoSyncSafety: DayMemoSyncSafety
+  dayMemoSyncRecoveryCheck: ReturnType<typeof useDayMemoSyncRecoveryCheck>
   onClose: () => void
 }
 
@@ -180,6 +182,7 @@ export function ThemeSettings({
   dayMemoLocalOnlyPreview,
   dayMemoLocalOnlyUpload,
   dayMemoSyncSafety,
+  dayMemoSyncRecoveryCheck,
   onClose,
 }: ThemeSettingsProps) {
   const dialogRef = useRef<HTMLDialogElement>(null)
@@ -346,6 +349,37 @@ export function ThemeSettings({
                       <p className="cloud-sync-note">状態を確認するまで新しい送信を開始しません。自動送信・自動再試行・自動修復は行いません。</p>
                     ) : null}
                   </div>
+                  {dayMemoSyncRecoveryCheck.eligible ? (
+                    <div className="cloud-day-memo-recovery-check-panel">
+                      <h4>未完了同期の確認</h4>
+                      <p>同期先の現在状態を読み取り専用で確認します。確認だけでは再送・復旧・metadata更新を行いません。</p>
+                      {dayMemoSyncRecoveryCheck.state === 'idle' ? (
+                        <button type="button" className="health-secondary-button cloud-sync-button" onClick={() => { void dayMemoSyncRecoveryCheck.checkRemote() }}>
+                          同期先の状態を確認
+                        </button>
+                      ) : null}
+                      {dayMemoSyncRecoveryCheck.state === 'checking' ? (
+                        <button type="button" className="health-secondary-button cloud-sync-button" disabled>確認中…</button>
+                      ) : null}
+                      {dayMemoSyncRecoveryCheck.result ? (
+                        <div role="status">
+                          <p>対象日付：{dayMemoSyncRecoveryCheck.result.date}</p>
+                          <p>{dayMemoSyncRecoveryCheck.result.classification === 'remote_applied'
+                            ? '同期先へ反映済みの可能性があります。'
+                            : dayMemoSyncRecoveryCheck.result.classification === 'remote_not_applied'
+                              ? '同期先へ未反映の可能性があります。'
+                              : dayMemoSyncRecoveryCheck.result.classification === 'conflict_detected'
+                                ? '同期先に別の変更があり、競合を確認しました。'
+                                : '同期先の状態を安全に判定できませんでした。'}</p>
+                          <p className="cloud-sync-note">pending operationは保持しています。自動再送・自動復旧は行いません。</p>
+                          <button type="button" className="health-secondary-button cloud-sync-button" onClick={dayMemoSyncRecoveryCheck.discardResult}>
+                            確認結果を破棄
+                          </button>
+                        </div>
+                      ) : null}
+                      {dayMemoSyncRecoveryCheck.safeErrorMessage ? <p className="cloud-pairing-error" role="alert">{dayMemoSyncRecoveryCheck.safeErrorMessage}</p> : null}
+                    </div>
+                  ) : null}
                   {dayMemoSyncBaseline.eligible ? (
                     <div className="cloud-day-memo-baseline-panel">
                       <h4>通常同期の準備</h4>

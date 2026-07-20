@@ -2190,3 +2190,10 @@ cleanup後VERIFY結果：
 - 危険状態では既存更新とlocal-only追加の新しいpreflightボタンを表示せず、各Hookも再読み込み時に共通判定からconflict／unknown／recoveryへ復元してidleへ戻さない。
 - 同一セッションで既に準備済みのoperationは既存snapshotとpendingの完全一致検証を維持するが、再読み込み後のpendingを自動送信・自動取消ししない。競合解決、unknown復旧、再送、delete、tombstoneは未実装である。
 - 今回は調査・設計文書更新のみ。src、SQL、package、localStorage、metadataは変更せず、Supabase操作、commit、pushは行っていない。
+
+### Phase B-3e5b: 未完了同期のread-only remote確認
+
+- conflict／response_unknown／recovery_required（および再読み込み後に残ったsending）のpending operationだけを対象に、明示操作でfull pullする確認Hookを追加した。
+- 既存のcursor 0・100件・最大20ページの共通full pullを再利用し、対象recordを`remote_applied`／`remote_not_applied`／`conflict_detected`／`unknown`へ分類する。
+- request本文はmetadataへ保存せず、準備時updatedAtと現在の正式DayMemo storageが一致する場合だけ比較に使用する。一致しなければ推測せず`unknown`とする。
+- 確認結果はReactメモリ内だけに保持し、pending operation、baseline、cursor、DayMemoを変更しない。upsert／delete、operation ID生成、自動再送、自動復旧は行わない。
