@@ -2388,3 +2388,13 @@ cleanup後VERIFY結果：
 - localまたはmetadata保存失敗時は既存utilityでverified rollbackする。rollbackや最終保存状態を証明できない場合は`recovery_required`で停止し、自動retryや推測による巻き戻しを行わない。
 - remote active採用処理は変更せず、upsert/delete RPC、remote変更、operation ID生成・変更、local再送、merge、一括採用を追加していない。
 - 実際の`ready_remote_tombstone`競合生成、local削除反映、metadata-only反映、rollback分岐は未実機確認である。Supabase実操作、commit、pushは行っていない。
+
+## Phase B-3f5d1d：remote採用後の総合read-only確認（2026-07-20）
+
+- remote active、remote tombstone、metadata-only tombstoneの採用成功結果がReactメモリに残る場合は、その日付・revision・change sequenceを対象として明示full pullでlocal、remote、baseline、pending、intent、cursorを総合確認するHookを追加した。
+- activeはstrict validator済みremote payloadとlocal DayMemoの完全一致、active baselineのrevision・sequence・updatedAt一致を確認する。tombstoneはpayload null、deletedAt、revision・sequence、local不在、tombstone baselineのserver updated timeとnull local timestampを確認する。
+- 対象外日付は既存preflightの比較処理を詳細サマリー化して共用し、remote-only、local-only、本文、updatedAt、active/tombstone、baseline欠落、revision系譜の不一致件数を本文非表示で報告する。
+- `adoption_verified_normal`、`adoption_verified_target_only`、`adoption_pending_remaining`、`adoption_target_mismatch`、`adoption_cursor_invalid`、`adoption_state_unknown`へ分類する。分類は表示上の判定だけで、safety stateやbaselineStatusを変更しない。
+- 再読み込み後など採用成功結果がない場合は対象日を推測せず、現在のmetadata・local・full pullによる端末全体の整合確認として実行する。特定の採用完了とは表示しない。
+- 結果とremote参照はReact stateだけに保持し、破棄・再読み込みで消える。localStorage、DayMemo、metadata、baseline、cursor、pending、intent、remoteを変更せず、自動修復、自動retry、operation ID生成を行わない。
+- B-3f5d1a〜cの採用処理は変更していない。実競合・実採用後の対象別確認は未実機確認であり、Supabase実操作、commit、pushも行っていない。

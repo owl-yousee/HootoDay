@@ -79,41 +79,88 @@ function sameJson(left: unknown, right: unknown): boolean {
   return JSON.stringify(left) === JSON.stringify(right)
 }
 
+export interface DayMemoRemoteConsistencySummary {
+  remoteOnly: number
+  localOnly: number
+  contentMismatch: number
+  updatedAtMismatch: number
+  stateMismatch: number
+  baselineMissing: number
+  revisionMismatch: number
+  total: number
+}
+
+export function inspectRemoteAdoptionConsistency(
+  metadata: DayMemoSyncMetadataV3,
+  localMemos: DayMemo[],
+  records: RemoteDayMemoRecord[],
+  targetDate: string | null,
+): DayMemoRemoteConsistencySummary {
+  const localByDate = new Map(localMemos.map((memo) => [memo.date, memo]))
+  const remoteByDate = new Map(records.map((record) => [record.entityId, record]))
+  const dates = new Set([...Object.keys(metadata.baselines), ...localByDate.keys(), ...remoteByDate.keys()])
+  const summary: DayMemoRemoteConsistencySummary = {
+    remoteOnly: 0,
+    localOnly: 0,
+    contentMismatch: 0,
+    updatedAtMismatch: 0,
+    stateMismatch: 0,
+    baselineMissing: 0,
+    revisionMismatch: 0,
+    total: 0,
+  }
+  const add = (key: Exclude<keyof DayMemoRemoteConsistencySummary, 'total'>) => {
+    summary[key] += 1
+    summary.total += 1
+  }
+  for (const date of dates) {
+    if (date === targetDate) continue
+    const baseline = metadata.baselines[date]
+    const local = localByDate.get(date)
+    const remote = remoteByDate.get(date)
+    if (!baseline) {
+      if (remote && !local) add('remoteOnly')
+      else if (local && !remote) add('localOnly')
+      else add('baselineMissing')
+      continue
+    }
+    if (!remote) {
+      add(local ? 'localOnly' : 'baselineMissing')
+      continue
+    }
+    if (baseline.remoteRevision !== remote.revision
+      || baseline.remoteChangeSequence !== remote.changeSequence) {
+      add('revisionMismatch')
+      continue
+    }
+    if (baseline.deletedAt !== remote.deletedAt) {
+      add('stateMismatch')
+      continue
+    }
+    if (remote.deletedAt === null) {
+      if (!local) add('remoteOnly')
+      else if (!remote.payload || remote.payload.date !== local.date) add('stateMismatch')
+      else if (remote.payload.content !== local.content) add('contentMismatch')
+      else if (baseline.baselineLocalUpdatedAt !== local.updatedAt
+        || baseline.remoteUpdatedAt !== remote.payload.updatedAt
+        || remote.payload.updatedAt !== local.updatedAt) add('updatedAtMismatch')
+    } else if (local) {
+      add('stateMismatch')
+    } else if (remote.payload !== null || baseline.baselineLocalUpdatedAt !== null
+      || baseline.remoteUpdatedAt !== remote.serverUpdatedAt) {
+      add('stateMismatch')
+    }
+  }
+  return summary
+}
+
 export function countRemoteAdoptionMismatches(
   metadata: DayMemoSyncMetadataV3,
   localMemos: DayMemo[],
   records: RemoteDayMemoRecord[],
   targetDate: string,
 ): number {
-  const localByDate = new Map(localMemos.map((memo) => [memo.date, memo]))
-  const remoteByDate = new Map(records.map((record) => [record.entityId, record]))
-  const dates = new Set([...Object.keys(metadata.baselines), ...localByDate.keys(), ...remoteByDate.keys()])
-  let mismatches = 0
-  for (const date of dates) {
-    if (date === targetDate) continue
-    const baseline = metadata.baselines[date]
-    const local = localByDate.get(date)
-    const remote = remoteByDate.get(date)
-    if (!baseline || !remote
-      || baseline.remoteRevision !== remote.revision
-      || baseline.remoteChangeSequence !== remote.changeSequence
-      || baseline.deletedAt !== remote.deletedAt) {
-      mismatches += 1
-      continue
-    }
-    if (remote.deletedAt === null) {
-      if (!local || !remote.payload
-        || baseline.baselineLocalUpdatedAt !== local.updatedAt
-        || baseline.remoteUpdatedAt !== remote.payload.updatedAt
-        || remote.payload.date !== local.date
-        || remote.payload.updatedAt !== local.updatedAt
-        || remote.payload.content !== local.content) mismatches += 1
-    } else if (local || remote.payload !== null || baseline.baselineLocalUpdatedAt !== null
-      || baseline.remoteUpdatedAt !== remote.serverUpdatedAt) {
-      mismatches += 1
-    }
-  }
-  return mismatches
+  return inspectRemoteAdoptionConsistency(metadata, localMemos, records, targetDate).total
 }
 
 function blockedResult(

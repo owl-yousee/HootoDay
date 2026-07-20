@@ -16,6 +16,7 @@ import type { useDayMemoConflictPreview } from '../hooks/useDayMemoConflictPrevi
 import type { useDayMemoRemoteAdoptionPreflight } from '../hooks/useDayMemoRemoteAdoptionPreflight'
 import type { useDayMemoRemoteActiveAdoption } from '../hooks/useDayMemoRemoteActiveAdoption'
 import type { useDayMemoRemoteTombstoneAdoption } from '../hooks/useDayMemoRemoteTombstoneAdoption'
+import type { useDayMemoRemoteAdoptionVerification } from '../hooks/useDayMemoRemoteAdoptionVerification'
 import type { useDayMemoSyncMetadataMigration } from '../hooks/useDayMemoSyncMetadataMigration'
 import type { useDayMemoDeleteIntent } from '../hooks/useDayMemoDeleteIntent'
 import type { useDayMemoDeletePreview } from '../hooks/useDayMemoDeletePreview'
@@ -71,6 +72,7 @@ interface ThemeSettingsProps {
   dayMemoRemoteAdoptionPreflight: ReturnType<typeof useDayMemoRemoteAdoptionPreflight>
   dayMemoRemoteActiveAdoption: ReturnType<typeof useDayMemoRemoteActiveAdoption>
   dayMemoRemoteTombstoneAdoption: ReturnType<typeof useDayMemoRemoteTombstoneAdoption>
+  dayMemoRemoteAdoptionVerification: ReturnType<typeof useDayMemoRemoteAdoptionVerification>
   dayMemoSyncRecoveryApply: ReturnType<typeof useDayMemoSyncRecoveryApply>
   dayMemoSyncMetadataMigration: ReturnType<typeof useDayMemoSyncMetadataMigration>
   dayMemoDeleteIntent: ReturnType<typeof useDayMemoDeleteIntent>
@@ -247,6 +249,7 @@ export function ThemeSettings({
   dayMemoRemoteAdoptionPreflight,
   dayMemoRemoteActiveAdoption,
   dayMemoRemoteTombstoneAdoption,
+  dayMemoRemoteAdoptionVerification,
   dayMemoSyncRecoveryApply,
   dayMemoSyncMetadataMigration,
   dayMemoDeleteIntent,
@@ -607,6 +610,58 @@ export function ThemeSettings({
                         <li>削除意図：{dayMemoRemoteTombstoneAdoption.result.intentResolved ? '解消済み' : '対象なし'}</li>
                       </ul>
                       <p>他の日付と同期先は変更していません。自動同期ではありません。</p>
+                    </div>
+                  ) : null}
+                  {dayMemoRemoteAdoptionVerification.eligible ? (
+                    <div className="cloud-day-memo-recovery-check-panel" role="region" aria-labelledby="day-memo-adoption-verification-heading">
+                      <h4 id="day-memo-adoption-verification-heading">remote採用後の総合確認</h4>
+                      <p>local DayMemo、同期情報、同期先を読み取り専用で確認します。自動修復・再送・metadata更新は行いません。</p>
+                      {dayMemoRemoteAdoptionVerification.state === 'idle' ? (
+                        <button type="button" className="health-secondary-button cloud-sync-button" onClick={() => { void dayMemoRemoteAdoptionVerification.verify() }}>
+                          remote採用後の状態を確認
+                        </button>
+                      ) : null}
+                      {dayMemoRemoteAdoptionVerification.state === 'checking' ? (
+                        <button type="button" className="health-secondary-button cloud-sync-button" disabled>remote採用後の状態を確認中…</button>
+                      ) : null}
+                      {dayMemoRemoteAdoptionVerification.result ? (
+                        <div role="status">
+                          <p><strong>安全判定：{dayMemoRemoteAdoptionVerification.result.classification}</strong></p>
+                          <ul className="cloud-day-memo-preview-summary">
+                            <li>確認範囲：{dayMemoRemoteAdoptionVerification.result.scope === 'adoption_target' ? '採用対象1件と端末全体' : '端末全体（採用対象は推測しません）'}</li>
+                            <li>採用種類：{dayMemoRemoteAdoptionVerification.result.adoptionKind === 'remote_active'
+                              ? 'remote active'
+                              : dayMemoRemoteAdoptionVerification.result.adoptionKind === 'remote_tombstone'
+                                ? 'remote tombstone'
+                                : dayMemoRemoteAdoptionVerification.result.adoptionKind === 'metadata_only_tombstone'
+                                  ? 'metadata-only tombstone'
+                                  : '全体整合確認'}</li>
+                            {dayMemoRemoteAdoptionVerification.result.date ? <li>対象日付：{dayMemoRemoteAdoptionVerification.result.date}</li> : null}
+                            {dayMemoRemoteAdoptionVerification.result.remoteRevision !== null ? <li>remote revision：{dayMemoRemoteAdoptionVerification.result.remoteRevision}</li> : null}
+                            {dayMemoRemoteAdoptionVerification.result.remoteChangeSequence !== null ? <li>remote change sequence：{dayMemoRemoteAdoptionVerification.result.remoteChangeSequence}</li> : null}
+                            <li>local状態：{dayMemoRemoteAdoptionVerification.result.localState}</li>
+                            <li>baseline状態：{dayMemoRemoteAdoptionVerification.result.baselineState}</li>
+                            <li>pending：{dayMemoRemoteAdoptionVerification.result.pendingResolved ? '解消済み' : '残存または確認不能'}</li>
+                            <li>対象intent：{dayMemoRemoteAdoptionVerification.result.targetIntentResolved ? '解消済み' : '残存または確認不能'}</li>
+                            <li>他intent：{dayMemoRemoteAdoptionVerification.result.otherIntentCount}件</li>
+                            <li>cursor：{dayMemoRemoteAdoptionVerification.result.cursorValid ? '確認済み' : '不整合または確認不能'}</li>
+                            <li>対象外不一致：{dayMemoRemoteAdoptionVerification.result.outside.total}件</li>
+                            <li>remote-only：{dayMemoRemoteAdoptionVerification.result.outside.remoteOnly}件</li>
+                            <li>local-only：{dayMemoRemoteAdoptionVerification.result.outside.localOnly}件</li>
+                            <li>本文不一致：{dayMemoRemoteAdoptionVerification.result.outside.contentMismatch}件</li>
+                            <li>updatedAt不一致：{dayMemoRemoteAdoptionVerification.result.outside.updatedAtMismatch}件</li>
+                            <li>active/tombstone不一致：{dayMemoRemoteAdoptionVerification.result.outside.stateMismatch}件</li>
+                            <li>baseline欠落：{dayMemoRemoteAdoptionVerification.result.outside.baselineMissing}件</li>
+                            <li>revision系譜不一致：{dayMemoRemoteAdoptionVerification.result.outside.revisionMismatch}件</li>
+                            <li>確認日時：{new Date(dayMemoRemoteAdoptionVerification.result.checkedAt).toLocaleString('ja-JP')}</li>
+                          </ul>
+                          <p>{dayMemoRemoteAdoptionVerification.result.nextAction}</p>
+                          <button type="button" className="health-secondary-button cloud-sync-button" onClick={dayMemoRemoteAdoptionVerification.discard}>
+                            採用後確認結果を破棄
+                          </button>
+                        </div>
+                      ) : null}
+                      {dayMemoRemoteAdoptionVerification.safeErrorMessage ? <p className="cloud-pairing-error" role="alert">{dayMemoRemoteAdoptionVerification.safeErrorMessage}</p> : null}
                     </div>
                   ) : null}
                   {dayMemoSyncRecoveryCheck.eligible ? (

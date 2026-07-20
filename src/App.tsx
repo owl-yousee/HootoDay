@@ -32,6 +32,7 @@ import { useDayMemoConflictPreview } from './hooks/useDayMemoConflictPreview'
 import { useDayMemoRemoteAdoptionPreflight } from './hooks/useDayMemoRemoteAdoptionPreflight'
 import { useDayMemoRemoteActiveAdoption } from './hooks/useDayMemoRemoteActiveAdoption'
 import { useDayMemoRemoteTombstoneAdoption } from './hooks/useDayMemoRemoteTombstoneAdoption'
+import { useDayMemoRemoteAdoptionVerification } from './hooks/useDayMemoRemoteAdoptionVerification'
 import { useDayMemoSyncMetadataMigration } from './hooks/useDayMemoSyncMetadataMigration'
 import { useDayMemoDeleteIntent } from './hooks/useDayMemoDeleteIntent'
 import { useDayMemoDeletePreview } from './hooks/useDayMemoDeletePreview'
@@ -244,6 +245,14 @@ function App() {
     adoptVerifiedStoredDayMemos,
     discardPreflight: dayMemoRemoteAdoptionPreflight.discard,
     discardConflictPreview: dayMemoConflictPreview.discardPreview,
+  })
+  const dayMemoRemoteAdoptionVerification = useDayMemoRemoteAdoptionVerification({
+    dayMemos,
+    isConfigured: supabaseAuth.isConfigured,
+    isSignedIn: supabaseAuth.isSignedIn,
+    connection: supabaseWorkspace.connection,
+    activeResult: dayMemoRemoteActiveAdoption.result,
+    tombstoneResult: dayMemoRemoteTombstoneAdoption.result,
   })
   const dayMemoSyncRecoveryApply = useDayMemoSyncRecoveryApply({
     dayMemos,
@@ -589,6 +598,7 @@ function App() {
           dayMemoRemoteAdoptionPreflight={dayMemoRemoteAdoptionPreflight}
           dayMemoRemoteActiveAdoption={dayMemoRemoteActiveAdoption}
           dayMemoRemoteTombstoneAdoption={dayMemoRemoteTombstoneAdoption}
+          dayMemoRemoteAdoptionVerification={dayMemoRemoteAdoptionVerification}
           dayMemoSyncRecoveryApply={dayMemoSyncRecoveryApply}
           dayMemoSyncMetadataMigration={dayMemoSyncMetadataMigration}
           dayMemoDeleteIntent={dayMemoDeleteIntent}

@@ -1544,3 +1544,14 @@ Minimal future files are a focused `useDayMemoRemoteAdoptionPreflight.ts`, the e
 - Reuse verified rollback utilities. Failure to prove restored local and metadata state enters `recovery_required`; never retry automatically or reverse a verified completed metadata write speculatively.
 - This Phase does not alter remote active adoption, call mutation RPCs, modify remote data, generate an operation ID, resend a local operation, merge, or batch-adopt conflicts.
 - A real safe tombstone conflict, local deletion path, metadata-only path, rollback, and reload persistence remain device-untested. No Supabase operation, commit, or push has been performed during implementation.
+
+## Phase B-3f5d1d: read-only post-adoption verification
+
+- An explicit “remote採用後の状態を確認” action runs the shared complete full pull and compares current local DayMemos, version 3 metadata, pending, intents, baselines, cursor, workspace, and remote rows. Rendering and verification never write persistent state.
+- When an active/tombstone adoption success result remains in React memory, verify its exact date, revision, and sequence. Active verification requires a strict remote payload equal to the one same-date local memo and matching active baseline timestamps. Tombstone and metadata-only verification require a valid remote tombstone, no same-date local memo, and a matching tombstone baseline.
+- Reuse the preflight consistency comparison as a detailed summary for all non-target dates: remote-only, local-only, content mismatch, updatedAt mismatch, active/tombstone mismatch, missing baseline, and revision-lineage mismatch. Only counts and safe scalar fields reach the UI.
+- Classify results as `adoption_verified_normal`, `adoption_verified_target_only`, `adoption_pending_remaining`, `adoption_target_mismatch`, `adoption_cursor_invalid`, or `adoption_state_unknown`. These are read-only presentation states and never force the persisted safety state to normal.
+- A different-date global pending or intent prevents overall normal but is not mislabeled as an unresolved target operation. A target pending/intent remaining receives the dedicated pending classification. Cursor validity for a known target means the stored cursor is at least its adopted sequence; later remote rows alone do not invalidate it.
+- After reload, if no safe in-memory adoption result exists, do not infer an adopted date. Run only an overall consistency check and label the scope accordingly. No new persistence field is introduced.
+- Discard clears only React result/error/remote comparison state. No localStorage, DayMemo, metadata, baseline, cursor, pending, intent, remote, operation ID, automatic repair, retry, or merge is involved.
+- B-3f5d1a through B-3f5d1c behavior remains unchanged. Real-conflict and real-post-adoption target verification are not device-tested; no Supabase operation, commit, or push has been performed.
