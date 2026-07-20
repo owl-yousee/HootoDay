@@ -1677,3 +1677,5 @@ B-3f5e4aのlocal candidate snapshotを正本とし、明示確認後の完全ful
 `body_mismatch_recovery`かつ`prepared`のpending 1件だけを専用経路で扱う。明示ボタン1回につき完全full pullは最大1回で、pull前後にmetadata raw、local storage、workspace、pending、checkpointを再確認する。対象localのcanonical payloadと`preparedLocalUpdatedAt`、remote active recordのrevision・change sequence・payload updatedAt・payload、現在の`body_mismatch`分類が不変の場合だけ`normal_body_mismatch_recovery_preflight_ready`とする。
 
 verification snapshotは次Phaseの再検証用にReact stateだけへ保持し、永続化しない。metadata、pending status、baseline、cursor、DayMemo、intent、pushBlock、remoteを変更せず、新しいoperation IDも生成しない。通常upsert preflight/sendへrecovery modeを通さず、B-3f5e4b3の明示送信までRPCを行わない。
+
+実機で判明した循環を避けるため、B-3f5e4b2は通常checkpoint確認HookのReact resultを前提にしない。通常checkpoint経路のpending拒否は緩めず、専用preflightが永続metadata v5の`recovery_required`、nullのconfirmedAt、cursor、baseline群と、完全full pull 1回から再構築した対象`body_mismatch`を照合する。例外的に許可するpendingは確認対象と完全一致するprepared `body_mismatch_recovery` upsert 1件だけであり、他のpendingはfail-closedとする。

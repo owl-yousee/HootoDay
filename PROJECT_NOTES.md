@@ -2493,3 +2493,10 @@ cleanup後VERIFY結果：
 - remote active、revision、change sequence、payload updatedAt、payload、対象日、body_mismatch分類を準備時点と照合する。変化・不完全取得・判定不能はfail-closedとする。
 - 成功snapshotはoperation ID照合値とcanonical比較情報をReact stateだけに保持し、再読み込み後は再確認を必要とする。UI・console・文書へoperation ID実値や本文全文を出さない。
 - metadata、pending、DayMemo、baseline、cursor、checkpoint、intent、pushBlock、remoteは変更せず、Supabase送信、operation ID再生成、自動pull・retry・merge・修復は行わない。明示送信はB-3f5e4b3へ分離する。
+
+### B-3f5e4b2 checkpoint接続修正
+
+- 実機で、再読み込み後は通常checkpoint確認のReact resultがなくpreflightが`checkpoint_unavailable`となり、通常checkpoint確認側もprepared recovery pendingを拒否する循環を確認した。
+- 通常checkpoint確認のpending拒否は維持し、専用preflightが永続metadata内のrecovery checkpointを読み直し、同じ1回のfull pull結果で対象`body_mismatch`と未解決分類を再構築する。
+- 許可するpendingは対象と完全一致する1件のprepared `body_mismatch_recovery` upsertだけであり、normal upsert、delete、mode・status・日付・operation不一致、不正pendingは拒否する。
+- React上の過去のcheckpoint resultへ依存せず、read-only、永続変更なし、RPCなし、operation ID再生成なしを維持する。明示送信はB-3f5e4b3だけで扱う。

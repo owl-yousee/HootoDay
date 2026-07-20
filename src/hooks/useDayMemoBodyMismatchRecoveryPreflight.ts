@@ -8,7 +8,6 @@ import { pullAllDayMemoSyncRecords, type RemoteDayMemoRecord } from '../utils/da
 import { isDayMemoSyncMetadataV5, loadDayMemoSyncMetadataAny } from '../utils/dayMemoSyncStorage'
 import { isUuid } from '../utils/syncConnectionStorage'
 import { classifyDayMemoNormalDifference, type DayMemoNormalDifferenceClassification } from './useDayMemoNormalDifferenceRecoveryPlan'
-import type { DayMemoNormalDifferenceCheckpointResult } from './useDayMemoNormalDifferenceRecoveryCheckpointCheck'
 
 export type DayMemoBodyMismatchRecoveryPreflightSafety =
   | 'normal_body_mismatch_recovery_preflight_ready'
@@ -18,6 +17,14 @@ export type DayMemoBodyMismatchRecoveryPreflightSafety =
   | 'normal_body_mismatch_recovery_preflight_workspace_mismatch'
   | 'normal_body_mismatch_recovery_preflight_metadata_invalid'
   | 'normal_body_mismatch_recovery_preflight_checkpoint_unavailable'
+  | 'normal_body_mismatch_recovery_preflight_checkpoint_missing'
+  | 'normal_body_mismatch_recovery_preflight_checkpoint_invalid'
+  | 'normal_body_mismatch_recovery_preflight_checkpoint_target_missing'
+  | 'normal_body_mismatch_recovery_preflight_checkpoint_target_changed'
+  | 'normal_body_mismatch_recovery_preflight_permitted_pending_mismatch'
+  | 'normal_body_mismatch_recovery_preflight_unexpected_pending'
+  | 'normal_body_mismatch_recovery_preflight_pending_changed'
+  | 'normal_body_mismatch_recovery_preflight_checkpoint_stale'
   | 'normal_body_mismatch_recovery_preflight_target_unavailable'
   | 'normal_body_mismatch_recovery_preflight_local_changed'
   | 'normal_body_mismatch_recovery_preflight_remote_missing'
@@ -73,7 +80,6 @@ interface Input {
   isConfigured: boolean
   isSignedIn: boolean
   connection: SyncConnection | null
-  checkpointResult: DayMemoNormalDifferenceCheckpointResult | null
 }
 
 const UNRESOLVED = new Set<DayMemoNormalDifferenceClassification>([
@@ -117,7 +123,14 @@ function inspectPreparedRecovery(connection: SyncConnection | null): DayMemoBody
   return loaded.metadata.pendingOperation
 }
 
-export function useDayMemoBodyMismatchRecoveryPreflight({ dayMemos, isConfigured, isSignedIn, connection, checkpointResult }: Input) {
+function checkpointIdentity(metadata: ReturnType<typeof loadDayMemoSyncMetadataAny> extends { metadata: infer M } ? M : never): string {
+  if (!metadata || typeof metadata !== 'object' || !('version' in metadata)) return ''
+  const current = metadata as { version: number; workspaceId: string; baselines: unknown; lastPulledChangeSequence: number; baselineStatus: string; baselineConfirmedAt: string | null }
+  return fingerprint({ version: current.version, workspaceId: current.workspaceId, baselines: current.baselines,
+    cursor: current.lastPulledChangeSequence, baselineStatus: current.baselineStatus, baselineConfirmedAt: current.baselineConfirmedAt })
+}
+
+export function useDayMemoBodyMismatchRecoveryPreflight({ dayMemos, isConfigured, isSignedIn, connection }: Input) {
   const [checking, setChecking] = useState(false)
   const [result, setResult] = useState<DayMemoBodyMismatchRecoveryPreflightResult | null>(null)
   const snapshotRef = useRef<DayMemoBodyMismatchRecoveryPreflightSnapshot | null>(null)
@@ -154,23 +167,23 @@ export function useDayMemoBodyMismatchRecoveryPreflight({ dayMemos, isConfigured
       if (metadata.pushBlock) { finish('normal_body_mismatch_recovery_preflight_push_blocked'); return }
       if (!metadata.pendingOperation) { finish('normal_body_mismatch_recovery_preflight_pending_missing'); return }
       if (metadata.pendingOperation.kind !== 'upsert' || metadata.pendingOperation.operationMode !== 'body_mismatch_recovery') {
-        finish('normal_body_mismatch_recovery_preflight_wrong_mode'); return
+        finish('normal_body_mismatch_recovery_preflight_unexpected_pending'); return
       }
       if (!isRecoveryPending(metadata.pendingOperation)) { finish('normal_body_mismatch_recovery_preflight_pending_invalid'); return }
       const prepared = metadata.pendingOperation
       const base = { date: prepared.date, operationMode: 'body_mismatch_recovery' as const, pendingVerified: true, workspaceVerified: true }
       if (metadata.baselineStatus !== 'recovery_required' || metadata.baselineConfirmedAt !== null || metadata.baselines[prepared.date]) {
-        finish('normal_body_mismatch_recovery_preflight_prerequisite_missing', base); return
+        finish(metadata.baselineStatus !== 'recovery_required' || metadata.baselineConfirmedAt !== null
+          ? 'normal_body_mismatch_recovery_preflight_checkpoint_missing'
+          : 'normal_body_mismatch_recovery_preflight_checkpoint_target_changed', base); return
+      }
+      if (metadata.lastPulledChangeSequence < 1 || Object.keys(metadata.baselines).length === 0) {
+        finish('normal_body_mismatch_recovery_preflight_checkpoint_invalid', base); return
       }
       if (metadata.localDeleteIntents[prepared.date] || Object.keys(metadata.localDeleteIntents).length) {
         finish('normal_body_mismatch_recovery_preflight_intent_exists', base); return
       }
-      if (checkpointResult?.safety !== 'normal_difference_checkpoint_unresolved_ready'
-        || checkpointResult.normalSyncReady !== false || checkpointResult.unresolvedClassifications[prepared.date] !== 'body_mismatch') {
-        finish('normal_body_mismatch_recovery_preflight_checkpoint_unavailable', base); return
-      }
-      const checkpointFingerprint = fingerprint({ safety: checkpointResult.safety, unresolvedDates: checkpointResult.unresolvedDates,
-        unresolvedClassifications: checkpointResult.unresolvedClassifications, reclassifiedCounts: checkpointResult.reclassifiedCounts })
+      const persistentCheckpointFingerprint = checkpointIdentity(metadata)
       const targets = stored.memos.filter((memo) => memo.date === prepared.date)
       if (targets.length !== 1 || !isStoredDayMemo(targets[0]) || targets[0].updatedAt !== prepared.preparedLocalUpdatedAt
         || !same(dayMemos, stored.memos)) {
@@ -186,9 +199,12 @@ export function useDayMemoBodyMismatchRecoveryPreflight({ dayMemos, isConfigured
       const afterStored = readDayMemoStorageSnapshot(window.localStorage)
       if (afterLoaded.status !== 'ready' || afterLoaded.raw !== loaded.raw || afterStored.status !== 'ready'
         || afterStored.serialized !== stored.serialized || !same(dayMemos, stored.memos)
-        || fingerprint({ safety: checkpointResult.safety, unresolvedDates: checkpointResult.unresolvedDates,
-          unresolvedClassifications: checkpointResult.unresolvedClassifications, reclassifiedCounts: checkpointResult.reclassifiedCounts }) !== checkpointFingerprint) {
-        finish('normal_body_mismatch_recovery_preflight_stale', base); return
+        || !isDayMemoSyncMetadataV5(afterLoaded.metadata)
+        || !same(afterLoaded.metadata.pendingOperation, prepared)) {
+        finish('normal_body_mismatch_recovery_preflight_pending_changed', base); return
+      }
+      if (checkpointIdentity(afterLoaded.metadata) !== persistentCheckpointFingerprint) {
+        finish('normal_body_mismatch_recovery_preflight_checkpoint_stale', base); return
       }
       if (pulled.maxChangeSequence !== metadata.lastPulledChangeSequence) {
         finish('normal_body_mismatch_recovery_preflight_stale', { ...base, checkpointVerified: true, localFresh: true }); return
@@ -212,10 +228,16 @@ export function useDayMemoBodyMismatchRecoveryPreflight({ dayMemos, isConfigured
       const classifications = Object.fromEntries(dates.map((date) => [date, classifyDayMemoNormalDifference(
         localByDate.get(date) ?? null, remoteByDate.get(date) ?? null, metadata.baselines[date] ?? null)]))
       const unresolved = Object.fromEntries(dates.filter((date) => UNRESOLVED.has(classifications[date])).map((date) => [date, classifications[date]]))
-      if (classifications[prepared.date] !== 'body_mismatch' || !same(unresolved, checkpointResult.unresolvedClassifications)
-        || Object.values(classifications).some((value) => value === 'revision_lineage_mismatch' || value === 'active_tombstone_mismatch' || value === 'unknown')) {
-        finish('normal_body_mismatch_recovery_preflight_difference_changed', base); return
+      if (!(prepared.date in classifications)) {
+        finish('normal_body_mismatch_recovery_preflight_checkpoint_target_missing', base); return
       }
+      if (classifications[prepared.date] !== 'body_mismatch') {
+        finish('normal_body_mismatch_recovery_preflight_checkpoint_target_changed', base); return
+      }
+      if (Object.values(classifications).some((value) => value === 'revision_lineage_mismatch' || value === 'active_tombstone_mismatch' || value === 'unknown')) {
+        finish('normal_body_mismatch_recovery_preflight_checkpoint_invalid', base); return
+      }
+      const checkpointFingerprint = fingerprint({ persistentCheckpointFingerprint, unresolved })
       const next = finish('normal_body_mismatch_recovery_preflight_ready', { ...base, ready: true, localFresh: true,
         remoteActive: true, revisionVerified: true, changeSequenceVerified: true, remoteUpdatedAtVerified: true,
         payloadVerified: true, checkpointVerified: true, snapshotCreated: true })
@@ -224,7 +246,7 @@ export function useDayMemoBodyMismatchRecoveryPreflight({ dayMemos, isConfigured
         remoteRecord: { ...remote, payload: { ...remote.payload } }, localFingerprint: fingerprint(local),
         remoteFingerprint: fingerprint(remote), checkpointFingerprint }
     } finally { if (runIdRef.current === runId) setChecking(false) }
-  }, [checking, checkpointResult, connection, dayMemos, finish, isConfigured, isSignedIn])
+  }, [checking, connection, dayMemos, finish, isConfigured, isSignedIn])
 
   const discard = useCallback(() => { runIdRef.current += 1; snapshotRef.current = null; setResult(null); setChecking(false) }, [])
   const getReadySnapshot = useCallback(() => {
@@ -234,12 +256,11 @@ export function useDayMemoBodyMismatchRecoveryPreflight({ dayMemos, isConfigured
     const stored = readDayMemoStorageSnapshot(window.localStorage)
     if (loaded.status !== 'ready' || loaded.raw !== current.metadataRaw || stored.status !== 'ready'
       || stored.serialized !== current.localStorageSerialized || !same(dayMemos, stored.memos)
-      || checkpointResult?.safety !== 'normal_difference_checkpoint_unresolved_ready'
-      || fingerprint({ safety: checkpointResult.safety, unresolvedDates: checkpointResult.unresolvedDates,
-        unresolvedClassifications: checkpointResult.unresolvedClassifications, reclassifiedCounts: checkpointResult.reclassifiedCounts }) !== current.checkpointFingerprint) return null
+      || !isDayMemoSyncMetadataV5(loaded.metadata)
+      || checkpointIdentity(loaded.metadata) === '') return null
     return { ...current, result: { ...current.result }, pendingOperation: { ...current.pendingOperation },
       localMemo: { ...current.localMemo }, remoteRecord: { ...current.remoteRecord, payload: current.remoteRecord.payload ? { ...current.remoteRecord.payload } : null } }
-  }, [checkpointResult, connection, dayMemos, isConfigured, isSignedIn])
+  }, [connection, dayMemos, isConfigured, isSignedIn])
 
   return { eligible, checking, result, check, discard, getReadySnapshot }
 }

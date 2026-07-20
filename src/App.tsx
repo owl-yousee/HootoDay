@@ -224,7 +224,6 @@ function App() {
     isConfigured: supabaseAuth.isConfigured,
     isSignedIn: supabaseAuth.isSignedIn,
     connection: supabaseWorkspace.connection,
-    checkpointResult: dayMemoNormalDifferenceRecoveryCheckpointCheck.result,
   })
   const dayMemoBaselineRebase = useDayMemoBaselineRebase({
     dayMemos,
