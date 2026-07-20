@@ -6097,5 +6097,8 @@ body,
 .cloud-day-memo-recovery-check-panel { margin-top: 1rem; padding: 0.9rem; border: 1px solid color-mix(in srgb, var(--danger-color, #b33a3a) 40%, var(--color-border, #d5dfd8)); border-radius: 0.75rem; }
 .cloud-day-memo-recovery-check-panel h4 { margin: 0 0 0.5rem; }
 .cloud-day-memo-recovery-check-panel p { margin: 0.45rem 0; }
+.cloud-day-memo-conflict-summary { margin-top: 1rem; padding: 0.9rem; border: 1px solid color-mix(in srgb, var(--danger-color, #b33a3a) 65%, var(--color-border, #d5dfd8)); border-radius: 0.75rem; }
+.cloud-day-memo-conflict-summary h4 { margin: 0 0 0.5rem; }
+.cloud-day-memo-conflict-summary p { margin: 0.45rem 0; }
 .cloud-day-memo-update-upload-step,
 .cloud-day-memo-update-upload-result { margin-top: 0.75rem; }

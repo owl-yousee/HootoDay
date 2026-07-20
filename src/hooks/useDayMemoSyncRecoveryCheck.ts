@@ -36,6 +36,16 @@ export interface DayMemoRemoteAppliedRecoverySnapshot {
   checkedAt: string
 }
 
+export interface DayMemoConflictSummary {
+  status: 'conflict' | 'conflict_detected'
+  date: string
+  localRevision: number
+  remoteRevision: number | null
+  localChangeSequence: number
+  remoteChangeSequence: number | null
+  recordedAt: string
+}
+
 interface UseDayMemoSyncRecoveryCheckInput {
   dayMemos: DayMemo[]
   isConfigured: boolean
@@ -117,6 +127,7 @@ export function useDayMemoSyncRecoveryCheck({
   const [state, setState] = useState<DayMemoSyncRecoveryCheckState>('unavailable')
   const [result, setResult] = useState<DayMemoSyncRecoveryCheckResult | null>(null)
   const [safeErrorMessage, setSafeErrorMessage] = useState<string | null>(null)
+  const [conflictSummary, setConflictSummary] = useState<DayMemoConflictSummary | null>(null)
   const appliedSnapshotRef = useRef<DayMemoRemoteAppliedRecoverySnapshot | null>(null)
   const generation = useRef(0)
   const currentLocalSignature = useMemo(() => localSignature(dayMemos), [dayMemos])
@@ -130,16 +141,31 @@ export function useDayMemoSyncRecoveryCheck({
     setResult(null)
     setSafeErrorMessage(null)
     if (!eligible || !connection?.workspaceId) {
+      setConflictSummary(null)
       setState('unavailable')
       return
     }
     const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
-    setState(loaded.status === 'ready'
+    if (loaded.status === 'ready'
       && loaded.metadata.version === 2
       && loaded.metadata.workspaceId === connection.workspaceId
-      && isCheckablePending(loaded.metadata.pendingOperation)
-      ? 'idle'
-      : 'unavailable')
+      && isCheckablePending(loaded.metadata.pendingOperation)) {
+      const pending = loaded.metadata.pendingOperation
+      setConflictSummary(pending.status === 'conflict' ? {
+        status: 'conflict',
+        date: pending.date,
+        localRevision: pending.baseRevision,
+        remoteRevision: null,
+        localChangeSequence: loaded.metadata.baselines[pending.date]?.remoteChangeSequence
+          ?? loaded.metadata.lastPulledChangeSequence,
+        remoteChangeSequence: null,
+        recordedAt: pending.preparedAt,
+      } : null)
+      setState('idle')
+      return
+    }
+    setConflictSummary(null)
+    setState('unavailable')
   }, [connection?.workspaceId, eligible])
 
   useEffect(() => {
@@ -194,6 +220,18 @@ export function useDayMemoSyncRecoveryCheck({
     }
     const classification = classifyRemote(afterPull.metadata, pending, targetMemos[0], pulled.records)
     const remote = targetRemote(pulled.records, pending.date)
+    if (classification === 'conflict_detected') {
+      setConflictSummary({
+        status: 'conflict_detected',
+        date: pending.date,
+        localRevision: pending.baseRevision,
+        remoteRevision: remote?.revision ?? null,
+        localChangeSequence: afterPull.metadata.baselines[pending.date]?.remoteChangeSequence
+          ?? afterPull.metadata.lastPulledChangeSequence,
+        remoteChangeSequence: remote?.changeSequence ?? null,
+        recordedAt: new Date().toISOString(),
+      })
+    }
     if (classification === 'remote_applied') {
       if (!remote?.payload || remote.deletedAt !== null) {
         setResult({ date: pending.date, classification: 'unknown' })
@@ -240,5 +278,5 @@ export function useDayMemoSyncRecoveryCheck({
     } : null
   }, [])
 
-  return { eligible, state, result, safeErrorMessage, checkRemote, discardResult: reset, getRemoteAppliedSnapshot }
+  return { eligible, state, result, conflictSummary, safeErrorMessage, checkRemote, discardResult: reset, getRemoteAppliedSnapshot }
 }

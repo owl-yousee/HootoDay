@@ -352,6 +352,23 @@ export function ThemeSettings({
                       <p className="cloud-sync-note">状態を確認するまで新しい送信を開始しません。自動送信・自動再試行・自動修復は行いません。</p>
                     ) : null}
                   </div>
+                  {dayMemoSyncRecoveryCheck.conflictSummary ? (
+                    <div className="cloud-day-memo-conflict-summary" role="alert">
+                      <h4>同期先との競合があります</h4>
+                      <p><strong>確認が必要です。</strong>この画面では競合を解決せず、同期先とこの端末を変更しません。</p>
+                      <ul className="cloud-day-memo-preview-summary">
+                        <li>対象日付：{dayMemoSyncRecoveryCheck.conflictSummary.date}</li>
+                        <li>状態：{dayMemoSyncRecoveryCheck.conflictSummary.status === 'conflict_detected' ? '競合を確認' : '競合状態'}</li>
+                        <li>端末の基準revision：{dayMemoSyncRecoveryCheck.conflictSummary.localRevision}</li>
+                        <li>同期先revision：{dayMemoSyncRecoveryCheck.conflictSummary.remoteRevision ?? '未確認'}</li>
+                        <li>端末の基準change sequence：{dayMemoSyncRecoveryCheck.conflictSummary.localChangeSequence}</li>
+                        <li>同期先change sequence：{dayMemoSyncRecoveryCheck.conflictSummary.remoteChangeSequence ?? '未確認'}</li>
+                        <li>{dayMemoSyncRecoveryCheck.conflictSummary.status === 'conflict_detected' ? '競合確認時刻' : '操作準備時刻'}：{new Date(dayMemoSyncRecoveryCheck.conflictSummary.recordedAt).toLocaleString('ja-JP')}</li>
+                      </ul>
+                      <p className="cloud-sync-note">pending operationとoperation IDを保持します。自動マージ、上書き、再送、取消しは行いません。</p>
+                      <p className="cloud-sync-note">同期先を再確認する場合は、下の読み取り専用「同期先の状態を確認」を使用してください。</p>
+                    </div>
+                  ) : null}
                   {dayMemoSyncRecoveryCheck.eligible ? (
                     <div className="cloud-day-memo-recovery-check-panel">
                       <h4>未完了同期の確認</h4>

@@ -2206,3 +2206,10 @@ cleanup後VERIFY結果：
 - 成功時は対象baseline、cursor、baseline確認日時、最終成功日時だけを更新してpendingをnullにする。local DayMemo、他baseline、initialUpload、migration、pushBlockは維持する。
 - 保存は既存validatorとcompare-and-write／read-back／rollback utilityを再利用する。保存失敗では元のpending付きmetadataを維持し、rollback失敗は独立して安全停止する。
 - 静的検査と通常状態の回帰確認は完了した。通常時に復旧ボタンが表示されず、既存の更新候補・local-only候補確認を利用できることを確認済み。未完了pendingを用いたremote_applied判定、metadata-only復旧、pending解消、復旧後normal復帰の危険状態実機テストは未実施であり、完了扱いにしない。
+
+### Phase B-3e5d: 本文非表示の競合確認UI
+
+- 保存済みpendingがconflictの場合、再読み込み後も対象日、base revision、baseline change sequence、操作準備時刻を安全な競合概要として表示する。remote値はread-only確認前に推測せず未確認とする。
+- B-3e5bのread-only確認が`conflict_detected`になった場合、remote revision／change sequenceと競合確認時刻をReact stateだけへ保持して表示する。本文、payload、UUID、operation IDは表示・保存しない。
+- 競合概要はユーザー判断待ちの表示専用であり、merge、remote／local採用、retry、pending削除、baseline／cursor／DayMemo変更を行わない。remote確認は既存の明示full pull導線だけを再利用する。
+- iPhoneの通常状態で安全状態・baseline確認済みを維持し、競合概要が表示されず、更新候補確認とlocal-only候補確認が従来どおり利用できることを実機確認した。conflictを人工生成する試験は行っておらず、危険状態での競合概要表示自体は未確認である。
