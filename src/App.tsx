@@ -34,6 +34,7 @@ import { useDayMemoRemoteActiveAdoption } from './hooks/useDayMemoRemoteActiveAd
 import { useDayMemoRemoteTombstoneAdoption } from './hooks/useDayMemoRemoteTombstoneAdoption'
 import { useDayMemoRemoteAdoptionVerification } from './hooks/useDayMemoRemoteAdoptionVerification'
 import { useDayMemoLocalOperationPreparationCheck } from './hooks/useDayMemoLocalOperationPreparationCheck'
+import { useDayMemoLocalOperationPreparation } from './hooks/useDayMemoLocalOperationPreparation'
 import { useDayMemoSyncMetadataMigration } from './hooks/useDayMemoSyncMetadataMigration'
 import { useDayMemoDeleteIntent } from './hooks/useDayMemoDeleteIntent'
 import { useDayMemoDeletePreview } from './hooks/useDayMemoDeletePreview'
@@ -86,6 +87,7 @@ function App() {
   const [isMonthlyAchievementsDialogOpen, setIsMonthlyAchievementsDialogOpen] = useState(false)
   const [isMobileQuickAddOpen, setIsMobileQuickAddOpen] = useState(false)
   const [mobileEntryType, setMobileEntryType] = useState<'event' | 'memo' | null>(null)
+  const [preparedDayMemoSaveDate, setPreparedDayMemoSaveDate] = useState<string | null>(null)
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null)
   const [editingExerciseSession, setEditingExerciseSession] = useState<ExerciseSession | null>(null)
   const [inventoryEventId, setInventoryEventId] = useState<string | null>(null)
@@ -262,6 +264,15 @@ function App() {
     connection: supabaseWorkspace.connection,
     verificationResult: dayMemoRemoteAdoptionVerification.result,
     getPreparationSnapshot: dayMemoRemoteAdoptionVerification.getPreparationSnapshot,
+  })
+  const dayMemoLocalOperationPreparation = useDayMemoLocalOperationPreparation({
+    dayMemos,
+    isConfigured: supabaseAuth.isConfigured,
+    isSignedIn: supabaseAuth.isSignedIn,
+    connection: supabaseWorkspace.connection,
+    preparationResult: dayMemoLocalOperationPreparationCheck.result,
+    getReadySnapshot: dayMemoLocalOperationPreparationCheck.getReadySnapshot,
+    adoptVerifiedStoredDayMemos,
   })
   const dayMemoSyncRecoveryApply = useDayMemoSyncRecoveryApply({
     dayMemos,
@@ -609,6 +620,15 @@ function App() {
           dayMemoRemoteTombstoneAdoption={dayMemoRemoteTombstoneAdoption}
           dayMemoRemoteAdoptionVerification={dayMemoRemoteAdoptionVerification}
           dayMemoLocalOperationPreparationCheck={dayMemoLocalOperationPreparationCheck}
+          dayMemoLocalOperationPreparation={dayMemoLocalOperationPreparation}
+          onOpenPreparedDayMemo={(dateKey) => {
+            const date = fromDateKey(dateKey)
+            if (!date) return
+            setSelectedDate(date)
+            setPreparedDayMemoSaveDate(dateKey)
+            setIsThemeSettingsOpen(false)
+            setIsDayMemoDialogOpen(true)
+          }}
           dayMemoSyncRecoveryApply={dayMemoSyncRecoveryApply}
           dayMemoSyncMetadataMigration={dayMemoSyncMetadataMigration}
           dayMemoDeleteIntent={dayMemoDeleteIntent}
@@ -648,7 +668,15 @@ function App() {
           date={toDateKey(selectedDate)}
           weekday={['日曜日', '月曜日', '火曜日', '水曜日', '木曜日', '金曜日', '土曜日'][selectedDate.getDay()]}
           memo={dayMemos.find((memo) => memo.date === toDateKey(selectedDate)) ?? null}
-          onSave={saveDayMemo}
+          onSave={(memo) => {
+            if (preparedDayMemoSaveDate === memo.date) {
+              const prepared = dayMemoLocalOperationPreparation.prepareSave(memo)
+              if (prepared) setPreparedDayMemoSaveDate(null)
+              return prepared
+            }
+            saveDayMemo(memo)
+            return true
+          }}
           onDelete={(date) => {
             const deleteMode = dayMemoDeleteIntent.getDeleteModeForDate(date)
             if (deleteMode === 'sync_delete_ready') return dayMemoDeleteIntent.recordIntentAndDeleteLocal(date)
@@ -659,6 +687,7 @@ function App() {
           deleteMode={dayMemoDeleteIntent.getDeleteModeForDate(toDateKey(selectedDate))}
           mobileSlide={mobileEntryType === 'memo'}
           onClose={() => {
+            setPreparedDayMemoSaveDate(null)
             const shouldRestoreFocus = mobileEntryType === 'memo'
             setIsDayMemoDialogOpen(false)
             setMobileEntryType(null)

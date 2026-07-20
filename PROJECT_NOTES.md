@@ -2409,3 +2409,15 @@ cleanup後VERIFY結果：
 - UIは安全なscalar状態、操作種別、対象日付、採用種別、各安全確認結果、件数、cursor、鮮度、次の操作だけを表示する。DayMemo本文、payload、UUID、operation ID、credential、metadata rawは表示しない。
 - 結果はReact stateだけに保持し、明示破棄できる。pull、Supabase操作、localStorage/metadata書き込み、DayMemo変更、operation ID生成、pending/intent作成、自動retry・merge・修復・競合解決は行わない。
 - B-3f5d2bの実操作準備、pending/intent/operation ID作成、upload/delete、複数件処理は未実装。実機確認、stage、commit、pushは行っていない。
+
+## Phase B-3f5d2b1: 1件の新local操作の永続的な再準備
+
+- 従来のB-3f5d2bを、永続準備だけを行うB-3f5d2b1と、準備済み1件を別の明示操作で送信するB-3f5d2b2へ分割した。今回はB-3f5d2aの`local_operation_prepare_ready` 1件を実行直前に再検証し、local操作を永続準備するところまでとする。
+- `local_edit_prepare`はread-only確認だけで、operation ID、pending、intent、DayMemoを変更しない。専用の編集開始UI接続は未実装である。
+- `local_save_prepare`はDayMemoDialogの明示保存時に実行する。B-3f5d2a snapshot、metadata raw、local storage、workspace、pending、intent、pushBlock、baseline、cursor、remote scalar、対象外不一致を再検証し、新しいoperation IDを1回生成する。完成DayMemo配列をverified保存後、同日・同baseline revisionの`kind = upsert` pendingをverified保存する。
+- saveのmetadata保存に失敗した場合は元のDayMemo配列へverified rollbackする。rollbackまたは保存状態を証明できない場合は成功扱いにせず、既存validator/safety stateがfail-closedで検出できる状態として停止する。
+- `local_delete_prepare`は設定画面の明示確認時だけ実行する。active baselineとlocal DayMemoの一致を再確認し、新しいoperation ID、同日delete pending、既存形式の`localDeleteIntent`を一つのmetadata保存で準備してから、既存delete設計どおり対象local DayMemoだけをverified削除する。
+- deleteのlocal保存に失敗した場合は元metadataへverified rollbackする。rollback不能時はpending/intentが残るため、既存safety stateが未完了operationとしてfail-closedにする。既存pending／intentは上書きしない。
+- operation IDはsave/deleteの明示確定後、全事前条件を確認してから1回だけ生成する。UI、console、文書へ実値を出さない。prepared後も自動送信、自動pull、自動retry、自動merge、自動修復、自動競合解決を行わない。
+- 結果は日付、操作種類、分類、operation ID生成・pending・intent・DayMemo変更の有無、remote未送信、確認日時、次の操作だけをReact stateへ保持する。表示結果の破棄は永続準備を取り消さない。
+- B-3f5d2b2のupload/delete送信、成功後のpending/intent解消、remote/baseline/cursor更新、永続準備取消、古いpending/intentの手動解消、複数・一括処理は未実装である。Supabase操作、stage、commit、pushは行っていない。

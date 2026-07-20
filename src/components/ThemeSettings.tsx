@@ -18,6 +18,7 @@ import type { useDayMemoRemoteActiveAdoption } from '../hooks/useDayMemoRemoteAc
 import type { useDayMemoRemoteTombstoneAdoption } from '../hooks/useDayMemoRemoteTombstoneAdoption'
 import type { useDayMemoRemoteAdoptionVerification } from '../hooks/useDayMemoRemoteAdoptionVerification'
 import type { useDayMemoLocalOperationPreparationCheck } from '../hooks/useDayMemoLocalOperationPreparationCheck'
+import type { useDayMemoLocalOperationPreparation } from '../hooks/useDayMemoLocalOperationPreparation'
 import type { useDayMemoSyncMetadataMigration } from '../hooks/useDayMemoSyncMetadataMigration'
 import type { useDayMemoDeleteIntent } from '../hooks/useDayMemoDeleteIntent'
 import type { useDayMemoDeletePreview } from '../hooks/useDayMemoDeletePreview'
@@ -75,6 +76,8 @@ interface ThemeSettingsProps {
   dayMemoRemoteTombstoneAdoption: ReturnType<typeof useDayMemoRemoteTombstoneAdoption>
   dayMemoRemoteAdoptionVerification: ReturnType<typeof useDayMemoRemoteAdoptionVerification>
   dayMemoLocalOperationPreparationCheck: ReturnType<typeof useDayMemoLocalOperationPreparationCheck>
+  dayMemoLocalOperationPreparation: ReturnType<typeof useDayMemoLocalOperationPreparation>
+  onOpenPreparedDayMemo: (date: string) => void
   dayMemoSyncRecoveryApply: ReturnType<typeof useDayMemoSyncRecoveryApply>
   dayMemoSyncMetadataMigration: ReturnType<typeof useDayMemoSyncMetadataMigration>
   dayMemoDeleteIntent: ReturnType<typeof useDayMemoDeleteIntent>
@@ -253,6 +256,8 @@ export function ThemeSettings({
   dayMemoRemoteTombstoneAdoption,
   dayMemoRemoteAdoptionVerification,
   dayMemoLocalOperationPreparationCheck,
+  dayMemoLocalOperationPreparation,
+  onOpenPreparedDayMemo,
   dayMemoSyncRecoveryApply,
   dayMemoSyncMetadataMigration,
   dayMemoDeleteIntent,
@@ -720,6 +725,66 @@ export function ThemeSettings({
                         </div>
                       ) : null}
                       <p className="cloud-sync-note">自動pull、自動retry、pending・intent・operation ID作成は行いません。</p>
+                    </div>
+                  ) : null}
+                  {dayMemoLocalOperationPreparationCheck.result?.ready || dayMemoLocalOperationPreparation.result ? (
+                    <div className="cloud-day-memo-recovery-check-panel" role="region" aria-labelledby="day-memo-local-operation-persistent-preparation-heading">
+                      <h4 id="day-memo-local-operation-persistent-preparation-heading">新しいlocal操作を永続的に準備</h4>
+                      <p>対象日付：{dayMemoLocalOperationPreparationCheck.result?.date ?? dayMemoLocalOperationPreparation.result?.date ?? '特定なし'}</p>
+                      <p>操作種類：{dayMemoLocalOperationPreparationCheck.result?.operationKind ?? dayMemoLocalOperationPreparation.result?.operationKind}</p>
+                      <p>準備条件：{dayMemoLocalOperationPreparationCheck.result?.ready ? 'local_operation_prepare_ready' : '永続準備後'}</p>
+                      {dayMemoLocalOperationPreparationCheck.result?.operationKind === 'local_edit_prepare' ? (
+                        <>
+                          <p>編集開始用のoperationは作成しません。編集UIへの専用接続は今後のPhaseで行います。</p>
+                          <button type="button" className="health-secondary-button cloud-sync-button" onClick={dayMemoLocalOperationPreparation.prepareEdit}>
+                            編集準備を確認
+                          </button>
+                        </>
+                      ) : null}
+                      {dayMemoLocalOperationPreparationCheck.result?.operationKind === 'local_save_prepare'
+                        && dayMemoLocalOperationPreparationCheck.result.date ? (
+                          <>
+                            <p>DayMemo編集画面で保存を明示した時に、local保存とupload pendingを一度だけ準備します。</p>
+                            <button
+                              type="button"
+                              className="health-secondary-button cloud-sync-button"
+                              onClick={() => onOpenPreparedDayMemo(dayMemoLocalOperationPreparationCheck.result!.date!)}
+                            >
+                              保存操作を新しく準備
+                            </button>
+                          </>
+                        ) : null}
+                      {dayMemoLocalOperationPreparationCheck.result?.operationKind === 'local_delete_prepare'
+                        && dayMemoLocalOperationPreparationCheck.result.date ? (
+                          <button
+                            type="button"
+                            className="health-secondary-button cloud-sync-button"
+                            onClick={() => { void dayMemoLocalOperationPreparation.prepareDelete(dayMemoLocalOperationPreparationCheck.result!.date!) }}
+                          >
+                            削除操作を新しく準備
+                          </button>
+                        ) : null}
+                      {dayMemoLocalOperationPreparation.result ? (
+                        <div role="status">
+                          <p><strong>{dayMemoLocalOperationPreparation.result.succeeded ? '永続準備完了' : '永続準備停止'}</strong></p>
+                          <ul className="cloud-day-memo-preview-summary">
+                            <li>対象日付：{dayMemoLocalOperationPreparation.result.date ?? '特定なし'}</li>
+                            <li>操作種類：{dayMemoLocalOperationPreparation.result.operationKind}</li>
+                            <li>safety分類：{dayMemoLocalOperationPreparation.result.classification}</li>
+                            <li>operation ID：{dayMemoLocalOperationPreparation.result.operationIdGenerated ? '生成済み' : '未生成'}</li>
+                            <li>pending：{dayMemoLocalOperationPreparation.result.pendingCreated ? '作成済み' : '未作成'}</li>
+                            <li>localDeleteIntent：{dayMemoLocalOperationPreparation.result.localDeleteIntentCreated ? '作成済み' : '未作成'}</li>
+                            <li>DayMemo：{dayMemoLocalOperationPreparation.result.dayMemoChanged ? '変更あり' : '変更なし'}</li>
+                            <li>remote送信：未実施</li>
+                            <li>確認日時：{new Date(dayMemoLocalOperationPreparation.result.checkedAt).toLocaleString('ja-JP')}</li>
+                          </ul>
+                          <p>{dayMemoLocalOperationPreparation.result.nextAction}</p>
+                          <button type="button" className="health-secondary-button cloud-sync-button" onClick={dayMemoLocalOperationPreparation.discard}>
+                            準備結果を破棄
+                          </button>
+                        </div>
+                      ) : null}
+                      <p className="cloud-sync-note">準備後も自動送信しません。永続準備の取消は今回実装していません。</p>
                     </div>
                   ) : null}
                   {dayMemoSyncRecoveryCheck.eligible ? (

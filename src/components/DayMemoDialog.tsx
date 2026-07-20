@@ -13,7 +13,7 @@ interface DayMemoDialogProps {
   date: string
   weekday: string
   memo: DayMemo | null
-  onSave: (memo: DayMemo) => void
+  onSave: (memo: DayMemo) => boolean | void
   onDelete: (date: string) => boolean | void
   deleteMode?: 'local_delete' | 'sync_delete_ready' | 'sync_delete_blocked'
   onClose: () => void
@@ -78,11 +78,15 @@ export function DayMemoDialog({
       return
     }
 
-    onSave({
+    const saved = onSave({
       date,
       content: trimmedContent,
       updatedAt: new Date().toISOString(),
     })
+    if (saved === false) {
+      setError('新しい同期操作を安全に準備できませんでした。設定画面で準備状態を確認してください。')
+      return
+    }
     closeDialog()
   }
 

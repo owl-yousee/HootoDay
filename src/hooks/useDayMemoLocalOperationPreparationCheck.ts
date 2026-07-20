@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { DayMemo } from '../types/dayMemo'
 import type { SyncConnection } from '../types/sync'
 import { readDayMemoStorageSnapshot } from '../utils/dayMemoStorage'
@@ -41,6 +41,14 @@ export interface DayMemoLocalOperationPreparationResult {
   verificationFresh: boolean
   checkedAt: string
   nextAction: string
+}
+
+export interface DayMemoLocalOperationPreparationReadySnapshot {
+  result: DayMemoLocalOperationPreparationResult
+  metadataRaw: string
+  localStorageSerialized: string
+  localSignature: string
+  verificationSnapshot: DayMemoLocalOperationPreparationSnapshot
 }
 
 interface Input {
@@ -89,6 +97,7 @@ export function useDayMemoLocalOperationPreparationCheck({
 }: Input) {
   const [operationKind, setOperationKindState] = useState<DayMemoLocalOperationPreparationKind>('local_edit_prepare')
   const [result, setResult] = useState<DayMemoLocalOperationPreparationResult | null>(null)
+  const readySnapshotRef = useRef<DayMemoLocalOperationPreparationReadySnapshot | null>(null)
   const signature = useMemo(() => localSignature(dayMemos), [dayMemos])
   const verificationSignature = useMemo(() => JSON.stringify(verificationResult), [verificationResult])
   const eligible = Boolean(isConfigured && isSignedIn && connectionIsEligible(connection))
@@ -96,9 +105,13 @@ export function useDayMemoLocalOperationPreparationCheck({
   const setOperationKind = useCallback((next: DayMemoLocalOperationPreparationKind) => {
     setOperationKindState(next)
     setResult(null)
+    readySnapshotRef.current = null
   }, [])
 
-  const discard = useCallback(() => setResult(null), [])
+  const discard = useCallback(() => {
+    setResult(null)
+    readySnapshotRef.current = null
+  }, [])
 
   useEffect(() => { discard() }, [connection?.workspaceId, discard, signature, verificationSignature])
 
@@ -168,7 +181,7 @@ export function useDayMemoLocalOperationPreparationCheck({
       else classification = 'local_operation_prepare_ready'
     }
 
-    setResult({
+    const nextResult: DayMemoLocalOperationPreparationResult = {
       date,
       adoptionKind,
       operationKind,
@@ -186,8 +199,34 @@ export function useDayMemoLocalOperationPreparationCheck({
       verificationFresh,
       checkedAt,
       nextAction: message(classification),
-    })
+    }
+    setResult(nextResult)
+    readySnapshotRef.current = classification === 'local_operation_prepare_ready'
+      && snapshot && loaded.status === 'ready' && stored.status === 'ready'
+      ? {
+        result: { ...nextResult },
+        metadataRaw: loaded.raw,
+        localStorageSerialized: stored.serialized,
+        localSignature: signature,
+        verificationSnapshot: {
+          ...snapshot,
+          result: { ...snapshot.result, outside: { ...snapshot.result.outside } },
+        },
+      }
+      : null
   }, [connection?.workspaceId, eligible, getPreparationSnapshot, operationKind, signature, verificationResult])
 
-  return { eligible, operationKind, setOperationKind, result, check, discard }
+  const getReadySnapshot = useCallback((): DayMemoLocalOperationPreparationReadySnapshot | null => {
+    const snapshot = readySnapshotRef.current
+    return snapshot ? {
+      ...snapshot,
+      result: { ...snapshot.result },
+      verificationSnapshot: {
+        ...snapshot.verificationSnapshot,
+        result: { ...snapshot.verificationSnapshot.result, outside: { ...snapshot.verificationSnapshot.result.outside } },
+      },
+    } : null
+  }, [])
+
+  return { eligible, operationKind, setOperationKind, result, check, discard, getReadySnapshot }
 }

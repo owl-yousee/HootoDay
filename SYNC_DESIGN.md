@@ -1580,3 +1580,29 @@ Minimal future files are a focused `useDayMemoRemoteAdoptionPreflight.ts`, the e
 
 - Do not create or modify pending operations, local delete intents, operation IDs, baselines, cursors, metadata, local DayMemos, localStorage, sessionStorage, or remote state. Do not automatically pull, retry, merge, repair, or resolve conflicts.
 - A ready classification authorizes only proceeding to a future explicit preparation phase. Editing, saving, deletion, upload, and delete synchronization remain unimplemented until B-3f5d2b.
+
+## Phase B-3f5d2b1: persistent preparation of one new local operation
+
+### Phase split and input
+
+- Split the former B-3f5d2b preparation/send flow into B-3f5d2b1 (persistent preparation only) and B-3f5d2b2 (one separate explicit remote send). B-3f5d2b1 never connects to Supabase and never invokes pull, upsert, or delete RPCs.
+- Accept exactly one fresh B-3f5d2a `local_operation_prepare_ready` snapshot whose date and operation kind match the explicit action. Re-read and validate version 3 metadata and DayMemo storage and require unchanged raw metadata, serialized local data, React signature, adoption verification snapshot, workspace, baseline lineage, remote scalar timestamps, cursor, pending/intents, push block, and outside mismatch count.
+- Any missing/stale snapshot, target/type mismatch, existing pending or intent, push block, invalid cursor, changed state, unsupported kind, missing prerequisite, persistence failure, or unknown condition is fail-closed and must occur before generating an operation ID whenever possible.
+
+### Operation meanings
+
+- `local_edit_prepare` remains read-only. It may report that editing can be entered, but creates no operation ID, pending, intent, or DayMemo change. A dedicated edit-start UI integration remains future work.
+- `local_save_prepare` is the explicit DayMemo save action after the user finishes editing. Validate the proposed memo without exposing content, generate one new operation ID, verified-write the complete local array, then verified-write an existing-format `kind = upsert`, `status = prepared` pending bound to the current active or tombstone baseline revision and new local `updatedAt`.
+- `local_delete_prepare` is an explicit confirmed delete preparation for an active local memo. Generate one operation ID, verified-write one existing-format delete pending and one same-date existing-format localDeleteIntent together, then verified-remove only the target local memo. The pending carries the operation ID/workspace binding through metadata; the intent format is unchanged.
+
+### Ordering and failure
+
+- Save ordering is local DayMemo write/read-back followed by metadata pending write/read-back. If metadata cannot be saved, verified-rollback the local array. Never report prepared unless both persistent results are proven.
+- Delete ordering follows the established intent-first design: metadata containing intent and delete pending is saved/read back before local removal. If local removal fails, verified-rollback metadata. If rollback cannot be proven, retain fail-closed evidence and require recovery; never auto-retry or issue another ID.
+- Baselines, cursor, push block, workspace binding, remote rows, and adoption verification results are not updated. Existing pending or intents are never overwritten or automatically resolved.
+
+### Result, UI, and next phase
+
+- Classify the result as `local_operation_prepared` or a dedicated missing/stale/target/type/pending/intent/push-block/cursor/state/prerequisite/persistence/unsupported/unknown failure. UI retains only safe scalar status: date, operation kind, booleans for ID/pending/intent/DayMemo effects, remote-unsent state, time, and next action.
+- The settings flow distinguishes edit confirmation, opening the target DayMemo dialog for explicit save preparation, and explicit delete preparation with confirmation. No action runs on render. Discard clears only the B-3f5d2b1 React result and never cancels persistent preparation.
+- B-3f5d2b2 remains responsible for a separate explicit upload/delete send and verified completion. Pending/intent completion, remote/baseline/cursor updates, persistent preparation cancellation, audited stale-operation resolution, batching, and automatic conflict resolution remain unimplemented.
