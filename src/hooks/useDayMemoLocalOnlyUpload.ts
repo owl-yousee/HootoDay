@@ -8,6 +8,7 @@ import { pullAllDayMemoSyncRecords } from '../utils/dayMemoSyncPull'
 import { loadDayMemoSyncMetadataAny, replaceDayMemoSyncMetadataV2 } from '../utils/dayMemoSyncStorage'
 import { isAppliedDayMemoSyncResult, isConflictDayMemoSyncResult, normalizeDayMemoSyncResult } from '../utils/dayMemoSyncUpsertResult'
 import { isUuid } from '../utils/syncConnectionStorage'
+import { classifyDayMemoSyncSafety } from '../utils/dayMemoSyncSafety'
 import { createUuidV4 } from '../utils/uuid'
 import type { DayMemoLocalOnlyUploadCandidateSnapshot } from './useDayMemoLocalOnlyPreview'
 
@@ -146,12 +147,16 @@ export function useDayMemoLocalOnlyUpload({
       return
     }
     const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
-    setState(loaded.status === 'ready'
-      && loaded.metadata.version === 2
-      && loaded.metadata.workspaceId === connection.workspaceId
-      && loaded.metadata.baselineStatus === 'confirmed'
-      && loaded.metadata.pendingOperation === null
-      && loaded.metadata.pushBlock === null ? 'idle' : 'recovery_required')
+    const safety = classifyDayMemoSyncSafety(loaded, connection.workspaceId)
+    const nextState: DayMemoLocalOnlyUploadState = safety.state === 'normal'
+      ? 'idle'
+      : safety.state === 'conflict'
+        ? 'conflict'
+        : safety.state === 'response_unknown'
+          ? 'response_unknown'
+          : 'recovery_required'
+    setState(nextState)
+    setSafeErrorMessage(messageForState(nextState))
   }, [connection?.workspaceId, eligible])
 
   useEffect(() => {

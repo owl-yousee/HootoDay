@@ -2182,4 +2182,11 @@ cleanup後VERIFY結果：
 - operation IDはpreparedからconflict／response unknown／recovery requiredまで保持し、勝手に再生成しない。成功してbaselineとcursorの保存が完了した後だけpendingとともに破棄できる。
 - 実装順はB-3e5a「既存conflict／unknown表示と再起動時fail-closedの統一」、B-3e5b「同じoperationを再送しないread-only remote確認」、B-3e5c「remote applied確認後のmetadata-only復旧」、B-3e5d「競合内容を本文非表示で比較し次操作を選ぶUI」とする。delete、tombstone、復活、local削除はB-3fへ分離する。
 - 実機テストは通常データではなく専用workspace・匿名端末・専用日付のDayMemoを用いる。端末Aが古いbaselineを保持したまま端末Bでrevisionを1回進め、Aのstale upsertがconflictとなりremoteがBの結果のままか確認する。response unknownは専用データで通信遮断点を制御し、同じoperationを再送せずfull pull確認へ進む。実UUID・本文・operation IDは記録しない。
+
+### Phase B-3e5a: 危険状態のfail-closed統一
+
+- metadata version 2、workspace binding、confirmed baseline、pendingなし、pushBlockなしを共通utilityで判定し、通常、conflict、response unknown、recovery required、未完了operation、metadata不正へ分類する。
+- pendingの`conflict`は競合、`response_unknown`と再読み込み後の`sending`は結果確認待ち、`recovery_required`は復旧待ち、`prepared`は未完了処理として表示する。実値、本文、payload、operation IDは表示しない。
+- 危険状態では既存更新とlocal-only追加の新しいpreflightボタンを表示せず、各Hookも再読み込み時に共通判定からconflict／unknown／recoveryへ復元してidleへ戻さない。
+- 同一セッションで既に準備済みのoperationは既存snapshotとpendingの完全一致検証を維持するが、再読み込み後のpendingを自動送信・自動取消ししない。競合解決、unknown復旧、再送、delete、tombstoneは未実装である。
 - 今回は調査・設計文書更新のみ。src、SQL、package、localStorage、metadataは変更せず、Supabase操作、commit、pushは行っていない。

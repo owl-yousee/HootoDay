@@ -47,6 +47,7 @@ import type { HootoDayBackupData } from './types/backup'
 import type { ExerciseSession } from './types/health'
 import { fromDateKey, toDateKey, toMonthKey } from './utils/date'
 import { getDailyHealthSummary, getHealthRecordDates } from './utils/healthSummary'
+import { inspectDayMemoSyncSafety } from './utils/dayMemoSyncSafety'
 import './App.css'
 
 const INITIAL_MONTH = new Date(2026, 6, 1)
@@ -137,6 +138,10 @@ function App() {
     getSingleCandidateSnapshot: dayMemoUpdatePreview.getSingleCandidateSnapshot,
     discardUpdatePreview: dayMemoUpdatePreview.discardPreview,
   })
+  const dayMemoSyncSafety = inspectDayMemoSyncSafety(
+    window.localStorage,
+    supabaseWorkspace.connection?.workspaceId ?? null,
+  )
   const { weightRecords, saveWeightRecord, deleteWeightRecord, replaceWeightRecords } = useWeightRecords()
   const { healthProfile, saveHealthProfile, deleteHealthProfile, replaceHealthProfile } = useHealthProfile()
   const { sleepRecords, saveSleepRecord, deleteSleepRecord, replaceSleepRecords } = useSleepRecords()
@@ -466,6 +471,7 @@ function App() {
           dayMemoUpdateUpload={dayMemoUpdateUpload}
           dayMemoLocalOnlyPreview={dayMemoLocalOnlyPreview}
           dayMemoLocalOnlyUpload={dayMemoLocalOnlyUpload}
+          dayMemoSyncSafety={dayMemoSyncSafety}
           onClose={() => setIsThemeSettingsOpen(false)}
         />
       )}

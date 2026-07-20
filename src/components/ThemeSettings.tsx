@@ -16,6 +16,7 @@ import { useSupabasePairing, useSupabasePairingJoin } from '../hooks/useSupabase
 import type { ConnectAsMemberResult, SupabaseWorkspaceState } from '../hooks/useSupabaseWorkspace'
 import type { HealthProfile } from '../types/health'
 import type { SyncConnection } from '../types/sync'
+import type { DayMemoSyncSafety } from '../utils/dayMemoSyncSafety'
 import type { AppliedTheme, ThemePreference } from '../types/theme'
 import { formatCalculationSex } from '../utils/healthProfile'
 
@@ -50,6 +51,7 @@ interface ThemeSettingsProps {
   dayMemoUpdateUpload: ReturnType<typeof useDayMemoUpdateUpload>
   dayMemoLocalOnlyPreview: ReturnType<typeof useDayMemoLocalOnlyPreview>
   dayMemoLocalOnlyUpload: ReturnType<typeof useDayMemoLocalOnlyUpload>
+  dayMemoSyncSafety: DayMemoSyncSafety
   onClose: () => void
 }
 
@@ -177,6 +179,7 @@ export function ThemeSettings({
   dayMemoUpdateUpload,
   dayMemoLocalOnlyPreview,
   dayMemoLocalOnlyUpload,
+  dayMemoSyncSafety,
   onClose,
 }: ThemeSettingsProps) {
   const dialogRef = useRef<HTMLDialogElement>(null)
@@ -330,6 +333,19 @@ export function ThemeSettings({
             <div className="cloud-workspace-panel">
               {supabaseWorkspace.workspaceState === 'created' ? (
                 <>
+                  <div className={`cloud-day-memo-safety-panel is-${dayMemoSyncSafety.state}`} role={dayMemoSyncSafety.state === 'normal' ? 'status' : 'alert'}>
+                    <h4>DayMemo同期の安全状態</h4>
+                    <strong>{dayMemoSyncSafety.state === 'normal' ? '通常'
+                      : dayMemoSyncSafety.state === 'conflict' ? '競合'
+                        : dayMemoSyncSafety.state === 'response_unknown' ? '結果確認待ち'
+                          : dayMemoSyncSafety.state === 'pending_operation' ? '未完了処理あり'
+                            : dayMemoSyncSafety.state === 'metadata_invalid' ? '設定確認が必要'
+                              : '復旧が必要'}</strong>
+                    <p>{dayMemoSyncSafety.message}</p>
+                    {dayMemoSyncSafety.state !== 'normal' ? (
+                      <p className="cloud-sync-note">状態を確認するまで新しい送信を開始しません。自動送信・自動再試行・自動修復は行いません。</p>
+                    ) : null}
+                  </div>
                   {dayMemoSyncBaseline.eligible ? (
                     <div className="cloud-day-memo-baseline-panel">
                       <h4>通常同期の準備</h4>
@@ -470,7 +486,7 @@ export function ThemeSettings({
                       {dayMemoUpdatePreview.previewState === 'preview_ready' ? (
                         <>
                           <p className="cloud-day-memo-success" role="status">既存DayMemoの更新候補を確認しました。</p>
-                          {dayMemoUpdatePreview.summary?.modifiedCandidateCount === 1 && dayMemoUpdateUpload.state === 'idle' ? (
+                          {dayMemoUpdatePreview.summary?.modifiedCandidateCount === 1 && dayMemoUpdateUpload.state === 'idle' && dayMemoSyncSafety.canStartUpload ? (
                             <button
                               type="button"
                               className="health-secondary-button cloud-sync-button"
@@ -565,7 +581,8 @@ export function ThemeSettings({
                           <p className="cloud-day-memo-success" role="status">local-only候補の分類が完了しました。</p>
                           {dayMemoLocalOnlyPreview.summary?.localNewCandidateCount === 1
                             && dayMemoLocalOnlyPreview.summary.candidateCount === 1
-                            && dayMemoLocalOnlyUpload.state === 'idle' ? (
+                            && dayMemoLocalOnlyUpload.state === 'idle'
+                            && dayMemoSyncSafety.canStartUpload ? (
                             <button type="button" className="health-secondary-button cloud-sync-button" onClick={() => { void dayMemoLocalOnlyUpload.runPreflight() }}>
                               新規DayMemo候補の同期先を最終確認
                             </button>
