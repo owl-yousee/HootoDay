@@ -1648,3 +1648,6 @@ Minimal future files are a focused `useDayMemoRemoteAdoptionPreflight.ts`, the e
 - B-3f5e2の復旧checkpoint確認は、cursor不一致を無視せず、cursor更新と完全一致baseline候補を一体としてメモリ内に構築する。候補はversion 4、`recovery_required`、確認日時null、完全full pull最大cursorとし、未解決日付にはbaselineを追加しない。
 - 候補metadataのvalidator通過後、同じlocal／remoteと候補baselineで再分類し、完全一致候補がconfirmedへ、本文相違・local-only・remote-onlyが元分類のまま再構築できることを必須とする。`recovery_required`により通常upload、local operation準備・preflight・sendは引き続きfail-closedとなる。
 - checkpoint readyは通常同期readyではなく、sequence上限までのcurrent stateを完全pullで観測し、完全一致分だけ系譜を確立できるというread-only判定である。保存、自動処理、一括解決、remote採用、upsert、deleteは後続Phaseまで行わない。
+- B-3f5e3はB-3f5e2 snapshotを無条件に信用せず、明示保存時にmetadata raw、DayMemo storage、workspace、cursor、pending、intent、pushBlockと完全full pullを再確認する。remote全件、最大sequence、exact候補、未解決日付・分類が変化した場合は保存しない。
+- 候補metadataは最新確認済み状態から再検証し、exact match baselineだけを保持してcursorと同時保存する。statusは`recovery_required`、確認日時はnull、未解決日付のbaselineは欠落のままとし、仮適用後の再分類とversion 4 validatorを通す。
+- 永続化は既存verified metadata utility、read-back validator、予定値との完全一致を必須とする。失敗時は元rawへのverified rollbackを確認し、証明不能ならfail-closedとする。通常同期ready、自動送信、remote変更、取消・一括処理は含まない。

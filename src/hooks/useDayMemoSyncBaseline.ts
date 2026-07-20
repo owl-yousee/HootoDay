@@ -310,6 +310,14 @@ export function useDayMemoSyncBaseline({ dayMemos, isConfigured, isSignedIn, con
     setSafeErrorMessage(safeMessage(resultReason, nextState))
   }, [baselineState, connection, currentLocalSignature, dayMemos, eligible])
 
+  const adoptVerifiedMetadata = useCallback((verified: DayMemoSyncMetadataV3 | DayMemoSyncMetadataV4) => {
+    setMetadata(verified)
+    setBaselineState(stateFromBaselineStatus(verified.baselineStatus))
+    setSummary(null)
+    setFailureReason(null)
+    setSafeErrorMessage(null)
+  }, [])
+
   return {
     eligible,
     baselineState,
@@ -318,5 +326,6 @@ export function useDayMemoSyncBaseline({ dayMemos, isConfigured, isSignedIn, con
     safeErrorMessage,
     failureReason,
     confirmBaseline,
+    adoptVerifiedMetadata,
   }
 }

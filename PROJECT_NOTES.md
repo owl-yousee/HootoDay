@@ -2460,3 +2460,6 @@ cleanup後VERIFY結果：
 - Phase B-3f5e2として、通常同期差異を保持した復旧checkpointの安全条件を明示操作でread-only確認するHookを追加した。metadata cursor 12は最後に永続化された観測位置、full pull最大sequence 16は最新current stateの観測上限であり、B-3f5e1のcursor invalid停止は正しかった。
 - checkpoint候補は、完全一致かつbaseline欠落の日付だけをactive baseline化し、cursorを完全full pull最大値へ進める一方、`baselineStatus = recovery_required`、`baselineConfirmedAt = null`を維持する。本文相違、local-only、remote-onlyにはbaselineを作らず、仮適用後に同じ分類を再構築できる場合だけcheckpoint readyとする。これは差異解消や通常同期readyを意味しない。
 - B-3f5e2はmetadata v4候補をメモリ内でvalidator検証するだけで、保存、自動pull、自動retry、merge、修復、競合解決、Supabase書き込みを行わない。checkpoint保存、差異の明示解消、全差異解消後のconfirmed復帰は未実装である。
+- Phase B-3f5e3として、B-3f5e2のready snapshotを起点に、別の明示操作でmetadata v4の復旧checkpointを保存する処理を追加した。保存直前にmetadata／DayMemo／workspaceの鮮度と完全full pullを再確認し、snapshotとremote全件、候補日付、未解決分類が同一の場合だけ進む。
+- 保存するのは完全一致baselineと同一checkpoint内のcursorだけで、`baselineStatus = recovery_required`、確認日時nullを維持し、未解決日付へbaselineを作らない。verified save/read-back後にReact metadataを更新し、失敗時は既存utilityのverified rollback結果を区別する。
+- checkpoint保存は差異解消や通常同期readyへの復帰ではない。自動pull／retry／merge／修復／競合解決、Supabase書き込みはなく、実機保存確認、本文相違の選択、remote-only採用、local-only準備、全差異解消後のconfirmed復帰、取消・一括処理は未実装である。

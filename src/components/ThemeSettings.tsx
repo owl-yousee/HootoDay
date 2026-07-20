@@ -23,6 +23,7 @@ import type { useDayMemoLocalOperationRemoteCheck } from '../hooks/useDayMemoLoc
 import type { useDayMemoLocalOperationSend } from '../hooks/useDayMemoLocalOperationSend'
 import type { useDayMemoNormalDifferenceRecoveryPlan } from '../hooks/useDayMemoNormalDifferenceRecoveryPlan'
 import type { useDayMemoNormalDifferenceRecoveryCheckpointCheck } from '../hooks/useDayMemoNormalDifferenceRecoveryCheckpointCheck'
+import type { useDayMemoNormalDifferenceRecoveryCheckpointSave } from '../hooks/useDayMemoNormalDifferenceRecoveryCheckpointSave'
 import type { useDayMemoMetadataV4Migration } from '../hooks/useDayMemoMetadataV4Migration'
 import type { useDayMemoSyncMetadataMigration } from '../hooks/useDayMemoSyncMetadataMigration'
 import type { useDayMemoDeleteIntent } from '../hooks/useDayMemoDeleteIntent'
@@ -69,6 +70,7 @@ interface ThemeSettingsProps {
   dayMemoPullPreview: ReturnType<typeof useDayMemoPullPreview>
   dayMemoNormalDifferenceRecoveryPlan: ReturnType<typeof useDayMemoNormalDifferenceRecoveryPlan>
   dayMemoNormalDifferenceRecoveryCheckpointCheck: ReturnType<typeof useDayMemoNormalDifferenceRecoveryCheckpointCheck>
+  dayMemoNormalDifferenceRecoveryCheckpointSave: ReturnType<typeof useDayMemoNormalDifferenceRecoveryCheckpointSave>
   dayMemoSyncBaseline: ReturnType<typeof useDayMemoSyncBaseline>
   dayMemoBaselineRebase: ReturnType<typeof useDayMemoBaselineRebase>
   dayMemoUpdatePreview: ReturnType<typeof useDayMemoUpdatePreview>
@@ -254,6 +256,7 @@ export function ThemeSettings({
   dayMemoPullPreview,
   dayMemoNormalDifferenceRecoveryPlan,
   dayMemoNormalDifferenceRecoveryCheckpointCheck,
+  dayMemoNormalDifferenceRecoveryCheckpointSave,
   dayMemoSyncBaseline,
   dayMemoBaselineRebase,
   dayMemoUpdatePreview,
@@ -1083,7 +1086,7 @@ export function ThemeSettings({
                     <div className="cloud-day-memo-baseline-panel" role="region" aria-labelledby="day-memo-normal-difference-checkpoint-heading">
                       <h4 id="day-memo-normal-difference-checkpoint-heading">通常同期差異の復旧checkpoint</h4>
                       <p>未解決差異を残したまま、完全一致baselineと観測済みcursorを同一checkpointとして表現できるか読み取り専用で確認します。</p>
-                      <button type="button" className="health-secondary-button cloud-sync-button" disabled={dayMemoNormalDifferenceRecoveryCheckpointCheck.checking} onClick={() => { void dayMemoNormalDifferenceRecoveryCheckpointCheck.check() }}>
+                      <button type="button" className="health-secondary-button cloud-sync-button" disabled={dayMemoNormalDifferenceRecoveryCheckpointCheck.checking || dayMemoNormalDifferenceRecoveryCheckpointSave.saving} onClick={() => { void dayMemoNormalDifferenceRecoveryCheckpointCheck.check() }}>
                         {dayMemoNormalDifferenceRecoveryCheckpointCheck.checking ? 'checkpointを確認中…' : '復旧checkpointの安全条件を確認'}
                       </button>
                       {dayMemoNormalDifferenceRecoveryCheckpointCheck.result ? (
@@ -1121,7 +1124,33 @@ export function ThemeSettings({
                           ) : null}
                           <p>{dayMemoNormalDifferenceRecoveryCheckpointCheck.result.nextAction}</p>
                           <p className="cloud-sync-note">checkpoint readyは通常同期readyではありません。cursor候補は完全一致baselineと一体で、未解決差異はrecovery_requiredのまま維持します。</p>
-                          <button type="button" className="health-secondary-button cloud-sync-button" onClick={dayMemoNormalDifferenceRecoveryCheckpointCheck.discard}>checkpoint確認結果を破棄</button>
+                          <button type="button" className="health-secondary-button cloud-sync-button" disabled={!dayMemoNormalDifferenceRecoveryCheckpointSave.canSave} onClick={() => { void dayMemoNormalDifferenceRecoveryCheckpointSave.save() }}>
+                            {dayMemoNormalDifferenceRecoveryCheckpointSave.saving ? 'checkpointを保存中…' : '復旧checkpointを保存'}
+                          </button>
+                          <button type="button" className="health-secondary-button cloud-sync-button" disabled={dayMemoNormalDifferenceRecoveryCheckpointSave.saving} onClick={dayMemoNormalDifferenceRecoveryCheckpointCheck.discard}>checkpoint確認結果を破棄</button>
+                        </div>
+                      ) : null}
+                      {dayMemoNormalDifferenceRecoveryCheckpointSave.result ? (
+                        <div role="status">
+                          <p><strong>保存結果：{dayMemoNormalDifferenceRecoveryCheckpointSave.result.safety}</strong></p>
+                          <ul className="cloud-day-memo-preview-summary">
+                            <li>保存前cursor：{dayMemoNormalDifferenceRecoveryCheckpointSave.result.beforeCursor ?? '確認不能'}</li>
+                            <li>保存後cursor：{dayMemoNormalDifferenceRecoveryCheckpointSave.result.afterCursor ?? '未保存'}</li>
+                            <li>追加baseline：{dayMemoNormalDifferenceRecoveryCheckpointSave.result.addedBaselineCount}件</li>
+                            <li>保存後baseline：{dayMemoNormalDifferenceRecoveryCheckpointSave.result.afterBaselineCount}件</li>
+                            <li>baselineStatus：{dayMemoNormalDifferenceRecoveryCheckpointSave.result.baselineStatus ?? '確認不能'}</li>
+                            <li>未解決差異：{dayMemoNormalDifferenceRecoveryCheckpointSave.result.unresolvedCount}件</li>
+                            <li>未解決差異の再構築：{dayMemoNormalDifferenceRecoveryCheckpointSave.result.unresolvedReconstructable ? '可能' : '不可または未確認'}</li>
+                            <li>通常同期ready：いいえ</li>
+                            <li>validator：{dayMemoNormalDifferenceRecoveryCheckpointSave.result.validatorPassed ? '正常' : '未確認または失敗'}</li>
+                            <li>read-back：{dayMemoNormalDifferenceRecoveryCheckpointSave.result.readBackSucceeded ? '成功' : '未実施または失敗'}</li>
+                            <li>rollback：{dayMemoNormalDifferenceRecoveryCheckpointSave.result.rollbackAttempted ? (dayMemoNormalDifferenceRecoveryCheckpointSave.result.rollbackSucceeded ? '成功' : '失敗') : '未実施'}</li>
+                            <li>metadata永続変更：{dayMemoNormalDifferenceRecoveryCheckpointSave.result.metadataSaved ? 'あり' : 'なし'}</li>
+                            <li>RPC送信：なし</li>
+                            <li>確認日時：{new Date(dayMemoNormalDifferenceRecoveryCheckpointSave.result.checkedAt).toLocaleString('ja-JP')}</li>
+                          </ul>
+                          <p>{dayMemoNormalDifferenceRecoveryCheckpointSave.result.nextAction}</p>
+                          <button type="button" className="health-secondary-button cloud-sync-button" disabled={dayMemoNormalDifferenceRecoveryCheckpointSave.saving} onClick={dayMemoNormalDifferenceRecoveryCheckpointSave.discard}>checkpoint保存結果を破棄</button>
                         </div>
                       ) : null}
                     </div>

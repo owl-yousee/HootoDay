@@ -5,6 +5,7 @@ import type { DayMemoSyncMetadataV4 } from '../types/dayMemoSync'
 import type { SyncConnection } from '../types/sync'
 import { isStoredDayMemo, readDayMemoStorageSnapshot } from '../utils/dayMemoStorage'
 import { pullAllDayMemoSyncRecords } from '../utils/dayMemoSyncPull'
+import type { RemoteDayMemoRecord } from '../utils/dayMemoSyncPull'
 import { isDayMemoSyncMetadataV4, loadDayMemoSyncMetadataAny } from '../utils/dayMemoSyncStorage'
 import { isUuid } from '../utils/syncConnectionStorage'
 import { DAY_MEMO_NORMAL_DIFFERENCE_CLASSIFICATIONS, classifyDayMemoNormalDifference, type DayMemoNormalDifferenceClassification } from './useDayMemoNormalDifferenceRecoveryPlan'
@@ -48,6 +49,16 @@ export interface DayMemoNormalDifferenceCheckpointResult {
 
 interface Input { dayMemos: DayMemo[]; isConfigured: boolean; isSignedIn: boolean; connection: SyncConnection | null }
 
+export interface DayMemoNormalDifferenceCheckpointSnapshot {
+  result: DayMemoNormalDifferenceCheckpointResult
+  metadataRaw: string
+  localStorageSerialized: string
+  workspaceId: string
+  remoteRecords: RemoteDayMemoRecord[]
+  candidateMetadata: DayMemoSyncMetadataV4
+  unresolvedClassifications: Record<string, DayMemoNormalDifferenceClassification>
+}
+
 const UNRESOLVED: DayMemoNormalDifferenceClassification[] = [
   'exact_body_timestamp_mismatch', 'body_mismatch', 'local_only', 'remote_only_active', 'remote_only_tombstone',
 ]
@@ -76,6 +87,7 @@ export function useDayMemoNormalDifferenceRecoveryCheckpointCheck({ dayMemos, is
   const [checking, setChecking] = useState(false)
   const [result, setResult] = useState<DayMemoNormalDifferenceCheckpointResult | null>(null)
   const runIdRef = useRef(0)
+  const snapshotRef = useRef<DayMemoNormalDifferenceCheckpointSnapshot | null>(null)
   const signature = useMemo(() => localSignature(dayMemos), [dayMemos])
   const eligible = Boolean(isConfigured && isSignedIn && supabaseClient && connectionIsEligible(connection))
 
@@ -89,12 +101,12 @@ export function useDayMemoNormalDifferenceRecoveryCheckpointCheck({ dayMemos, is
       checkedAt: new Date().toISOString(), ...values, safety, nextAction: nextAction(safety) })
   }, [dayMemos.length])
 
-  const discard = useCallback(() => { runIdRef.current += 1; setResult(null); setChecking(false) }, [])
+  const discard = useCallback(() => { runIdRef.current += 1; snapshotRef.current = null; setResult(null); setChecking(false) }, [])
 
   const check = useCallback(async () => {
     if (!eligible || !supabaseClient || !connectionIsEligible(connection) || checking) return
     const runId = ++runIdRef.current
-    setChecking(true); setResult(null)
+    snapshotRef.current = null; setChecking(true); setResult(null)
     try {
       const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
       const stored = readDayMemoStorageSnapshot(window.localStorage)
@@ -174,12 +186,33 @@ export function useDayMemoNormalDifferenceRecoveryCheckpointCheck({ dayMemos, is
       }))
       const unresolvedReconstructable = exactDates.every((date) => reconstructed.get(date) === 'exact_match_baseline_confirmed')
         && unresolvedDates.every((date) => reconstructed.get(date) === original.get(date) && !baselines[date])
-      finish(unresolvedReconstructable ? 'normal_difference_checkpoint_ready' : 'normal_difference_checkpoint_unresolved_not_reconstructable', {
+      const safety = unresolvedReconstructable ? 'normal_difference_checkpoint_ready' : 'normal_difference_checkpoint_unresolved_not_reconstructable'
+      const values = {
         ...candidateCommon, metadataValidatorPassed: true, unresolvedReconstructable, reclassifiedCounts,
         oneByOneRecoveryPossible: unresolvedReconstructable && unresolvedDates.length > 0,
-      })
+      }
+      finish(safety, values)
+      if (safety === 'normal_difference_checkpoint_ready') {
+        const readyResult: DayMemoNormalDifferenceCheckpointResult = {
+          ...values,
+          normalSyncReady: false,
+          persistentStateChanged: false,
+          rpcSent: false,
+          checkedAt: new Date().toISOString(),
+          safety,
+          nextAction: nextAction(safety),
+        }
+        snapshotRef.current = { result: readyResult, metadataRaw: loaded.raw,
+          localStorageSerialized: stored.serialized, workspaceId: connection.workspaceId,
+          remoteRecords: pulled.records.map((record) => ({ ...record, payload: record.payload ? { ...record.payload } : null })),
+          candidateMetadata: candidate,
+          unresolvedClassifications: Object.fromEntries(unresolvedDates.map((date) => [date, original.get(date)!])) }
+        setResult(readyResult)
+      }
     } finally { if (runIdRef.current === runId) setChecking(false) }
   }, [checking, connection, dayMemos, eligible, finish, signature])
 
-  return { eligible, checking, result, check, discard }
+  const getReadySnapshot = useCallback(() => snapshotRef.current, [])
+  const consumeReadySnapshot = useCallback(() => { snapshotRef.current = null }, [])
+  return { eligible, checking, result, check, discard, getReadySnapshot, consumeReadySnapshot }
 }
