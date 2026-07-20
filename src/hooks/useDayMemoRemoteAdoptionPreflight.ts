@@ -35,6 +35,12 @@ export interface DayMemoRemoteAdoptionPreflightResult {
   localEffect: 'replace' | 'add' | 'delete' | 'metadata_only'
 }
 
+export interface DayMemoRemoteActiveAdoptionSnapshot {
+  result: DayMemoRemoteAdoptionPreflightResult & { classification: 'ready_remote_active'; remoteState: 'active'; localEffect: 'replace' | 'add' }
+  conflictSnapshot: DayMemoConflictAdoptionSnapshot
+  completedLocalCandidate: DayMemo[]
+}
+
 interface Input {
   dayMemos: DayMemo[]
   isConfigured: boolean
@@ -67,7 +73,7 @@ function sameJson(left: unknown, right: unknown): boolean {
   return JSON.stringify(left) === JSON.stringify(right)
 }
 
-function otherMismatchCount(
+export function countRemoteAdoptionMismatches(
   metadata: DayMemoSyncMetadataV3,
   localMemos: DayMemo[],
   records: RemoteDayMemoRecord[],
@@ -134,6 +140,7 @@ export function useDayMemoRemoteAdoptionPreflight({ dayMemos, isConfigured, isSi
   const [safeErrorMessage, setSafeErrorMessage] = useState<string | null>(null)
   const selectedSnapshotRef = useRef<DayMemoConflictAdoptionSnapshot | null>(null)
   const completedLocalCandidateRef = useRef<DayMemo[] | null>(null)
+  const readyActiveSnapshotRef = useRef<DayMemoRemoteActiveAdoptionSnapshot | null>(null)
   const generation = useRef(0)
   const signature = useMemo(() => localSignature(dayMemos), [dayMemos])
   const latestSignature = useRef(signature)
@@ -151,6 +158,7 @@ export function useDayMemoRemoteAdoptionPreflight({ dayMemos, isConfigured, isSi
     generation.current += 1
     selectedSnapshotRef.current = null
     completedLocalCandidateRef.current = null
+    readyActiveSnapshotRef.current = null
     setSelectedDate(null)
     setResult(null)
     setSafeErrorMessage(null)
@@ -171,6 +179,7 @@ export function useDayMemoRemoteAdoptionPreflight({ dayMemos, isConfigured, isSi
     generation.current += 1
     selectedSnapshotRef.current = snapshot
     completedLocalCandidateRef.current = null
+    readyActiveSnapshotRef.current = null
     setSelectedDate(date)
     setResult(null)
     setSafeErrorMessage(null)
@@ -184,6 +193,7 @@ export function useDayMemoRemoteAdoptionPreflight({ dayMemos, isConfigured, isSi
     setResult(null)
     setSafeErrorMessage(null)
     completedLocalCandidateRef.current = null
+    readyActiveSnapshotRef.current = null
     const before = loadDayMemoSyncMetadataAny(window.localStorage)
     const stored = readDayMemoStorageSnapshot(window.localStorage)
     const checkedAt = new Date().toISOString()
@@ -238,7 +248,7 @@ export function useDayMemoRemoteAdoptionPreflight({ dayMemos, isConfigured, isSi
       setState('checked')
       return
     }
-    const mismatches = otherMismatchCount(after.metadata, afterStored.memos, pulled.records, snapshot.item.date)
+    const mismatches = countRemoteAdoptionMismatches(after.metadata, afterStored.memos, pulled.records, snapshot.item.date)
       + Object.values(after.metadata.localDeleteIntents).filter((intent) => intent.date !== snapshot.item.date).length
       + (after.metadata.pendingOperation && after.metadata.pendingOperation.date !== snapshot.item.date ? 1 : 0)
     if (mismatches > 0) {
@@ -273,14 +283,56 @@ export function useDayMemoRemoteAdoptionPreflight({ dayMemos, isConfigured, isSi
       return
     }
     completedLocalCandidateRef.current = localCandidate
-    setResult({
+    const nextResult: DayMemoRemoteAdoptionPreflightResult = {
       ...blockedResult(snapshot, classification, checkedAt),
       remoteRevision: remote.revision,
       remoteChangeSequence: remote.changeSequence,
       remoteState: remote.deletedAt === null ? 'active' : 'deleted',
-    })
+    }
+    if (classification === 'ready_remote_active' && nextResult.remoteState === 'active'
+      && (nextResult.localEffect === 'replace' || nextResult.localEffect === 'add')) {
+      readyActiveSnapshotRef.current = {
+        result: {
+          ...nextResult,
+          classification: 'ready_remote_active',
+          remoteState: 'active',
+          localEffect: nextResult.localEffect,
+        },
+        conflictSnapshot: {
+          ...snapshot,
+          item: { ...snapshot.item },
+          localMemos: snapshot.localMemos.map((memo) => ({ ...memo })),
+          pendingOperation: snapshot.pendingOperation ? { ...snapshot.pendingOperation } : null,
+          localDeleteIntents: Object.fromEntries(Object.entries(snapshot.localDeleteIntents).map(([date, intent]) => [date, { ...intent }])),
+          baseline: snapshot.baseline ? { ...snapshot.baseline } : null,
+          remoteRecord: { ...remote, payload: remote.payload ? { ...remote.payload } : null },
+        },
+        completedLocalCandidate: localCandidate.map((memo) => ({ ...memo })),
+      }
+    }
+    setResult(nextResult)
     setState('checked')
   }, [connection?.workspaceId, eligibleConnection, signature, state])
+
+  const getReadyActiveSnapshot = useCallback((): DayMemoRemoteActiveAdoptionSnapshot | null => {
+    const snapshot = readyActiveSnapshotRef.current
+    return snapshot ? {
+      result: { ...snapshot.result },
+      conflictSnapshot: {
+        ...snapshot.conflictSnapshot,
+        item: { ...snapshot.conflictSnapshot.item },
+        localMemos: snapshot.conflictSnapshot.localMemos.map((memo) => ({ ...memo })),
+        pendingOperation: snapshot.conflictSnapshot.pendingOperation ? { ...snapshot.conflictSnapshot.pendingOperation } : null,
+        localDeleteIntents: Object.fromEntries(Object.entries(snapshot.conflictSnapshot.localDeleteIntents).map(([date, intent]) => [date, { ...intent }])),
+        baseline: snapshot.conflictSnapshot.baseline ? { ...snapshot.conflictSnapshot.baseline } : null,
+        remoteRecord: {
+          ...snapshot.conflictSnapshot.remoteRecord,
+          payload: snapshot.conflictSnapshot.remoteRecord.payload ? { ...snapshot.conflictSnapshot.remoteRecord.payload } : null,
+        },
+      },
+      completedLocalCandidate: snapshot.completedLocalCandidate.map((memo) => ({ ...memo })),
+    } : null
+  }, [])
 
   return {
     eligible: eligibleConnection && metadataEligible && conflictItems.some(safeItem),
@@ -291,5 +343,6 @@ export function useDayMemoRemoteAdoptionPreflight({ dayMemos, isConfigured, isSi
     selectCandidate,
     runPreflight,
     discard,
+    getReadyActiveSnapshot,
   }
 }

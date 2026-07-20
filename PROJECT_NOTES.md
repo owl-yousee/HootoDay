@@ -2367,3 +2367,13 @@ cleanup後VERIFY結果：
 - 結果はready active/tombstone、snapshot変更、remote変更、対象外不一致、remote不正、unknownへ分類し、対象日・revision・change sequence・影響・不一致件数だけを表示する。
 - 選択、snapshot、remote参照、完成配列候補、結果はReact state/refだけに保持し、「remote採用確認を破棄」または再読み込みで消える。競合のpending、intent、baseline、cursor、local/remote DayMemoは変更しない。
 - B-3f5d1b/cの反映処理、operation ID生成、自動採用、自動retry、merge、競合解決は未実装である。実競合がない場合の実機preflight確認、commit、pushは未実施である。
+
+## Phase B-3f5d1b：remote active 1件の明示local反映（2026-07-20）
+
+- B-3f5d1aの`ready_remote_active` 1件だけを、明示的な「同期先の内容をこの端末へ反映」操作でlocalへ反映する。保存直前にread-only full pullを再実行し、remote record、対象外日付、metadata raw、local snapshot、pending、intent、baseline、workspace、React stateがpreflight後から不変であることを再検証する。
+- strict validator済みremote payloadで同日DayMemoを置換し、同日がなければ追加する。他日付は維持し、重複日付を拒否する。本文はUI、console、sync metadataへ出さない。
+- 既存の反映前バックアップを保存または安全に再利用した後、完成local配列を1回保存してread-backする。その成功後だけ完成metadataを構築・validator確認・保存・read-backする。metadata先行保存は禁止する。
+- 成功metadataは対象日をactive baselineへ更新し、remote revision、remote change sequence、remote payload updatedAtを保存する。cursorは`max(既存cursor, 対象change sequence)`だけ進める。対象pendingのnull化と対象localDeleteIntentの削除は完成metadataの保存・read-back成功時だけ行う。
+- localまたはmetadata保存失敗時は既存utilityでverified rollbackする。rollbackや最終保存状態を証明できない場合は`recovery_required`で停止し、自動retryや推測による巻き戻しを行わない。
+- upsert/delete RPC、remote変更、operation ID生成・変更、tombstone反映、merge、競合解決は行わない。remote tombstone採用はB-3f5d1cへ分離する。
+- 静的検査と通常状態回帰確認を行う段階であり、実際の`ready_remote_active`競合生成・明示反映は未実施である。commit・pushも未実施である。
