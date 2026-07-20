@@ -1396,3 +1396,55 @@ The next smallest implementation phase is B-3f5a. This preparation changes docum
 - The upload revalidates workspace, device, pending, operation ID, tombstone baseline, local snapshot, absence of local delete intent, and absence of push block before invoking `hooto_day_upsert_sync_record` once.
 - Applied validation requires status applied, no conflict, matching workspace/entity/payload, revision `base + 1`, increased change sequence, and `deletedAt = null`. Only then is the tombstone baseline replaced with an active baseline and pending cleared after verified metadata save/read-back.
 - Conflict and response unknown retain the same pending operation and operation ID. A post-RPC metadata failure is never converted back to unsent and never retried automatically. Local DayMemo content is not modified by resurrection.
+## Phase B-3f5c preparation: delete-aware conflict inspection
+
+### Authoritative conflict model
+
+- Both mutation RPCs lock the entity and compare the current revision with `base_revision`. The first committed valid mutation advances revision/change sequence; a later stale mutation returns `status = conflict`, `conflict = true`, and the current remote row without changing it.
+- There is no automatic delete-wins or update-wins rule. A conflict never changes local DayMemo, local delete intent, baseline, cursor, pending operation, operation ID, or remote state.
+- The operation ID remains bound to its original request fingerprint. Conflict inspection must not retry it, generate a replacement ID, merge content, or choose local/remote automatically.
+
+### Formal classifications
+
+| Classification | Local evidence | Remote evidence from complete pull |
+| --- | --- | --- |
+| `local_update_remote_deleted` | `kind = upsert`, active baseline, base revision equals baseline revision, valid local memo matching `preparedLocalUpdatedAt` | tombstone with revision greater than base |
+| `local_delete_remote_updated` | `kind = delete` and matching localDeleteIntent, or an intent-only delete candidate; active baseline/base lineage is valid | active record with revision greater than the delete base |
+| `resurrection_remote_updated` | `kind = upsert`, tombstone baseline, base revision equals tombstone revision, valid recreated local memo | active record with revision greater than base |
+| `resurrection_newer_tombstone` | same resurrection evidence | tombstone with revision greater than base |
+| `local_create_remote_changed` | `kind = upsert`, base revision 0, no baseline | any current remote active row or tombstone; do not mislabel as update/resurrection |
+| `remote_state_unknown` | locally coherent request may exist | pull incomplete/cancelled, row missing, duplicate, validation failure, invalid active/tombstone shape, or lineage cannot be proven |
+| `pending_metadata_mismatch` | pending workspace/date/kind/base/status does not agree with baseline, local memo, delete intent, or storage/React snapshot | remote classification is not attempted or trusted |
+
+An upsert pending does not contain an explicit update/resurrection subtype. The discriminator is authoritative baseline state: active baseline means update; tombstone baseline with the same base revision means resurrection; base zero with no baseline means local creation. A delete pending must agree with the active baseline and its localDeleteIntent. If these invariants do not hold, use `pending_metadata_mismatch` rather than guessing.
+
+### Read-only inspection
+
+- The user explicitly presses 「競合状態を確認」. Reuse `pullAllDayMemoSyncRecords` with cursor 0, page size 100, at most 20 sequential pages, ascending change sequence, duplicate rejection, cursor-stall rejection, hard-limit/incomplete-result rejection, and no automatic retry.
+- Re-read metadata and local storage before and after pull. Require version 3, workspace binding, the same raw metadata, the same pending/intent/baseline, and the same React/storage local snapshot. A change during inspection produces `remote_state_unknown` or `pending_metadata_mismatch` and discards partial conclusions.
+- The current recovery hook only accepts checkable `kind = upsert` pending operations. B-3f5c should extend or factor its read-only classifier to support `kind = delete` and a coherent intent-only delete candidate without duplicating the full-pull implementation.
+- Inspection writes nothing: no metadata, baseline, pending, intent, local DayMemo, cursor, remote row, safety state, or operation ledger change.
+
+### Presentation and retention
+
+Allowed fields are date, conflict classification, local operation (`update`, `delete`, `resurrection`, or `create`), local base revision, remote revision, baseline and remote change sequences, remote state (`active`, `deleted`, `unknown`), pending status, inspection time, and a safe next-step label.
+
+Forbidden fields are DayMemo content, payload or content comparison, workspace/device/user UUID, operation ID, credentials/session, internal exception text, and raw metadata. Payload may be validated internally only to distinguish a valid active row from a tombstone; its content must not be retained in the UI result.
+
+Preview results live only in React memory and disappear on discard/reload. Discard never clears the underlying conflict pending, operation ID, baseline, localDeleteIntent, or safety state. Suggested next-step text is limited to re-run read-only inspection, run the existing recovery check where applicable, remain stopped, or wait for an explicit resolution phase.
+
+### Safety and multiple conflicts
+
+- Conflict remains fail-closed. Do not return safety to normal and do not enable update, delete, resurrection, or local-only upload. Only read-only pull/recovery inspection is allowed.
+- Metadata currently permits one global pending operation, so a pending conflict is singular. The result model should nevertheless be an array so future multiple intents/candidate dates can be listed safely. Resolution remains one date at a time; no batch resolution.
+- Intent-only delete inspection must preserve the intent. A pending delete conflict must preserve both pending and intent. Upsert conflicts preserve the local memo and pending. No inspection result is persisted.
+
+### Follow-up phases and minimal B-3f5c files
+
+1. **B-3f5c:** implement read-only delete-aware classification and UI only.
+2. **B-3f5d1:** explicitly adopt one verified remote state, with separate active/tombstone safety rules.
+3. **B-3f5d2a:** read-only eligibility check for abandoning the stale local operation and preparing a new request.
+4. **B-3f5d2b:** one explicit new-operation preparation/send flow. This is not a retry; the stale pending must first be resolved through an audited transition.
+5. **B-3f5d3:** verify baseline, pending, intent, cursor, and normal safety restoration after resolution.
+
+The minimal B-3f5c implementation candidates are `src/hooks/useDayMemoSyncRecoveryCheck.ts` or a new focused `src/hooks/useDayMemoConflictPreview.ts`, `src/components/ThemeSettings.tsx`, `src/App.tsx` only if a new hook is introduced, and the two design documents. Reuse `src/utils/dayMemoSyncPull.ts`; avoid changing metadata types/storage, SQL, RPCs, upload hooks, or DayMemo storage.

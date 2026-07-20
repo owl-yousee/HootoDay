@@ -2316,3 +2316,15 @@ cleanup後VERIFY結果：
 - 成功後だけ対象baselineをactiveへ戻し、remote revision/change sequence、local/remote updatedAt、cursor、確認日時、最終成功日時を更新してpendingをnullにする。local DayMemo本文は変更しない。
 - conflictとresponse unknownではpendingとoperation IDを保持し、自動retry、新ID生成、自動解決を行わない。RPC成功後metadata保存失敗は未送信扱いへ戻さず、復旧が必要な状態で停止する。
 - 複数件復活、delete変更、localDeleteIntent変更、pushBlock解除、競合解決は未実装である。Supabase実操作、commit、pushは未実施である。
+## Phase B-3f5c準備：delete-aware競合確認UI設計（2026-07-20）
+
+- SQL契約ではupsert/deleteとも対象entityをtransaction lockし、現在revisionとbase revisionが一致した操作だけを適用する。先に適用された操作がrevisionを進め、古いbaseを使う後続操作はcurrent remote状態付き`conflict`となる。delete優先・update優先は設けない。
+- `local_update_remote_deleted`はactive baselineをbaseにしたupsert pendingとremote tombstone、`local_delete_remote_updated`はdelete pendingまたはlocalDeleteIntentとnewer active remote、`resurrection_remote_updated`はtombstone baselineをbaseにしたupsert pendingとnewer active remote、`resurrection_newer_tombstone`は同pendingとnewer tombstoneで判定する。
+- full pull不完全、record欠落、validator失敗、revision系譜不明は`remote_state_unknown`、pending・baseline・workspace・local状態・intentの組合せが成立しない場合は`pending_metadata_mismatch`とし、推測で具体的競合へ分類しない。base revision 0かつbaselineなしのupsert競合は通常更新／復活と区別し、`local_create_remote_changed`として扱う案を採用する。
+- 現行`useDayMemoSyncRecoveryCheck`はcheckable pendingをupsertに限定しているため、delete pendingとintent-only delete競合を同じread-only full pullで確認できない。B-3f5cでは既存full pull utilityを再利用し、upsert/deleteを共通snapshotへ正規化して分類する。
+- UIは既存の同期安全状態・競合概要の近くへ置き、明示的な「競合状態を確認」でのみfull pullする。日付、local操作種別、base/remote revision、baseline/remote change sequence、remote active/deleted/unknown、pending status、確認日時、安全な次操作だけを表示する。
+- DayMemo本文、payload、UUID、operation ID、token、Auth session、内部例外、metadata JSONは表示しない。previewはReact stateだけに保持し、破棄・再読み込みで消す。破棄してもpending、operation ID、baseline、intent、local DayMemo、cursor、remoteは変更しない。
+- 競合中はfail-closedを維持し、update/delete/resurrection/local-only uploadを禁止する。read-only pullとrecovery checkだけを許可し、自動merge、自動retry、自動採用、自動削除、自動復活、新operation ID生成を行わない。
+- metadataはpendingを1件だけ保持するため現行pending競合は最大1件だが、将来の複数intent・複数候補を考慮してread-only一覧型とする。解決は後続Phaseで1件ずつ行い、一括解決しない。
+- 後続はB-3f5c（read-only分類UI）、B-3f5d1（remote状態を1件明示採用）、B-3f5d2a（local操作を再準備できる条件のread-only確認）、B-3f5d2b（新operation IDによる1件の明示再準備・送信）、B-3f5d3（baseline・pending・intentの復旧確認）へ分割する。単純retryは採用しない。
+- 今回は`PROJECT_NOTES.md`と`SYNC_DESIGN.md`だけを更新し、src、package、SQL、RPC、localStorage、DayMemo、metadataを変更していない。Supabase操作、stage、commit、pushも行っていない。
