@@ -2213,3 +2213,16 @@ cleanup後VERIFY結果：
 - B-3e5bのread-only確認が`conflict_detected`になった場合、remote revision／change sequenceと競合確認時刻をReact stateだけへ保持して表示する。本文、payload、UUID、operation IDは表示・保存しない。
 - 競合概要はユーザー判断待ちの表示専用であり、merge、remote／local採用、retry、pending削除、baseline／cursor／DayMemo変更を行わない。remote確認は既存の明示full pull導線だけを再利用する。
 - iPhoneの通常状態で安全状態・baseline確認済みを維持し、競合概要が表示されず、更新候補確認とlocal-only候補確認が従来どおり利用できることを実機確認した。conflictを人工生成する試験は行っておらず、危険状態での競合概要表示自体は未確認である。
+### Phase B-3f準備：delete／tombstone同期仕様（2026年7月20日）
+
+- SQLを正本として `hooto_day_delete_sync_record` を再確認した。削除は物理削除ではなく、`payload = null`、`deleted_at`、新しいrevision・change sequenceを持つtombstoneとして記録する。revision不一致はrecordを変更せずconflictを返す。
+- アプリ上の正式なdeleteは「remote上のactive recordと一致するbaselineを持つDayMemoについて、ユーザーが明示した削除意図をfull pullで再確認後、1日付ずつtombstone化する操作」とする。local配列にDayMemoがない事実だけからremote deleteを推測しない。
+- 現在のlocal削除はDayMemo配列から要素を除外するだけで削除意図が残らない。全初期化・JSON復元・破損・別端末変更と区別できないため、同期metadataへ本文を含まない永続的な削除意図を追加する必要がある。
+- 現在のmetadata version 2はbaseline項目として`deletedAt`を持つが、confirmed validatorはtombstoneを拒否し、pending kindもupsert固定である。既存version 2の意味を変更せず、version 3への安全なmigrationでtombstone-aware baseline、削除意図、delete pendingを表現する。
+- delete候補は、明示的な削除意図・active baseline・local不在・完全full pullでremote active状態がbaselineと一致・pendingなし・pushBlockなしの場合だけ成立する。remote tombstone、remote差異、不完全取得、削除意図なしのmissing localは送信不可とする。
+- updateとdeleteが競合した場合は先に確定したremote変更を優先し、後続の古いbase revision側をconflictとして停止する。自動merge、自動削除、自動復活、自動retryは行わない。
+- tombstone済み日付へのDayMemo作成は新規作成ではなく明示的な復活であり、base revision 0ではなく最新tombstone revisionを使う。復活はdelete実装と分離した後続Phaseで扱う。
+- deleteのoperation IDはpreviewでは生成せず、完全full pull後の明示的な1件送信準備時に1日付につき1つ生成する。pendingは`kind = delete`を持つ判別可能な構造とし、conflict・response unknown・recovery requiredでは同じIDを保持する。
+- `json_restore`／`full_reset` pushBlock中はdelete意図作成とdelete送信を禁止する。読み取り専用確認は可能だが、全初期化やlocal不在をクラウド全削除へ変換しない。
+- 実装順は B-3f1 metadata version 3 migration、B-3f2 delete／tombstone候補preview、B-3f3 active record 1件の明示delete、B-3f4 tombstoneの明示pull反映、B-3f5復活・削除競合UIとする。次の最小Phaseは書き込みを伴わないB-3f1である。
+- 今回は調査と設計記録のみで、src・package・SQL・RPC・RLS・policy・localStorage・DayMemo・同期metadataを変更していない。Supabase操作、stage、commit、pushも行っていない。
