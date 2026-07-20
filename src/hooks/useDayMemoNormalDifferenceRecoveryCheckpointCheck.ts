@@ -32,6 +32,8 @@ export interface DayMemoNormalDifferenceCheckpointResult {
   unresolvedCount: number
   unresolvedCounts: Record<DayMemoNormalDifferenceClassification, number>
   unresolvedDates: string[]
+  bodyMismatchDates: string[]
+  unresolvedClassifications: Record<string, DayMemoNormalDifferenceClassification>
   candidateBaselineCount: number
   candidateBaselineStatus: 'recovery_required' | null
   candidateBaselineConfirmedAtNull: boolean
@@ -96,7 +98,7 @@ export function useDayMemoNormalDifferenceRecoveryCheckpointCheck({ dayMemos, is
   const finish = useCallback((safety: DayMemoNormalDifferenceCheckpointSafety, values: Partial<DayMemoNormalDifferenceCheckpointResult> = {}) => {
     setResult({ metadataCursor: null, fullPullMaxSequence: null, cursorDifference: null, remoteCount: 0,
       localCount: dayMemos.length, baselineCount: 0, exactBaselineCandidateCount: 0, unresolvedCount: 0,
-      unresolvedCounts: emptyCounts(), unresolvedDates: [], candidateBaselineCount: 0, candidateBaselineStatus: null,
+      unresolvedCounts: emptyCounts(), unresolvedDates: [], bodyMismatchDates: [], unresolvedClassifications: {}, candidateBaselineCount: 0, candidateBaselineStatus: null,
       candidateBaselineConfirmedAtNull: false, candidateCursor: null, metadataValidatorPassed: false,
       unresolvedReconstructable: false, reclassifiedCounts: emptyCounts(), normalSyncReady: false,
       oneByOneRecoveryPossible: false, persistentStateChanged: false, rpcSent: false,
@@ -151,11 +153,13 @@ export function useDayMemoNormalDifferenceRecoveryCheckpointCheck({ dayMemos, is
       const unresolvedDates = dates.filter((date) => UNRESOLVED.includes(original.get(date)!))
       const unresolvedCounts = emptyCounts()
       for (const date of unresolvedDates) unresolvedCounts[original.get(date)!] += 1
+      const bodyMismatchDates = dates.filter((date) => original.get(date) === 'body_mismatch')
+      const unresolvedClassifications = Object.fromEntries(unresolvedDates.map((date) => [date, original.get(date)!]))
       const currentCounts = emptyCounts()
       for (const classification of original.values()) currentCounts[classification] += 1
       if (dates.some((date) => ['revision_lineage_mismatch', 'active_tombstone_mismatch', 'unknown'].includes(original.get(date)!))) {
         finish('normal_difference_checkpoint_revision_mismatch', { ...remoteCommon, exactBaselineCandidateCount: exactDates.length,
-          unresolvedCount: unresolvedDates.length, unresolvedCounts, unresolvedDates, reclassifiedCounts: currentCounts }); return
+          unresolvedCount: unresolvedDates.length, unresolvedCounts, unresolvedDates, bodyMismatchDates, unresolvedClassifications, reclassifiedCounts: currentCounts }); return
       }
       if (pulled.maxChangeSequence === metadata.lastPulledChangeSequence) {
         const savedCheckpointIsReconstructable = metadata.baselineStatus === 'recovery_required'
@@ -165,14 +169,14 @@ export function useDayMemoNormalDifferenceRecoveryCheckpointCheck({ dayMemos, is
           ? 'normal_difference_checkpoint_unresolved_ready'
           : 'normal_difference_checkpoint_cursor_not_advanced', {
           ...remoteCommon, exactBaselineCandidateCount: exactDates.length,
-          unresolvedCount: unresolvedDates.length, unresolvedCounts, unresolvedDates,
+          unresolvedCount: unresolvedDates.length, unresolvedCounts, unresolvedDates, bodyMismatchDates, unresolvedClassifications,
           metadataValidatorPassed: true, unresolvedReconstructable: savedCheckpointIsReconstructable,
           reclassifiedCounts: currentCounts, oneByOneRecoveryPossible: savedCheckpointIsReconstructable,
         }); return
       }
       if (!exactDates.length) {
         finish('normal_difference_checkpoint_no_candidates', { ...remoteCommon, unresolvedCount: unresolvedDates.length,
-          unresolvedCounts, unresolvedDates, metadataValidatorPassed: true, reclassifiedCounts: currentCounts }); return
+          unresolvedCounts, unresolvedDates, bodyMismatchDates, unresolvedClassifications, metadataValidatorPassed: true, reclassifiedCounts: currentCounts }); return
       }
       const baselines: DayMemoSyncMetadataV4['baselines'] = { ...metadata.baselines }
       for (const date of exactDates) {
@@ -186,7 +190,7 @@ export function useDayMemoNormalDifferenceRecoveryCheckpointCheck({ dayMemos, is
       const candidate: DayMemoSyncMetadataV4 = { ...metadata, baselines, lastPulledChangeSequence: pulled.maxChangeSequence,
         baselineStatus: 'recovery_required', baselineConfirmedAt: null }
       const candidateCommon = { ...remoteCommon, exactBaselineCandidateCount: exactDates.length,
-        unresolvedCount: unresolvedDates.length, unresolvedCounts, unresolvedDates,
+        unresolvedCount: unresolvedDates.length, unresolvedCounts, unresolvedDates, bodyMismatchDates, unresolvedClassifications,
         candidateBaselineCount: Object.keys(baselines).length, candidateBaselineStatus: 'recovery_required' as const,
         candidateBaselineConfirmedAtNull: true, candidateCursor: pulled.maxChangeSequence }
       if (!isDayMemoSyncMetadataV4(candidate)) {
@@ -220,7 +224,7 @@ export function useDayMemoNormalDifferenceRecoveryCheckpointCheck({ dayMemos, is
           localStorageSerialized: stored.serialized, workspaceId: connection.workspaceId,
           remoteRecords: pulled.records.map((record) => ({ ...record, payload: record.payload ? { ...record.payload } : null })),
           candidateMetadata: candidate,
-          unresolvedClassifications: Object.fromEntries(unresolvedDates.map((date) => [date, original.get(date)!])) }
+          unresolvedClassifications }
         setResult(readyResult)
       }
     } finally { if (runIdRef.current === runId) setChecking(false) }

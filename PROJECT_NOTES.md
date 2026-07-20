@@ -2466,3 +2466,6 @@ cleanup後VERIFY結果：
 - B-3f5e3保存後、cursorとfull pull最大sequenceが一致するとB-3f5e2が日付別分類前に終了し、未解決差異を0件表示していた。永続データ消失ではなく、cursor差分0の早期終了による表示・分類上の問題だった。
 - 保存済みcheckpoint（metadata v4、`recovery_required`、cursor一致）でもlocal／remote／baselineの和集合を再分類し、既存baselineの完全一致と未解決差異を再構築できる場合は`normal_difference_checkpoint_unresolved_ready`とする。新しいcheckpoint snapshotは作らず、再保存を禁止したまま後続Phaseの1件ずつの復旧へ渡す。
 - この修正はread-only分類と表示だけであり、metadata、baseline、cursor、DayMemo、pending、intent、pushBlock、remoteを変更しない。実機での再確認、commit、pushは未実施。
+- Phase B-3f5e4aとして、保存済みcheckpointで再構築した`body_mismatch`日付から1日だけを選び、明示的な完全full pull後にlocal／remote本文を専用比較画面で確認するread-only処理を追加した。local-only／remote-onlyなど他分類は候補へ混在させない。
+- localまたはremoteの候補選択と確定はReact state内snapshotの固定だけであり、採用、merge、DayMemo・metadata・baseline・cursor更新、pending・intent・operation ID作成、RPC送信を行わない。本文は専用比較UI以外、console、文書へ出さない。
+- B-3f5e4bはlocal候補の永続準備、B-3f5e4cはremote候補の明示local反映、B-3f5e4dは採用後のbaselineと未解決差異再確認を担当する。各Phaseはmetadata、local、workspace、cursor、remote revision／sequence／updatedAt／状態と分類を再取得・再確認する。実機確認、2件目、local-only、remote-only、confirmed復帰、一括処理、commit、pushは未実施。

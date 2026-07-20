@@ -40,6 +40,7 @@ import { useDayMemoLocalOperationSend } from './hooks/useDayMemoLocalOperationSe
 import { useDayMemoNormalDifferenceRecoveryPlan } from './hooks/useDayMemoNormalDifferenceRecoveryPlan'
 import { useDayMemoNormalDifferenceRecoveryCheckpointCheck } from './hooks/useDayMemoNormalDifferenceRecoveryCheckpointCheck'
 import { useDayMemoNormalDifferenceRecoveryCheckpointSave } from './hooks/useDayMemoNormalDifferenceRecoveryCheckpointSave'
+import { useDayMemoNormalBodyMismatchCandidate } from './hooks/useDayMemoNormalBodyMismatchCandidate'
 import { useDayMemoMetadataV4Migration } from './hooks/useDayMemoMetadataV4Migration'
 import { useDayMemoSyncMetadataMigration } from './hooks/useDayMemoSyncMetadataMigration'
 import { useDayMemoDeleteIntent } from './hooks/useDayMemoDeleteIntent'
@@ -195,6 +196,14 @@ function App() {
     getReadySnapshot: dayMemoNormalDifferenceRecoveryCheckpointCheck.getReadySnapshot,
     consumeReadySnapshot: dayMemoNormalDifferenceRecoveryCheckpointCheck.consumeReadySnapshot,
     adoptVerifiedMetadata: dayMemoSyncBaseline.adoptVerifiedMetadata,
+  })
+  const dayMemoNormalBodyMismatchCandidate = useDayMemoNormalBodyMismatchCandidate({
+    dayMemos,
+    isConfigured: supabaseAuth.isConfigured,
+    isSignedIn: supabaseAuth.isSignedIn,
+    connection: supabaseWorkspace.connection,
+    reactMetadata: dayMemoSyncBaseline.metadata?.version === 4 ? dayMemoSyncBaseline.metadata : null,
+    checkpointResult: dayMemoNormalDifferenceRecoveryCheckpointCheck.result,
   })
   const dayMemoBaselineRebase = useDayMemoBaselineRebase({
     dayMemos,
@@ -651,6 +660,7 @@ function App() {
           dayMemoNormalDifferenceRecoveryPlan={dayMemoNormalDifferenceRecoveryPlan}
           dayMemoNormalDifferenceRecoveryCheckpointCheck={dayMemoNormalDifferenceRecoveryCheckpointCheck}
           dayMemoNormalDifferenceRecoveryCheckpointSave={dayMemoNormalDifferenceRecoveryCheckpointSave}
+          dayMemoNormalBodyMismatchCandidate={dayMemoNormalBodyMismatchCandidate}
           dayMemoSyncBaseline={dayMemoSyncBaseline}
           dayMemoBaselineRebase={dayMemoBaselineRebase}
           dayMemoUpdatePreview={dayMemoUpdatePreview}

@@ -3,6 +3,7 @@ import { MoonIcon } from '@phosphor-icons/react/Moon'
 import { SunIcon } from '@phosphor-icons/react/Sun'
 import { XIcon } from '@phosphor-icons/react/X'
 import { useEffect, useRef, type MouseEvent, type SyntheticEvent } from 'react'
+import { DayMemoBodyMismatchComparison } from './DayMemoBodyMismatchComparison'
 import type { SupabaseAuthState, SupabaseConfigurationState } from '../hooks/useSupabaseAuth'
 import type { useDayMemoInitialUpload } from '../hooks/useDayMemoInitialUpload'
 import type { useDayMemoLocalOnlyPreview } from '../hooks/useDayMemoLocalOnlyPreview'
@@ -24,6 +25,7 @@ import type { useDayMemoLocalOperationSend } from '../hooks/useDayMemoLocalOpera
 import type { useDayMemoNormalDifferenceRecoveryPlan } from '../hooks/useDayMemoNormalDifferenceRecoveryPlan'
 import type { useDayMemoNormalDifferenceRecoveryCheckpointCheck } from '../hooks/useDayMemoNormalDifferenceRecoveryCheckpointCheck'
 import type { useDayMemoNormalDifferenceRecoveryCheckpointSave } from '../hooks/useDayMemoNormalDifferenceRecoveryCheckpointSave'
+import type { useDayMemoNormalBodyMismatchCandidate } from '../hooks/useDayMemoNormalBodyMismatchCandidate'
 import type { useDayMemoMetadataV4Migration } from '../hooks/useDayMemoMetadataV4Migration'
 import type { useDayMemoSyncMetadataMigration } from '../hooks/useDayMemoSyncMetadataMigration'
 import type { useDayMemoDeleteIntent } from '../hooks/useDayMemoDeleteIntent'
@@ -71,6 +73,7 @@ interface ThemeSettingsProps {
   dayMemoNormalDifferenceRecoveryPlan: ReturnType<typeof useDayMemoNormalDifferenceRecoveryPlan>
   dayMemoNormalDifferenceRecoveryCheckpointCheck: ReturnType<typeof useDayMemoNormalDifferenceRecoveryCheckpointCheck>
   dayMemoNormalDifferenceRecoveryCheckpointSave: ReturnType<typeof useDayMemoNormalDifferenceRecoveryCheckpointSave>
+  dayMemoNormalBodyMismatchCandidate: ReturnType<typeof useDayMemoNormalBodyMismatchCandidate>
   dayMemoSyncBaseline: ReturnType<typeof useDayMemoSyncBaseline>
   dayMemoBaselineRebase: ReturnType<typeof useDayMemoBaselineRebase>
   dayMemoUpdatePreview: ReturnType<typeof useDayMemoUpdatePreview>
@@ -257,6 +260,7 @@ export function ThemeSettings({
   dayMemoNormalDifferenceRecoveryPlan,
   dayMemoNormalDifferenceRecoveryCheckpointCheck,
   dayMemoNormalDifferenceRecoveryCheckpointSave,
+  dayMemoNormalBodyMismatchCandidate,
   dayMemoSyncBaseline,
   dayMemoBaselineRebase,
   dayMemoUpdatePreview,
@@ -1156,6 +1160,7 @@ export function ThemeSettings({
                       ) : null}
                     </div>
                   ) : null}
+                  <DayMemoBodyMismatchComparison candidate={dayMemoNormalBodyMismatchCandidate} />
                   {dayMemoBaselineRebase.eligible ? (
                     <div className="cloud-day-memo-rebase-panel">
                       <h4>baseline差異の安全確認</h4>
