@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabaseClient } from '../lib/supabaseClient'
 import type { DayMemo } from '../types/dayMemo'
-import type { DayMemoSyncMetadataV3 } from '../types/dayMemoSync'
+import type { DayMemoRemoteBaselineV3, DayMemoSyncMetadataV3 } from '../types/dayMemoSync'
 import type { SyncConnection } from '../types/sync'
 import { readDayMemoStorageSnapshot } from '../utils/dayMemoStorage'
 import { pullAllDayMemoSyncRecords } from '../utils/dayMemoSyncPull'
@@ -26,6 +26,17 @@ export interface DayMemoResurrectionPreviewSummary {
   resurrectionCandidateCount: number
   resurrectionConflictCount: number
   resurrectionUnknownCount: number
+}
+
+export interface DayMemoResurrectionUploadSnapshot {
+  workspaceId: string
+  metadataRaw: string
+  localStorageSerialized: string
+  localMemos: DayMemo[]
+  baselineConfirmedAt: string
+  lastPulledChangeSequence: number
+  baseline: DayMemoRemoteBaselineV3
+  memo: DayMemo
 }
 
 export type DayMemoResurrectionPreviewState =
@@ -74,11 +85,13 @@ export function useDayMemoResurrectionPreview({ dayMemos, isConfigured, isSigned
   const [summary, setSummary] = useState<DayMemoResurrectionPreviewSummary | null>(null)
   const [safeErrorMessage, setSafeErrorMessage] = useState<string | null>(null)
   const runIdRef = useRef(0)
+  const uploadSnapshotRef = useRef<DayMemoResurrectionUploadSnapshot | null>(null)
   const currentLocalSignature = useMemo(() => localSignature(dayMemos), [dayMemos])
   const eligible = Boolean(isConfigured && isSignedIn && supabaseClient && connectionIsEligible(connection))
 
   const discardPreview = useCallback(() => {
     runIdRef.current += 1
+    uploadSnapshotRef.current = null
     setItems([])
     setSummary(null)
     setSafeErrorMessage(null)
@@ -87,6 +100,7 @@ export function useDayMemoResurrectionPreview({ dayMemos, isConfigured, isSigned
 
   useEffect(() => {
     runIdRef.current += 1
+    uploadSnapshotRef.current = null
     setItems([])
     setSummary(null)
     setSafeErrorMessage(null)
@@ -113,6 +127,7 @@ export function useDayMemoResurrectionPreview({ dayMemos, isConfigured, isSigned
     const runId = runIdRef.current + 1
     runIdRef.current = runId
     setState('checking')
+    uploadSnapshotRef.current = null
     setItems([])
     setSummary(null)
     setSafeErrorMessage(null)
@@ -216,8 +231,41 @@ export function useDayMemoResurrectionPreview({ dayMemos, isConfigured, isSigned
 
     setItems(classified)
     setSummary(summarize(classified))
+    if (classified.length === 1 && classified[0].classification === 'resurrection_candidate') {
+      const date = classified[0].date
+      const baseline = metadata.baselines[date]
+      const memo = storedAfter.memos.find((candidate) => candidate.date === date)
+      if (baseline && memo && metadata.baselineConfirmedAt) {
+        uploadSnapshotRef.current = {
+          workspaceId: metadata.workspaceId,
+          metadataRaw: after.raw,
+          localStorageSerialized: storedAfter.serialized,
+          localMemos: storedAfter.memos.map((candidate) => ({ ...candidate })),
+          baselineConfirmedAt: metadata.baselineConfirmedAt,
+          lastPulledChangeSequence: metadata.lastPulledChangeSequence,
+          baseline: { ...baseline },
+          memo: { ...memo },
+        }
+      }
+    }
     setState('preview_ready')
   }, [connection?.workspaceId, currentLocalSignature, eligible, state])
+
+  const getSingleCandidateSnapshot = useCallback((): DayMemoResurrectionUploadSnapshot | null => {
+    const snapshot = uploadSnapshotRef.current
+    if (state !== 'preview_ready'
+      || summary?.candidateCount !== 1
+      || summary.resurrectionCandidateCount !== 1
+      || summary.resurrectionConflictCount !== 0
+      || summary.resurrectionUnknownCount !== 0
+      || !snapshot) return null
+    return {
+      ...snapshot,
+      localMemos: snapshot.localMemos.map((memo) => ({ ...memo })),
+      baseline: { ...snapshot.baseline },
+      memo: { ...snapshot.memo },
+    }
+  }, [state, summary])
 
   return {
     eligible,
@@ -227,5 +275,6 @@ export function useDayMemoResurrectionPreview({ dayMemos, isConfigured, isSigned
     safeErrorMessage,
     previewResurrectionCandidates,
     discardPreview,
+    getSingleCandidateSnapshot,
   }
 }

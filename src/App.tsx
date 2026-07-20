@@ -34,6 +34,7 @@ import { useDayMemoDeletePreview } from './hooks/useDayMemoDeletePreview'
 import { useDayMemoTombstonePreview } from './hooks/useDayMemoTombstonePreview'
 import { useDayMemoTombstoneApply } from './hooks/useDayMemoTombstoneApply'
 import { useDayMemoResurrectionPreview } from './hooks/useDayMemoResurrectionPreview'
+import { useDayMemoResurrectionUpload } from './hooks/useDayMemoResurrectionUpload'
 import { useDayMemoDeleteUpload } from './hooks/useDayMemoDeleteUpload'
 import { useDayMemoUpdatePreview } from './hooks/useDayMemoUpdatePreview'
 import { useDayMemoUpdateUpload } from './hooks/useDayMemoUpdateUpload'
@@ -124,6 +125,14 @@ function App() {
     isConfigured: supabaseAuth.isConfigured,
     isSignedIn: supabaseAuth.isSignedIn,
     connection: supabaseWorkspace.connection,
+  })
+  const dayMemoResurrectionUpload = useDayMemoResurrectionUpload({
+    dayMemos,
+    isConfigured: supabaseAuth.isConfigured,
+    isSignedIn: supabaseAuth.isSignedIn,
+    connection: supabaseWorkspace.connection,
+    getSingleCandidateSnapshot: dayMemoResurrectionPreview.getSingleCandidateSnapshot,
+    discardPreview: dayMemoResurrectionPreview.discardPreview,
   })
   const dayMemoDeleteUpload = useDayMemoDeleteUpload({
     isConfigured: supabaseAuth.isConfigured,
@@ -543,6 +552,7 @@ function App() {
           dayMemoTombstonePreview={dayMemoTombstonePreview}
           dayMemoTombstoneApply={dayMemoTombstoneApply}
           dayMemoResurrectionPreview={dayMemoResurrectionPreview}
+          dayMemoResurrectionUpload={dayMemoResurrectionUpload}
           dayMemoDeleteUpload={dayMemoDeleteUpload}
           onClose={() => setIsThemeSettingsOpen(false)}
         />

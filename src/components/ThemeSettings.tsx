@@ -18,6 +18,7 @@ import type { useDayMemoDeletePreview } from '../hooks/useDayMemoDeletePreview'
 import type { useDayMemoTombstonePreview } from '../hooks/useDayMemoTombstonePreview'
 import type { useDayMemoTombstoneApply } from '../hooks/useDayMemoTombstoneApply'
 import type { useDayMemoResurrectionPreview } from '../hooks/useDayMemoResurrectionPreview'
+import type { useDayMemoResurrectionUpload } from '../hooks/useDayMemoResurrectionUpload'
 import type { useDayMemoDeleteUpload } from '../hooks/useDayMemoDeleteUpload'
 import type { useDayMemoUpdatePreview } from '../hooks/useDayMemoUpdatePreview'
 import type { useDayMemoUpdateUpload } from '../hooks/useDayMemoUpdateUpload'
@@ -69,6 +70,7 @@ interface ThemeSettingsProps {
   dayMemoTombstonePreview: ReturnType<typeof useDayMemoTombstonePreview>
   dayMemoTombstoneApply: ReturnType<typeof useDayMemoTombstoneApply>
   dayMemoResurrectionPreview: ReturnType<typeof useDayMemoResurrectionPreview>
+  dayMemoResurrectionUpload: ReturnType<typeof useDayMemoResurrectionUpload>
   dayMemoDeleteUpload: ReturnType<typeof useDayMemoDeleteUpload>
   onClose: () => void
 }
@@ -206,6 +208,7 @@ export function ThemeSettings({
   dayMemoTombstonePreview,
   dayMemoTombstoneApply,
   dayMemoResurrectionPreview,
+  dayMemoResurrectionUpload,
   dayMemoDeleteUpload,
   onClose,
 }: ThemeSettingsProps) {
@@ -815,11 +818,49 @@ export function ThemeSettings({
                           ))}
                         </ul>
                       ) : null}
+                      {dayMemoResurrectionPreview.summary?.candidateCount === 1
+                        && dayMemoResurrectionPreview.summary.resurrectionCandidateCount === 1
+                        && dayMemoResurrectionPreview.summary.resurrectionConflictCount === 0
+                        && dayMemoResurrectionPreview.summary.resurrectionUnknownCount === 0
+                        && dayMemoResurrectionUpload.state === 'idle' ? (
+                          <button type="button" className="health-secondary-button cloud-sync-button" onClick={() => { void dayMemoResurrectionUpload.runPreflight() }}>
+                            同期先の削除済み状態を確認
+                          </button>
+                        ) : null}
+                      {dayMemoResurrectionUpload.state === 'preflighting' ? <button type="button" className="health-secondary-button cloud-sync-button" disabled>同期先を再確認中…</button> : null}
+                      {dayMemoResurrectionUpload.state === 'preflight_ready' ? (
+                        <button type="button" className="health-secondary-button cloud-sync-button" onClick={dayMemoResurrectionUpload.prepareUpload}>
+                          このDayMemoの復活を準備
+                        </button>
+                      ) : null}
+                      {dayMemoResurrectionUpload.state === 'preparing' ? <button type="button" className="health-secondary-button cloud-sync-button" disabled>復活を準備中…</button> : null}
+                      {dayMemoResurrectionUpload.state === 'prepared' ? (
+                        <div className="cloud-day-memo-upload-confirm">
+                          <p>復活する1件の準備が完了しました。次の操作で初めて同期先へ送信します。</p>
+                          <button type="button" className="health-primary-button cloud-sync-button" onClick={() => { void dayMemoResurrectionUpload.uploadPrepared() }}>
+                            削除済みDayMemoを復活
+                          </button>
+                        </div>
+                      ) : null}
+                      {dayMemoResurrectionUpload.state === 'uploading' ? <button type="button" className="health-primary-button cloud-sync-button" disabled>復活処理中…</button> : null}
+                      {dayMemoResurrectionUpload.state === 'completed' && dayMemoResurrectionUpload.result ? (
+                        <div className="cloud-day-memo-upload-result" role="status">
+                          <strong>復活が完了しました</strong>
+                          <ul>
+                            <li>対象日付：{dayMemoResurrectionUpload.result.date}</li>
+                            <li>新しいrevision：{dayMemoResurrectionUpload.result.revision}</li>
+                            <li>change sequence：{dayMemoResurrectionUpload.result.changeSequence}</li>
+                            <li>active baseline：保存済み</li>
+                          </ul>
+                          <p>この端末のDayMemo本文は変更していません。</p>
+                        </div>
+                      ) : null}
+                      {dayMemoResurrectionUpload.safeErrorMessage ? <p className="cloud-pairing-error" role="alert">{dayMemoResurrectionUpload.safeErrorMessage}</p> : null}
                       {dayMemoResurrectionPreview.state === 'no_candidates' ? <p className="cloud-sync-note" role="status">復活候補として確認するDayMemoはありません。</p> : null}
                       {dayMemoResurrectionPreview.state === 'blocked' ? <p className="cloud-pairing-error" role="alert">同期状態を安全に確認できないため、復活候補を確認できません。</p> : null}
                       {dayMemoResurrectionPreview.safeErrorMessage ? <p className="cloud-pairing-error" role="alert">{dayMemoResurrectionPreview.safeErrorMessage}</p> : null}
-                      {(dayMemoResurrectionPreview.summary || dayMemoResurrectionPreview.items.length > 0 || dayMemoResurrectionPreview.state === 'no_candidates') ? (
-                        <button type="button" className="health-secondary-button cloud-sync-button" onClick={dayMemoResurrectionPreview.discardPreview}>確認結果を破棄</button>
+                      {(dayMemoResurrectionPreview.summary || dayMemoResurrectionPreview.items.length > 0 || dayMemoResurrectionPreview.state === 'no_candidates') && !dayMemoResurrectionUpload.hasPendingOperation ? (
+                        <button type="button" className="health-secondary-button cloud-sync-button" onClick={() => { dayMemoResurrectionUpload.reset(); dayMemoResurrectionPreview.discardPreview() }}>確認結果を破棄</button>
                       ) : null}
                       <p className="cloud-sync-note">確認結果はこの画面のメモリ内だけに保持します。DayMemo本文は表示せず、metadata・baseline・cursor・削除意図は変更しません。</p>
                     </div>

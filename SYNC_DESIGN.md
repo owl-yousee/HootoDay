@@ -1388,3 +1388,11 @@ The next smallest implementation phase is B-3f5a. This preparation changes docum
 - `resurrection_conflict` covers a remaining delete intent or a changed/missing/active remote row that no longer matches the tombstone lineage. `resurrection_unknown` covers state, metadata, workspace, storage, or validation conditions that cannot be proven safely.
 - Results exist only in React memory and expose date, classification, tombstone revision, change sequence, and deletion time. Discard and page reload remove them. DayMemo content and remote payload are never displayed or persisted.
 - This phase performs no upsert/delete, operation-ID generation, pending creation, resurrection, local DayMemo mutation, metadata/baseline/cursor update, intent change, or push-block release.
+## Phase B-3f5b: one explicit tombstone resurrection upsert
+
+- The write path is available only for exactly one `resurrection_candidate` with zero conflict/unknown classifications. It requires explicit preflight, explicit preparation, and a separate explicit upload action.
+- Preflight reruns the complete full pull and requires every current remote row to match metadata baselines. The target must still be the exact tombstone from the preview and metadata/local raw snapshots must remain unchanged.
+- Preparation alone creates one UUID v4 operation ID and verified-writes a `kind = upsert` pending operation. Its base revision is the tombstone revision, never zero; its prepared local timestamp is the existing local DayMemo `updatedAt`.
+- The upload revalidates workspace, device, pending, operation ID, tombstone baseline, local snapshot, absence of local delete intent, and absence of push block before invoking `hooto_day_upsert_sync_record` once.
+- Applied validation requires status applied, no conflict, matching workspace/entity/payload, revision `base + 1`, increased change sequence, and `deletedAt = null`. Only then is the tombstone baseline replaced with an active baseline and pending cleared after verified metadata save/read-back.
+- Conflict and response unknown retain the same pending operation and operation ID. A post-RPC metadata failure is never converted back to unsent and never retried automatically. Local DayMemo content is not modified by resurrection.

@@ -2307,3 +2307,12 @@ cleanup後VERIFY結果：
 - preview結果はReact stateだけに保持し、日付、分類、tombstone revision、change sequence、deletedAtだけを表示する。DayMemo本文、payload、UUID、operation ID、認証情報は保持・表示しない。
 - preview破棄または再読み込みで結果を消去する。metadata、baseline、cursor、localDeleteIntent、pendingOperation、local DayMemoは変更しない。
 - upsert/delete RPC、operation ID生成、pending作成、自動復活、自動retryは実装していない。Supabase実操作、commit、pushは未実施である。
+## Phase B-3f5b：tombstone 1件の明示復活upsert（2026-07-20）
+
+- B-3f5aで`resurrection_candidate`が1件だけ確認され、競合・確認不能が0件の場合に限り、full pull再確認、復活準備、明示送信の3段階を追加した。
+- full pull preflightでは全baselineとremote current状態を再照合し、対象tombstoneのrevision・change sequence・deletedAt、workspace、metadata raw、local DayMemo snapshotが変化していない場合だけ準備可能とする。
+- operation IDは復活準備時だけ既存UUID v4 utilityで生成し、`kind = upsert`、tombstone revisionをbase revisionとするpendingをRPC前にverified write/read-backする。preview時には生成しない。
+- 明示送信では既存`hooto_day_upsert_sync_record`を1回だけ使用し、成功結果のpayload完全一致、revision = base + 1、change sequence増加、deletedAt nullを共通validatorで確認する。
+- 成功後だけ対象baselineをactiveへ戻し、remote revision/change sequence、local/remote updatedAt、cursor、確認日時、最終成功日時を更新してpendingをnullにする。local DayMemo本文は変更しない。
+- conflictとresponse unknownではpendingとoperation IDを保持し、自動retry、新ID生成、自動解決を行わない。RPC成功後metadata保存失敗は未送信扱いへ戻さず、復旧が必要な状態で停止する。
+- 複数件復活、delete変更、localDeleteIntent変更、pushBlock解除、競合解決は未実装である。Supabase実操作、commit、pushは未実施である。
