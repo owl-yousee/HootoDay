@@ -22,6 +22,7 @@ import type { useDayMemoLocalOperationPreparation } from '../hooks/useDayMemoLoc
 import type { useDayMemoLocalOperationRemoteCheck } from '../hooks/useDayMemoLocalOperationRemoteCheck'
 import type { useDayMemoLocalOperationSend } from '../hooks/useDayMemoLocalOperationSend'
 import type { useDayMemoNormalDifferenceRecoveryPlan } from '../hooks/useDayMemoNormalDifferenceRecoveryPlan'
+import type { useDayMemoNormalDifferenceRecoveryCheckpointCheck } from '../hooks/useDayMemoNormalDifferenceRecoveryCheckpointCheck'
 import type { useDayMemoMetadataV4Migration } from '../hooks/useDayMemoMetadataV4Migration'
 import type { useDayMemoSyncMetadataMigration } from '../hooks/useDayMemoSyncMetadataMigration'
 import type { useDayMemoDeleteIntent } from '../hooks/useDayMemoDeleteIntent'
@@ -67,6 +68,7 @@ interface ThemeSettingsProps {
   dayMemoInitialUpload: ReturnType<typeof useDayMemoInitialUpload>
   dayMemoPullPreview: ReturnType<typeof useDayMemoPullPreview>
   dayMemoNormalDifferenceRecoveryPlan: ReturnType<typeof useDayMemoNormalDifferenceRecoveryPlan>
+  dayMemoNormalDifferenceRecoveryCheckpointCheck: ReturnType<typeof useDayMemoNormalDifferenceRecoveryCheckpointCheck>
   dayMemoSyncBaseline: ReturnType<typeof useDayMemoSyncBaseline>
   dayMemoBaselineRebase: ReturnType<typeof useDayMemoBaselineRebase>
   dayMemoUpdatePreview: ReturnType<typeof useDayMemoUpdatePreview>
@@ -251,6 +253,7 @@ export function ThemeSettings({
   dayMemoInitialUpload,
   dayMemoPullPreview,
   dayMemoNormalDifferenceRecoveryPlan,
+  dayMemoNormalDifferenceRecoveryCheckpointCheck,
   dayMemoSyncBaseline,
   dayMemoBaselineRebase,
   dayMemoUpdatePreview,
@@ -1072,6 +1075,53 @@ export function ThemeSettings({
                           <p>{dayMemoNormalDifferenceRecoveryPlan.result.nextAction}</p>
                           <p className="cloud-sync-note">確認結果はReact stateだけに保持します。metadata、baseline、cursor、DayMemo、pending、intent、remoteは変更しません。RPC送信も行いません。</p>
                           <button type="button" className="health-secondary-button cloud-sync-button" onClick={dayMemoNormalDifferenceRecoveryPlan.discard}>復旧計画結果を破棄</button>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {dayMemoNormalDifferenceRecoveryCheckpointCheck.eligible ? (
+                    <div className="cloud-day-memo-baseline-panel" role="region" aria-labelledby="day-memo-normal-difference-checkpoint-heading">
+                      <h4 id="day-memo-normal-difference-checkpoint-heading">通常同期差異の復旧checkpoint</h4>
+                      <p>未解決差異を残したまま、完全一致baselineと観測済みcursorを同一checkpointとして表現できるか読み取り専用で確認します。</p>
+                      <button type="button" className="health-secondary-button cloud-sync-button" disabled={dayMemoNormalDifferenceRecoveryCheckpointCheck.checking} onClick={() => { void dayMemoNormalDifferenceRecoveryCheckpointCheck.check() }}>
+                        {dayMemoNormalDifferenceRecoveryCheckpointCheck.checking ? 'checkpointを確認中…' : '復旧checkpointの安全条件を確認'}
+                      </button>
+                      {dayMemoNormalDifferenceRecoveryCheckpointCheck.result ? (
+                        <div role="status">
+                          <p><strong>safety分類：{dayMemoNormalDifferenceRecoveryCheckpointCheck.result.safety}</strong></p>
+                          <ul className="cloud-day-memo-preview-summary">
+                            <li>metadata cursor：{dayMemoNormalDifferenceRecoveryCheckpointCheck.result.metadataCursor ?? '確認不能'}</li>
+                            <li>full pull最大sequence：{dayMemoNormalDifferenceRecoveryCheckpointCheck.result.fullPullMaxSequence ?? '確認不能'}</li>
+                            <li>cursor差分：{dayMemoNormalDifferenceRecoveryCheckpointCheck.result.cursorDifference ?? '確認不能'}</li>
+                            <li>remote／local／baseline：{dayMemoNormalDifferenceRecoveryCheckpointCheck.result.remoteCount}／{dayMemoNormalDifferenceRecoveryCheckpointCheck.result.localCount}／{dayMemoNormalDifferenceRecoveryCheckpointCheck.result.baselineCount}件</li>
+                            <li>完全一致baseline候補：{dayMemoNormalDifferenceRecoveryCheckpointCheck.result.exactBaselineCandidateCount}件</li>
+                            <li>未解決差異：{dayMemoNormalDifferenceRecoveryCheckpointCheck.result.unresolvedCount}件</li>
+                            <li>本文一致・更新日時相違：{dayMemoNormalDifferenceRecoveryCheckpointCheck.result.unresolvedCounts.exact_body_timestamp_mismatch}件</li>
+                            <li>本文相違：{dayMemoNormalDifferenceRecoveryCheckpointCheck.result.unresolvedCounts.body_mismatch}件</li>
+                            <li>local-only：{dayMemoNormalDifferenceRecoveryCheckpointCheck.result.unresolvedCounts.local_only}件</li>
+                            <li>remote-only active：{dayMemoNormalDifferenceRecoveryCheckpointCheck.result.unresolvedCounts.remote_only_active}件</li>
+                            <li>remote-only tombstone：{dayMemoNormalDifferenceRecoveryCheckpointCheck.result.unresolvedCounts.remote_only_tombstone}件</li>
+                            <li>候補baseline：{dayMemoNormalDifferenceRecoveryCheckpointCheck.result.candidateBaselineCount}件</li>
+                            <li>候補baselineStatus：{dayMemoNormalDifferenceRecoveryCheckpointCheck.result.candidateBaselineStatus ?? '候補なし'}</li>
+                            <li>候補baselineConfirmedAt：{dayMemoNormalDifferenceRecoveryCheckpointCheck.result.candidateBaselineConfirmedAtNull ? 'null' : '候補なし'}</li>
+                            <li>候補cursor：{dayMemoNormalDifferenceRecoveryCheckpointCheck.result.candidateCursor ?? '候補なし'}</li>
+                            <li>validator：{dayMemoNormalDifferenceRecoveryCheckpointCheck.result.metadataValidatorPassed ? '正常' : '未確認または失敗'}</li>
+                            <li>未解決差異の再構築：{dayMemoNormalDifferenceRecoveryCheckpointCheck.result.unresolvedReconstructable ? '可能' : '未確認または不可'}</li>
+                            <li>仮適用後baseline確認済み：{dayMemoNormalDifferenceRecoveryCheckpointCheck.result.reclassifiedCounts.exact_match_baseline_confirmed}件</li>
+                            <li>仮適用後の通常同期ready：いいえ</li>
+                            <li>後続Phaseで1件ずつ復旧：{dayMemoNormalDifferenceRecoveryCheckpointCheck.result.oneByOneRecoveryPossible ? '可能' : '安全条件未達'}</li>
+                            <li>永続変更：なし</li>
+                            <li>RPC送信：なし</li>
+                            <li>確認日時：{new Date(dayMemoNormalDifferenceRecoveryCheckpointCheck.result.checkedAt).toLocaleString('ja-JP')}</li>
+                          </ul>
+                          {dayMemoNormalDifferenceRecoveryCheckpointCheck.result.unresolvedDates.length ? (
+                            <ul className="cloud-day-memo-preview-items">
+                              {dayMemoNormalDifferenceRecoveryCheckpointCheck.result.unresolvedDates.map((date) => <li key={date}><strong>{date}</strong></li>)}
+                            </ul>
+                          ) : null}
+                          <p>{dayMemoNormalDifferenceRecoveryCheckpointCheck.result.nextAction}</p>
+                          <p className="cloud-sync-note">checkpoint readyは通常同期readyではありません。cursor候補は完全一致baselineと一体で、未解決差異はrecovery_requiredのまま維持します。</p>
+                          <button type="button" className="health-secondary-button cloud-sync-button" onClick={dayMemoNormalDifferenceRecoveryCheckpointCheck.discard}>checkpoint確認結果を破棄</button>
                         </div>
                       ) : null}
                     </div>

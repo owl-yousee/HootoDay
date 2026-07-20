@@ -2457,3 +2457,6 @@ cleanup後VERIFY結果：
 - 本文相違はlocal／remoteの手動判断、remote-onlyは通常remote採用、local-onlyは新operation準備へ分離し、1件ずつ処理する。全差異解消後に全体baseline／cursorを再確認し、最後にconfirmed復帰を判断する。
 - 結果はReact stateだけに保持し、破棄しても永続状態を変更しない。自動pull、retry、merge、修復、競合解決、baseline保存、remote採用、upload、operation ID生成、Supabase書き込みは行わない。
 - 部分baseline補完、本文相違の選択UI、通常remote-only採用、local-only準備、全体再確立、pushBlock解除は未実装であり、実機確認も未実施である。
+- Phase B-3f5e2として、通常同期差異を保持した復旧checkpointの安全条件を明示操作でread-only確認するHookを追加した。metadata cursor 12は最後に永続化された観測位置、full pull最大sequence 16は最新current stateの観測上限であり、B-3f5e1のcursor invalid停止は正しかった。
+- checkpoint候補は、完全一致かつbaseline欠落の日付だけをactive baseline化し、cursorを完全full pull最大値へ進める一方、`baselineStatus = recovery_required`、`baselineConfirmedAt = null`を維持する。本文相違、local-only、remote-onlyにはbaselineを作らず、仮適用後に同じ分類を再構築できる場合だけcheckpoint readyとする。これは差異解消や通常同期readyを意味しない。
+- B-3f5e2はmetadata v4候補をメモリ内でvalidator検証するだけで、保存、自動pull、自動retry、merge、修復、競合解決、Supabase書き込みを行わない。checkpoint保存、差異の明示解消、全差異解消後のconfirmed復帰は未実装である。

@@ -76,7 +76,7 @@ interface Input {
   connection: SyncConnection | null
 }
 
-const CLASSIFICATIONS: DayMemoNormalDifferenceClassification[] = [
+export const DAY_MEMO_NORMAL_DIFFERENCE_CLASSIFICATIONS: DayMemoNormalDifferenceClassification[] = [
   'exact_match_baseline_confirmed', 'exact_match_baseline_missing', 'exact_body_timestamp_mismatch',
   'body_mismatch', 'local_only', 'remote_only_active', 'remote_only_tombstone',
   'active_tombstone_mismatch', 'revision_lineage_mismatch', 'unknown',
@@ -92,7 +92,7 @@ function localSignature(memos: DayMemo[]): string {
   return JSON.stringify(memos.map((memo) => [memo.date, memo.updatedAt, memo.content]).sort(([left], [right]) => left.localeCompare(right)))
 }
 
-function classify(
+export function classifyDayMemoNormalDifference(
   local: DayMemo | null,
   remote: RemoteDayMemoRecord | null,
   baseline: DayMemoSyncMetadataV4['baselines'][string] | null,
@@ -160,7 +160,7 @@ export function useDayMemoNormalDifferenceRecoveryPlan({ dayMemos, isConfigured,
         metadataVersion: loaded.status === 'ready' ? loaded.metadata.version : null,
         workspaceBound: false, metadataValid: false, pushBlocked: false, pendingCount: 0, intentCount: 0,
         remoteCount: 0, localCount: dayMemos.length, baselineCount: 0, cursor: null, cursorValid: false,
-        items: [], counts: Object.fromEntries(CLASSIFICATIONS.map((value) => [value, 0])) as Record<DayMemoNormalDifferenceClassification, number>,
+        items: [], counts: Object.fromEntries(DAY_MEMO_NORMAL_DIFFERENCE_CLASSIFICATIONS.map((value) => [value, 0])) as Record<DayMemoNormalDifferenceClassification, number>,
         exactBaselineCandidateDates: [], bodyMismatchDates: [], localOnlyDates: [], remoteOnlyDates: [],
         lineageOrStateMismatchCount: 0, partialBaselineSupported: false, oneByOneRecoveryPossible: false,
         recommendedOrder: [], safety: 'normal_difference_metadata_invalid', checkedAt,
@@ -180,7 +180,7 @@ export function useDayMemoNormalDifferenceRecoveryPlan({ dayMemos, isConfigured,
         pendingCount: metadata.pendingOperation ? 1 : 0, intentCount: Object.keys(metadata.localDeleteIntents).length,
         remoteCount: 0, localCount: dayMemos.length, baselineCount: Object.keys(metadata.baselines).length,
         cursor: metadata.lastPulledChangeSequence, cursorValid: false, items: [],
-        counts: Object.fromEntries(CLASSIFICATIONS.map((value) => [value, 0])) as Record<DayMemoNormalDifferenceClassification, number>,
+        counts: Object.fromEntries(DAY_MEMO_NORMAL_DIFFERENCE_CLASSIFICATIONS.map((value) => [value, 0])) as Record<DayMemoNormalDifferenceClassification, number>,
         exactBaselineCandidateDates: [], bodyMismatchDates: [], localOnlyDates: [], remoteOnlyDates: [],
         lineageOrStateMismatchCount: 0, partialBaselineSupported: false, oneByOneRecoveryPossible: false,
         recommendedOrder: [], safety, checkedAt, nextAction: nextAction(safety),
@@ -197,7 +197,7 @@ export function useDayMemoNormalDifferenceRecoveryPlan({ dayMemos, isConfigured,
         pendingCount: metadata.pendingOperation ? 1 : 0, intentCount: Object.keys(metadata.localDeleteIntents).length,
         remoteCount: 0, localCount: stored.memos.length, baselineCount: Object.keys(metadata.baselines).length,
         cursor: metadata.lastPulledChangeSequence, cursorValid: false, items: [],
-        counts: Object.fromEntries(CLASSIFICATIONS.map((value) => [value, 0])) as Record<DayMemoNormalDifferenceClassification, number>,
+        counts: Object.fromEntries(DAY_MEMO_NORMAL_DIFFERENCE_CLASSIFICATIONS.map((value) => [value, 0])) as Record<DayMemoNormalDifferenceClassification, number>,
         exactBaselineCandidateDates: [], bodyMismatchDates: [], localOnlyDates: [], remoteOnlyDates: [],
         lineageOrStateMismatchCount: 0, partialBaselineSupported: false, oneByOneRecoveryPossible: false,
         recommendedOrder: [], safety, checkedAt, nextAction: nextAction(safety),
@@ -221,12 +221,12 @@ export function useDayMemoNormalDifferenceRecoveryPlan({ dayMemos, isConfigured,
       const remote = remoteByDate.get(date) ?? null
       return {
         date,
-        classification: classify(local, remote, metadata.baselines[date] ?? null),
+        classification: classifyDayMemoNormalDifference(local, remote, metadata.baselines[date] ?? null),
         localExists: local !== null,
         remoteState: remote ? (remote.deletedAt === null ? 'active' : 'tombstone') : 'missing',
       }
     })
-    const counts = Object.fromEntries(CLASSIFICATIONS.map((value) => [value, items.filter((item) => item.classification === value).length])) as Record<DayMemoNormalDifferenceClassification, number>
+    const counts = Object.fromEntries(DAY_MEMO_NORMAL_DIFFERENCE_CLASSIFICATIONS.map((value) => [value, items.filter((item) => item.classification === value).length])) as Record<DayMemoNormalDifferenceClassification, number>
     const exactBaselineCandidateDates = items.filter((item) => item.classification === 'exact_match_baseline_missing').map((item) => item.date)
     const candidateBaselines: DayMemoSyncMetadataV4['baselines'] = { ...metadata.baselines }
     for (const date of exactBaselineCandidateDates) {

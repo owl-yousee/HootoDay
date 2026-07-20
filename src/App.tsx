@@ -38,6 +38,7 @@ import { useDayMemoLocalOperationPreparation } from './hooks/useDayMemoLocalOper
 import { useDayMemoLocalOperationRemoteCheck } from './hooks/useDayMemoLocalOperationRemoteCheck'
 import { useDayMemoLocalOperationSend } from './hooks/useDayMemoLocalOperationSend'
 import { useDayMemoNormalDifferenceRecoveryPlan } from './hooks/useDayMemoNormalDifferenceRecoveryPlan'
+import { useDayMemoNormalDifferenceRecoveryCheckpointCheck } from './hooks/useDayMemoNormalDifferenceRecoveryCheckpointCheck'
 import { useDayMemoMetadataV4Migration } from './hooks/useDayMemoMetadataV4Migration'
 import { useDayMemoSyncMetadataMigration } from './hooks/useDayMemoSyncMetadataMigration'
 import { useDayMemoDeleteIntent } from './hooks/useDayMemoDeleteIntent'
@@ -167,6 +168,12 @@ function App() {
     adoptVerifiedStoredDayMemos,
   })
   const dayMemoNormalDifferenceRecoveryPlan = useDayMemoNormalDifferenceRecoveryPlan({
+    dayMemos,
+    isConfigured: supabaseAuth.isConfigured,
+    isSignedIn: supabaseAuth.isSignedIn,
+    connection: supabaseWorkspace.connection,
+  })
+  const dayMemoNormalDifferenceRecoveryCheckpointCheck = useDayMemoNormalDifferenceRecoveryCheckpointCheck({
     dayMemos,
     isConfigured: supabaseAuth.isConfigured,
     isSignedIn: supabaseAuth.isSignedIn,
@@ -631,6 +638,7 @@ function App() {
           dayMemoInitialUpload={dayMemoInitialUpload}
           dayMemoPullPreview={dayMemoPullPreview}
           dayMemoNormalDifferenceRecoveryPlan={dayMemoNormalDifferenceRecoveryPlan}
+          dayMemoNormalDifferenceRecoveryCheckpointCheck={dayMemoNormalDifferenceRecoveryCheckpointCheck}
           dayMemoSyncBaseline={dayMemoSyncBaseline}
           dayMemoBaselineRebase={dayMemoBaselineRebase}
           dayMemoUpdatePreview={dayMemoUpdatePreview}
