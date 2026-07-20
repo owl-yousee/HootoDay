@@ -16,6 +16,7 @@ import type { useDayMemoSyncMetadataMigration } from '../hooks/useDayMemoSyncMet
 import type { useDayMemoDeleteIntent } from '../hooks/useDayMemoDeleteIntent'
 import type { useDayMemoDeletePreview } from '../hooks/useDayMemoDeletePreview'
 import type { useDayMemoTombstonePreview } from '../hooks/useDayMemoTombstonePreview'
+import type { useDayMemoTombstoneApply } from '../hooks/useDayMemoTombstoneApply'
 import type { useDayMemoDeleteUpload } from '../hooks/useDayMemoDeleteUpload'
 import type { useDayMemoUpdatePreview } from '../hooks/useDayMemoUpdatePreview'
 import type { useDayMemoUpdateUpload } from '../hooks/useDayMemoUpdateUpload'
@@ -65,6 +66,7 @@ interface ThemeSettingsProps {
   dayMemoDeleteIntent: ReturnType<typeof useDayMemoDeleteIntent>
   dayMemoDeletePreview: ReturnType<typeof useDayMemoDeletePreview>
   dayMemoTombstonePreview: ReturnType<typeof useDayMemoTombstonePreview>
+  dayMemoTombstoneApply: ReturnType<typeof useDayMemoTombstoneApply>
   dayMemoDeleteUpload: ReturnType<typeof useDayMemoDeleteUpload>
   onClose: () => void
 }
@@ -200,6 +202,7 @@ export function ThemeSettings({
   dayMemoDeleteIntent,
   dayMemoDeletePreview,
   dayMemoTombstonePreview,
+  dayMemoTombstoneApply,
   dayMemoDeleteUpload,
   onClose,
 }: ThemeSettingsProps) {
@@ -747,11 +750,35 @@ export function ThemeSettings({
                           ))}
                         </ul>
                       ) : null}
+                      {dayMemoTombstonePreview.summary?.tombstoneCount === 1
+                        && dayMemoTombstonePreview.summary.remoteDeletedLocalActiveCount === 1
+                        && dayMemoTombstonePreview.summary.remoteDeletedLocalModifiedCount === 0
+                        && dayMemoTombstonePreview.summary.remoteDeletedLocalMissingCount === 0
+                        && dayMemoTombstonePreview.summary.remoteDeletedUnknownCount === 0
+                        && dayMemoTombstoneApply.state === 'idle' ? (
+                          <button type="button" className="health-primary-button cloud-sync-button" onClick={dayMemoTombstoneApply.applyTombstone}>
+                            削除済み状態をこの端末へ反映
+                          </button>
+                        ) : null}
+                      {dayMemoTombstoneApply.state === 'applying' ? <button type="button" className="health-primary-button cloud-sync-button" disabled>この端末へ反映中…</button> : null}
+                      {dayMemoTombstoneApply.state === 'completed' && dayMemoTombstoneApply.result ? (
+                        <div className="cloud-day-memo-upload-result" role="status">
+                          <strong>local反映完了</strong>
+                          <ul>
+                            <li>対象日付：{dayMemoTombstoneApply.result.date}</li>
+                            <li>remote revision：{dayMemoTombstoneApply.result.remoteRevision}</li>
+                            <li>change sequence：{dayMemoTombstoneApply.result.remoteChangeSequence}</li>
+                            <li>tombstone baseline：保存済み</li>
+                          </ul>
+                          <p>Supabaseへの書き込みは行っていません。</p>
+                        </div>
+                      ) : null}
+                      {dayMemoTombstoneApply.safeErrorMessage ? <p className="cloud-pairing-error" role="alert">{dayMemoTombstoneApply.safeErrorMessage}</p> : null}
                       {dayMemoTombstonePreview.state === 'no_tombstones' ? <p className="cloud-sync-note" role="status">同期先に削除済みDayMemoはありません。</p> : null}
                       {dayMemoTombstonePreview.state === 'blocked' ? <p className="cloud-pairing-error" role="alert">同期状態を安全に確認できないため、削除状態を確認できません。</p> : null}
                       {dayMemoTombstonePreview.safeErrorMessage ? <p className="cloud-pairing-error" role="alert">{dayMemoTombstonePreview.safeErrorMessage}</p> : null}
                       {(dayMemoTombstonePreview.summary || dayMemoTombstonePreview.items.length > 0 || dayMemoTombstonePreview.state === 'no_tombstones') ? (
-                        <button type="button" className="health-secondary-button cloud-sync-button" onClick={dayMemoTombstonePreview.discardPreview}>確認結果を破棄</button>
+                        <button type="button" className="health-secondary-button cloud-sync-button" onClick={() => { dayMemoTombstoneApply.reset(); dayMemoTombstonePreview.discardPreview() }}>確認結果を破棄</button>
                       ) : null}
                       <p className="cloud-sync-note">確認結果はこの画面のメモリ内だけに保持し、再読み込み後は復元しません。local DayMemo、baseline、cursor、削除意図、pending operationは変更しません。</p>
                     </div>

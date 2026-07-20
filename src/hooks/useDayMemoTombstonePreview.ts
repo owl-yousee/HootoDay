@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabaseClient } from '../lib/supabaseClient'
 import type { DayMemo } from '../types/dayMemo'
+import type { DayMemoRemoteBaselineV3 } from '../types/dayMemoSync'
 import type { SyncConnection } from '../types/sync'
 import { readDayMemoStorageSnapshot } from '../utils/dayMemoStorage'
 import { pullAllDayMemoSyncRecords } from '../utils/dayMemoSyncPull'
@@ -27,6 +28,19 @@ export interface DayMemoTombstonePreviewSummary {
   remoteDeletedLocalModifiedCount: number
   remoteDeletedLocalMissingCount: number
   remoteDeletedUnknownCount: number
+}
+
+export interface DayMemoTombstoneApplySnapshot {
+  workspaceId: string
+  metadataRaw: string
+  localStorageSerialized: string
+  localMemos: DayMemo[]
+  date: string
+  baseline: DayMemoRemoteBaselineV3
+  remoteRevision: number
+  remoteChangeSequence: number
+  remoteUpdatedAt: string
+  deletedAt: string
 }
 
 export type DayMemoTombstonePreviewState =
@@ -76,11 +90,13 @@ export function useDayMemoTombstonePreview({ dayMemos, isConfigured, isSignedIn,
   const [summary, setSummary] = useState<DayMemoTombstonePreviewSummary | null>(null)
   const [safeErrorMessage, setSafeErrorMessage] = useState<string | null>(null)
   const runIdRef = useRef(0)
+  const applySnapshotRef = useRef<DayMemoTombstoneApplySnapshot | null>(null)
   const currentLocalSignature = useMemo(() => localSignature(dayMemos), [dayMemos])
   const eligible = Boolean(isConfigured && isSignedIn && supabaseClient && connectionIsEligible(connection))
 
   const discardPreview = useCallback(() => {
     runIdRef.current += 1
+    applySnapshotRef.current = null
     setItems([])
     setSummary(null)
     setSafeErrorMessage(null)
@@ -89,6 +105,7 @@ export function useDayMemoTombstonePreview({ dayMemos, isConfigured, isSignedIn,
 
   useEffect(() => {
     runIdRef.current += 1
+    applySnapshotRef.current = null
     setItems([])
     setSummary(null)
     setSafeErrorMessage(null)
@@ -115,6 +132,7 @@ export function useDayMemoTombstonePreview({ dayMemos, isConfigured, isSignedIn,
     const runId = runIdRef.current + 1
     runIdRef.current = runId
     setState('checking')
+    applySnapshotRef.current = null
     setItems([])
     setSummary(null)
     setSafeErrorMessage(null)
@@ -189,8 +207,40 @@ export function useDayMemoTombstonePreview({ dayMemos, isConfigured, isSignedIn,
 
     setItems(classified)
     setSummary(summarize(classified))
+    if (classified.length === 1 && classified[0].classification === 'remote_deleted_local_active') {
+      const remote = tombstones[0]
+      const baseline = metadata.baselines[remote.entityId]
+      applySnapshotRef.current = {
+        workspaceId: metadata.workspaceId,
+        metadataRaw: after.raw,
+        localStorageSerialized: storedAfter.serialized,
+        localMemos: storedAfter.memos.map((memo) => ({ ...memo })),
+        date: remote.entityId,
+        baseline: { ...baseline },
+        remoteRevision: remote.revision,
+        remoteChangeSequence: remote.changeSequence,
+        remoteUpdatedAt: remote.serverUpdatedAt,
+        deletedAt: remote.deletedAt!,
+      }
+    }
     setState(classified.length === 0 ? 'no_tombstones' : 'preview_ready')
   }, [connection?.workspaceId, currentLocalSignature, eligible, state])
+
+  const getSingleActiveSnapshot = useCallback((): DayMemoTombstoneApplySnapshot | null => {
+    const snapshot = applySnapshotRef.current
+    if (state !== 'preview_ready'
+      || summary?.tombstoneCount !== 1
+      || summary.remoteDeletedLocalActiveCount !== 1
+      || summary.remoteDeletedLocalModifiedCount !== 0
+      || summary.remoteDeletedLocalMissingCount !== 0
+      || summary.remoteDeletedUnknownCount !== 0
+      || !snapshot) return null
+    return {
+      ...snapshot,
+      localMemos: snapshot.localMemos.map((memo) => ({ ...memo })),
+      baseline: { ...snapshot.baseline },
+    }
+  }, [state, summary])
 
   return {
     eligible,
@@ -200,5 +250,6 @@ export function useDayMemoTombstonePreview({ dayMemos, isConfigured, isSignedIn,
     safeErrorMessage,
     previewTombstones,
     discardPreview,
+    getSingleActiveSnapshot,
   }
 }

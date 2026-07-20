@@ -1322,3 +1322,10 @@ The next smallest implementation phase is B-3f4a. This design step changes docum
 - pull失敗、不完全取得、metadata/local状態変化では部分結果を採用せず安全停止する。previewはReact stateだけに保持し、明示破棄または再読み込みで消去する。
 - UIは件数、日付、分類、remote revision、change sequence、deletedAtだけを表示し、本文、payload、UUID、operation ID、token、内部例外全文は表示しない。
 - 本Phaseは読み取り専用previewだけであり、DayMemo削除、tombstone baseline・cursor・intent・pending・safety state変更、upsert/delete RPC、復活、競合解決、pushBlock解除を行わない。B-3f4bの明示反映は実機preview確認後に分離する。
+## Phase B-3f4b：tombstone 1件の明示local反映
+
+- B-3f4aのReactメモリ内snapshotを一度だけ利用し、`remote_deleted_local_active`が1件だけで他分類0件の場合に限り明示反映する。preview破棄・再読み込み・local/metadata変化後は再previewを必須とする。
+- 反映前にmetadata version 3、workspace binding、confirmed baseline、pending null、pushBlock null、localDeleteIntents空、metadata/DayMemo raw完全一致、local updatedAt一致、remote revisionがbaseline+1、change sequence前進を再検証する。
+- DayMemo完成配列を1回verified write/read-backし、その後metadataをverified write/read-backする。成功metadataは対象baselineをpayloadなしのtombstone状態へ置換し、remote revision/change sequence/server updated time/deletedAt、`baselineLocalUpdatedAt = null`、cursor、確認日時、最終成功日時を保存する。他baseline、workspace、initialUpload、migration、pushBlockは維持する。
+- DayMemo保存失敗は内部rollbackを確認する。metadata構築・保存失敗時は元DayMemo rawへ戻し、metadata保存utilityのrollbackも確認する。どちらかのrollbackを確認できなければ`recovery_required`として停止し、自動retryしない。
+- remote modified/missing/unknown、intentあり、pendingあり、pushBlockありでは反映しない。Supabase RPC、operation ID、pending、intent変更、復活、競合解決、複数件処理は含めない。

@@ -2280,3 +2280,10 @@ cleanup後VERIFY結果：
 - pending operation、pushBlock、metadata/workspace不一致、baseline未確認、pull不完全、確認中のlocal/metadata変化ではfail-closedに停止する。結果破棄と再読み込みではpreviewだけを消去する。
 - local DayMemo、baseline、cursor、localDeleteIntent、pending operation、safety stateは変更しない。upsert/delete、自動pull、自動retry、自動反映、復活、競合解決は実装していない。
 - Supabase実機確認、stage、commit、pushは未実施である。
+## Phase B-3f4b：tombstone 1件の明示local反映（実装済み・実機確認待ち）
+
+- `remote_deleted_local_active`が正確に1件で危険分類が0件の場合だけ、「削除済み状態をこの端末へ反映」の明示操作を許可する。自動反映・複数件反映は行わない。
+- preview snapshot、workspace、metadata raw、DayMemo raw、active baseline、local updatedAt、remote revision/change sequence系譜、pending・pushBlock・localDeleteIntent不在を反映直前に再検証する。
+- 対象DayMemoをverified write/read-backで削除後、active baselineをtombstone baselineへ変更し、cursor・baseline確認日時・最終成功日時を更新する。保存成功後だけReact stateを更新する。
+- DayMemoまたはmetadata保存・read-back失敗では元rawへrollbackし、rollback失敗は`recovery_required`として自動retryせず停止する。
+- Supabaseへのupsert/delete、operation ID生成、pending作成、intent変更、復活、競合解決、pushBlock解除は行わない。実機確認、stage、commit、pushは未実施である。
