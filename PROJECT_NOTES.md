@@ -2431,3 +2431,11 @@ cleanup後VERIFY結果：
 - B-3f5d2a/B-3f5d2b1 and related operational paths use version 4 as the normal metadata version. B-3f5d2b1 delete preparation writes matching pending and intent IDs together.
 - The old intent-only delete path stays version 3-compatible and is blocked after migration; version 4 uses the atomic pending-plus-intent preparation path.
 - No Supabase operation, RPC, SQL, automatic migration, retry, merge, repair, conflict resolution, commit, or push was performed. B-3f5d2b2 and device migration/send verification remain pending.
+## Phase B-3f5d2b2a：準備済み1件の送信前remote read-only確認（実装、実機未確認）
+
+- metadata v4に永続化された`prepared`のupsertまたはdelete 1件を正本とし、明示ボタン操作時だけ`hooto_day_pull_sync_records`を読み取り専用で完全取得する。自動pull、自動retry、upsert、deleteは行わない。
+- remoteが対象baselineを含む全baselineと完全一致し、cursor、local、pending、delete intent、workspace、pushBlockが整合する場合だけ`local_operation_remote_check_sendable`とする。
+- pull契約はoperation IDを返さないため、remote revisionが進行済みの場合は同一operationの適用済みと推測せず`local_operation_remote_check_duplicate_uncertain`で停止する。
+- 公開結果は日付・操作種別・revision・change sequence・分類など安全なscalarだけとし、operation ID、DayMemo本文、payloadはUI・console・文書へ出さない。内部snapshotは後続Phase専用で、metadataまたはDayMemoのraw値が変化すると利用不可になる。
+- preview結果はReact stateだけに保持し、破棄・再読み込みで消える。metadata、pending、intent、baseline、cursor、DayMemoは変更しない。後続B-3f5d2b2でも送信直前にremoteを再確認する。
+- 静的検査後に実機でread-only pullを確認する。CodexによるSupabase接続・RPC実行、stage、commit、pushは未実施。
