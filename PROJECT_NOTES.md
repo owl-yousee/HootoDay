@@ -2235,3 +2235,20 @@ cleanup後VERIFY結果：
 - local delete intentとdelete pendingは型・validatorの土台だけで、今回作成しない。operation ID生成、delete／upsert RPC、tombstone作成・反映、復活、pushBlock解除は実装していない。
 - 既存upsert Hook、baseline、preview、recovery、安全状態をversion 3対応とし、通常upsert後もversion 3を維持する。DayMemo本文、localStorageキー、JSONバックアップ形式、SQLは変更していない。
 - PC親機・iPhone子機でのmigrationと既存機能回帰確認は未実施。Supabase操作、stage、commit、pushも行っていない。
+
+### Phase B-3f2：明示削除意図とdelete候補preview（実装済み・実機確認待ち）
+
+- 同期済みactive DayMemoは、ユーザーの明示確認後にlocal delete intentをmetadataへ保存・read-backできた場合だけlocalから削除する。単なるlocal不在や予定編集画面でのlocal-only削除を同期削除へ変換しない。
+- intentはdate、baseline revision／change sequence、削除前local updatedAt、作成日時、statusだけを保持し、本文、payload、operation ID、device情報を保存しない。
+- metadata保存後にDayMemoを保存し、どちらかが失敗した場合は元rawへrollbackする。rollback不明時はrecovery requiredとして自動再試行せず停止する。
+- 設定画面へ明示的なdelete候補確認を追加し、既存full pull utilityによるread-only確認後にlocal deleted、意図未確認missing、remote deleted、conflict、unknownへ分類する。previewはReact memoryだけに保持し破棄できる。
+- local delete intentがある間は通常upsertをfail-closedで停止する。pushBlock中・pending operation中はintent作成とpreviewを禁止する。
+- delete RPC、tombstone作成・local反映、復活、intent取消し、pending deleteは未実装。SQL変更、Supabase実操作、stage、commit、pushは行っていない。
+### Phase B-3f2 delete UI safety clarification (2026-07-20)
+
+- PC側のbaseline mismatch時、同期対象DayMemoでも通常の「メモを削除」に見えていた。内部処理は`requiresSynchronizedDelete`でfail-closedだったが、表示が操作可能状態を正しく表していなかった。
+- 削除表示を`local_delete`、`sync_delete_ready`、`sync_delete_blocked`の3状態へ分離した。同期対象だが安全条件を満たさない場合は「同期状態の確認が必要」を無効表示し、削除handlerを呼ばない。
+- このUI修正ではlocal DayMemo、同期metadata、Supabaseを変更しない。実機再確認待ちで、commit・pushは未実施。
+- 追加調査で、baseline mismatch保存時に`baselines`が空になるため、baseline有無を先に見る判定では同期済みDayMemoを`local_delete`へ誤分類し、handlerも通常削除へ進み得ることを確認した。
+- 削除modeはbaselineStatusを先に評価する。`confirmed`またはremote全件空を確認済みの`remote_empty`以外、metadata不正、workspace不一致、pending operation、pushBlockはbaselineの有無にかかわらず`sync_delete_blocked`とする。
+- `confirmed`で対象baselineがない場合だけ未同期local DayMemoとして`local_delete`を許可する。handlerもmodeを正本にし、blockedではDayMemo・metadata・Supabaseを変更しない。実機再確認待ちで、commit・pushは未実施。

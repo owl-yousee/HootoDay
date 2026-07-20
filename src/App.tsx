@@ -29,6 +29,8 @@ import { useDayMemoSyncBaseline } from './hooks/useDayMemoSyncBaseline'
 import { useDayMemoSyncRecoveryCheck } from './hooks/useDayMemoSyncRecoveryCheck'
 import { useDayMemoSyncRecoveryApply } from './hooks/useDayMemoSyncRecoveryApply'
 import { useDayMemoSyncMetadataMigration } from './hooks/useDayMemoSyncMetadataMigration'
+import { useDayMemoDeleteIntent } from './hooks/useDayMemoDeleteIntent'
+import { useDayMemoDeletePreview } from './hooks/useDayMemoDeletePreview'
 import { useDayMemoUpdatePreview } from './hooks/useDayMemoUpdatePreview'
 import { useDayMemoUpdateUpload } from './hooks/useDayMemoUpdateUpload'
 import { useDailyAchievements } from './hooks/useDailyAchievements'
@@ -88,6 +90,18 @@ function App() {
   const { preference, appliedTheme, setPreference, replaceThemePreference } = useTheme()
   const supabaseAuth = useSupabaseAuth()
   const supabaseWorkspace = useSupabaseWorkspace(supabaseAuth.isSignedIn)
+  const dayMemoDeleteIntent = useDayMemoDeleteIntent({
+    dayMemos,
+    isConfigured: supabaseAuth.isConfigured,
+    isSignedIn: supabaseAuth.isSignedIn,
+    connection: supabaseWorkspace.connection,
+    adoptVerifiedStoredDayMemos,
+  })
+  const dayMemoDeletePreview = useDayMemoDeletePreview({
+    isConfigured: supabaseAuth.isConfigured,
+    isSignedIn: supabaseAuth.isSignedIn,
+    connection: supabaseWorkspace.connection,
+  })
   const dayMemoInitialUpload = useDayMemoInitialUpload({
     dayMemos,
     isConfigured: supabaseAuth.isConfigured,
@@ -494,6 +508,8 @@ function App() {
           dayMemoSyncRecoveryCheck={dayMemoSyncRecoveryCheck}
           dayMemoSyncRecoveryApply={dayMemoSyncRecoveryApply}
           dayMemoSyncMetadataMigration={dayMemoSyncMetadataMigration}
+          dayMemoDeleteIntent={dayMemoDeleteIntent}
+          dayMemoDeletePreview={dayMemoDeletePreview}
           onClose={() => setIsThemeSettingsOpen(false)}
         />
       )}
@@ -505,7 +521,9 @@ function App() {
           onSave={saveEvent}
           dayMemos={dayMemos}
           onSaveDayMemo={saveDayMemo}
-          onDeleteDayMemo={deleteDayMemo}
+          onDeleteDayMemo={(date) => {
+            if (!dayMemoDeleteIntent.requiresSynchronizedDelete(date)) deleteDayMemo(date)
+          }}
           onDelete={deleteCalendarEvent}
           mobileSlide={mobileEntryType === 'event'}
           onClose={() => {
@@ -523,7 +541,14 @@ function App() {
           weekday={['日曜日', '月曜日', '火曜日', '水曜日', '木曜日', '金曜日', '土曜日'][selectedDate.getDay()]}
           memo={dayMemos.find((memo) => memo.date === toDateKey(selectedDate)) ?? null}
           onSave={saveDayMemo}
-          onDelete={deleteDayMemo}
+          onDelete={(date) => {
+            const deleteMode = dayMemoDeleteIntent.getDeleteModeForDate(date)
+            if (deleteMode === 'sync_delete_ready') return dayMemoDeleteIntent.recordIntentAndDeleteLocal(date)
+            if (deleteMode === 'sync_delete_blocked') return false
+            deleteDayMemo(date)
+            return true
+          }}
+          deleteMode={dayMemoDeleteIntent.getDeleteModeForDate(toDateKey(selectedDate))}
           mobileSlide={mobileEntryType === 'memo'}
           onClose={() => {
             const shouldRestoreFocus = mobileEntryType === 'memo'

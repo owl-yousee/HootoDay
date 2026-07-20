@@ -14,7 +14,8 @@ interface DayMemoDialogProps {
   weekday: string
   memo: DayMemo | null
   onSave: (memo: DayMemo) => void
-  onDelete: (date: string) => void
+  onDelete: (date: string) => boolean | void
+  deleteMode?: 'local_delete' | 'sync_delete_ready' | 'sync_delete_blocked'
   onClose: () => void
   mobileSlide?: boolean
 }
@@ -25,6 +26,7 @@ export function DayMemoDialog({
   memo,
   onSave,
   onDelete,
+  deleteMode = 'local_delete',
   onClose,
   mobileSlide = false,
 }: DayMemoDialogProps) {
@@ -85,9 +87,14 @@ export function DayMemoDialog({
   }
 
   const handleDelete = () => {
-    if (memo && window.confirm(`${date}の日記・メモを削除しますか？`)) {
-      onDelete(date)
-      closeDialog()
+    if (deleteMode === 'sync_delete_blocked') return
+    const message = deleteMode === 'sync_delete_ready'
+      ? `${date}の日記・メモをこの端末から削除し、同期先の削除候補として記録しますか？\n\nこの時点では同期先から削除しません。`
+      : `${date}の日記・メモをこの端末から削除しますか？`
+    if (memo && window.confirm(message)) {
+      const deleted = onDelete(date)
+      if (deleted !== false) closeDialog()
+      else setError('同期済みDayMemoを安全に削除できる状態ではありません。設定画面で同期状態を確認してください。')
     }
   }
 
@@ -138,11 +145,29 @@ export function DayMemoDialog({
         </div>
 
         <div className="event-editor-actions">
-          {memo && <button type="button" className="event-action-button danger" onClick={handleDelete}>メモを削除</button>}
+          {memo && (
+            <button
+              type="button"
+              className="event-action-button danger"
+              onClick={handleDelete}
+              disabled={deleteMode === 'sync_delete_blocked'}
+            >
+              {deleteMode === 'sync_delete_ready'
+                ? '端末から削除し同期候補へ記録'
+                : deleteMode === 'sync_delete_blocked'
+                  ? '同期状態の確認が必要'
+                  : 'メモを削除'}
+            </button>
+          )}
           <span className="event-action-spacer" />
           <button type="button" className="event-action-button secondary" onClick={closeDialog}>キャンセル</button>
           <button type="submit" className="event-action-button primary">保存</button>
         </div>
+        {memo && deleteMode === 'sync_delete_blocked' && (
+          <p className="field-hint" role="status">
+            このDayMemoは同期対象です。baselineや未完了同期を確認してから削除してください。
+          </p>
+        )}
       </form>
     </dialog>
   )
