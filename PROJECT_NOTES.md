@@ -2448,3 +2448,12 @@ cleanup後VERIFY結果：
 - 通信・応答不明はpendingを`response_unknown`、競合は`conflict`として保持する。remote成功後のmetadata保存失敗は未送信へ戻さず`recovery_required`または既存sending状態でfail-closedとし、自動再送・remote rollbackを行わない。
 - UI結果は安全なscalarだけを表示し、operation ID、本文、payload、UUID、credentialは表示しない。結果破棄はReact stateだけを消去する。
 - CodexによるSupabase接続・認証・pull・upsert・delete・SQL・実機送信は未実施。実upsert/delete、remote成功後local失敗、duplicate uncertain、already applied、複数送信は未確認・未実装である。
+
+## Phase B-3f5e1：通常同期差異の復旧計画read-only確認
+
+- B-3f5d1はpending／intent由来の競合専用とし、通常同期の本文相違、remote-only、local-only、baseline欠落は独立した復旧計画で扱う。
+- 明示操作時だけ既存の完全full pullを行い、local、remote、metadata v4、baseline、cursorを日付単位で比較する。完全一致・baseline確認済み／欠落、本文一致・timestamp相違、本文相違、local-only、remote-only active／tombstone、active-tombstone不一致、revision系譜不一致、unknownを本文非表示で分類する。
+- 完全一致かつbaseline欠落の日付は、将来の部分baseline補完候補とする。metadata v4では`mismatch`はbaseline空を要求するため、部分補完は`recovery_required`、確認日時null、cursor据え置きとしてvalidatorを通せる場合だけ設計上可能と判定する。今回は保存しない。
+- 本文相違はlocal／remoteの手動判断、remote-onlyは通常remote採用、local-onlyは新operation準備へ分離し、1件ずつ処理する。全差異解消後に全体baseline／cursorを再確認し、最後にconfirmed復帰を判断する。
+- 結果はReact stateだけに保持し、破棄しても永続状態を変更しない。自動pull、retry、merge、修復、競合解決、baseline保存、remote採用、upload、operation ID生成、Supabase書き込みは行わない。
+- 部分baseline補完、本文相違の選択UI、通常remote-only採用、local-only準備、全体再確立、pushBlock解除は未実装であり、実機確認も未実施である。

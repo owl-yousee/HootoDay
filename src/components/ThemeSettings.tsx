@@ -21,6 +21,7 @@ import type { useDayMemoLocalOperationPreparationCheck } from '../hooks/useDayMe
 import type { useDayMemoLocalOperationPreparation } from '../hooks/useDayMemoLocalOperationPreparation'
 import type { useDayMemoLocalOperationRemoteCheck } from '../hooks/useDayMemoLocalOperationRemoteCheck'
 import type { useDayMemoLocalOperationSend } from '../hooks/useDayMemoLocalOperationSend'
+import type { useDayMemoNormalDifferenceRecoveryPlan } from '../hooks/useDayMemoNormalDifferenceRecoveryPlan'
 import type { useDayMemoMetadataV4Migration } from '../hooks/useDayMemoMetadataV4Migration'
 import type { useDayMemoSyncMetadataMigration } from '../hooks/useDayMemoSyncMetadataMigration'
 import type { useDayMemoDeleteIntent } from '../hooks/useDayMemoDeleteIntent'
@@ -65,6 +66,7 @@ interface ThemeSettingsProps {
   }
   dayMemoInitialUpload: ReturnType<typeof useDayMemoInitialUpload>
   dayMemoPullPreview: ReturnType<typeof useDayMemoPullPreview>
+  dayMemoNormalDifferenceRecoveryPlan: ReturnType<typeof useDayMemoNormalDifferenceRecoveryPlan>
   dayMemoSyncBaseline: ReturnType<typeof useDayMemoSyncBaseline>
   dayMemoBaselineRebase: ReturnType<typeof useDayMemoBaselineRebase>
   dayMemoUpdatePreview: ReturnType<typeof useDayMemoUpdatePreview>
@@ -248,6 +250,7 @@ export function ThemeSettings({
   supabaseWorkspace,
   dayMemoInitialUpload,
   dayMemoPullPreview,
+  dayMemoNormalDifferenceRecoveryPlan,
   dayMemoSyncBaseline,
   dayMemoBaselineRebase,
   dayMemoUpdatePreview,
@@ -1019,6 +1022,58 @@ export function ThemeSettings({
                       ) : null}
                       {dayMemoSyncBaseline.safeErrorMessage ? <p className="cloud-pairing-error" role="alert">{dayMemoSyncBaseline.safeErrorMessage}</p> : null}
                       <p className="cloud-sync-note">自動同期・自動再試行・upsert・deleteは行いません。</p>
+                    </div>
+                  ) : null}
+                  {dayMemoNormalDifferenceRecoveryPlan.eligible ? (
+                    <div className="cloud-day-memo-baseline-panel" role="region" aria-labelledby="day-memo-normal-difference-plan-heading">
+                      <h4 id="day-memo-normal-difference-plan-heading">通常同期差異の復旧計画</h4>
+                      <p>通常同期の差異を読み取り専用で分類し、1件ずつ復旧する順序を確認します。同期readyへの変更や自動修復は行いません。</p>
+                      <button type="button" className="health-secondary-button cloud-sync-button" disabled={dayMemoNormalDifferenceRecoveryPlan.checking} onClick={() => { void dayMemoNormalDifferenceRecoveryPlan.check() }}>
+                        {dayMemoNormalDifferenceRecoveryPlan.checking ? '復旧計画を確認中…' : '通常同期差異の復旧計画を確認'}
+                      </button>
+                      {dayMemoNormalDifferenceRecoveryPlan.result ? (
+                        <div role="status">
+                          <p><strong>safety分類：{dayMemoNormalDifferenceRecoveryPlan.result.safety}</strong></p>
+                          <ul className="cloud-day-memo-preview-summary">
+                            <li>metadata version：{dayMemoNormalDifferenceRecoveryPlan.result.metadataVersion ?? '確認不能'}</li>
+                            <li>workspace binding：{dayMemoNormalDifferenceRecoveryPlan.result.workspaceBound ? '一致' : '不一致または確認不能'}</li>
+                            <li>validator：{dayMemoNormalDifferenceRecoveryPlan.result.metadataValid ? '正常' : '確認不能'}</li>
+                            <li>pending：{dayMemoNormalDifferenceRecoveryPlan.result.pendingCount}件</li>
+                            <li>localDeleteIntent：{dayMemoNormalDifferenceRecoveryPlan.result.intentCount}件</li>
+                            <li>pushBlock：{dayMemoNormalDifferenceRecoveryPlan.result.pushBlocked ? 'あり' : 'なし'}</li>
+                            <li>remote／local／baseline：{dayMemoNormalDifferenceRecoveryPlan.result.remoteCount}／{dayMemoNormalDifferenceRecoveryPlan.result.localCount}／{dayMemoNormalDifferenceRecoveryPlan.result.baselineCount}件</li>
+                            <li>cursor：{dayMemoNormalDifferenceRecoveryPlan.result.cursor ?? '確認不能'}（{dayMemoNormalDifferenceRecoveryPlan.result.cursorValid ? '有効' : '不整合または確認不能'}）</li>
+                            <li>完全一致・baseline確認済み：{dayMemoNormalDifferenceRecoveryPlan.result.counts.exact_match_baseline_confirmed}件</li>
+                            <li>完全一致・baseline欠落：{dayMemoNormalDifferenceRecoveryPlan.result.counts.exact_match_baseline_missing}件</li>
+                            <li>本文一致・更新日時相違：{dayMemoNormalDifferenceRecoveryPlan.result.counts.exact_body_timestamp_mismatch}件</li>
+                            <li>本文相違：{dayMemoNormalDifferenceRecoveryPlan.result.counts.body_mismatch}件</li>
+                            <li>local-only：{dayMemoNormalDifferenceRecoveryPlan.result.counts.local_only}件</li>
+                            <li>remote-only active：{dayMemoNormalDifferenceRecoveryPlan.result.counts.remote_only_active}件</li>
+                            <li>remote-only tombstone：{dayMemoNormalDifferenceRecoveryPlan.result.counts.remote_only_tombstone}件</li>
+                            <li>revision／状態不整合：{dayMemoNormalDifferenceRecoveryPlan.result.lineageOrStateMismatchCount}件</li>
+                            <li>部分baseline補完：{dayMemoNormalDifferenceRecoveryPlan.result.partialBaselineSupported ? '設計上可能' : '対象なしまたは未対応'}</li>
+                            <li>1件ずつ復旧：{dayMemoNormalDifferenceRecoveryPlan.result.oneByOneRecoveryPossible ? '可能' : '安全条件未達'}</li>
+                            <li>確認日時：{new Date(dayMemoNormalDifferenceRecoveryPlan.result.checkedAt).toLocaleString('ja-JP')}</li>
+                          </ul>
+                          {dayMemoNormalDifferenceRecoveryPlan.result.items.length > 0 ? (
+                            <ul className="cloud-day-memo-preview-items">
+                              {dayMemoNormalDifferenceRecoveryPlan.result.items.map((item) => (
+                                <li key={`${item.date}-${item.classification}`}>
+                                  <strong>{item.date}</strong>
+                                  <span>分類：{item.classification}</span>
+                                  <span>local：{item.localExists ? 'あり' : 'なし'}</span>
+                                  <span>remote：{item.remoteState}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          ) : null}
+                          <p><strong>推奨復旧順序</strong></p>
+                          <ol>{dayMemoNormalDifferenceRecoveryPlan.result.recommendedOrder.map((step) => <li key={step}>{step}</li>)}</ol>
+                          <p>{dayMemoNormalDifferenceRecoveryPlan.result.nextAction}</p>
+                          <p className="cloud-sync-note">確認結果はReact stateだけに保持します。metadata、baseline、cursor、DayMemo、pending、intent、remoteは変更しません。RPC送信も行いません。</p>
+                          <button type="button" className="health-secondary-button cloud-sync-button" onClick={dayMemoNormalDifferenceRecoveryPlan.discard}>復旧計画結果を破棄</button>
+                        </div>
+                      ) : null}
                     </div>
                   ) : null}
                   {dayMemoBaselineRebase.eligible ? (
