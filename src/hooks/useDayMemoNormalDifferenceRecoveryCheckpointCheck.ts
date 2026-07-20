@@ -12,6 +12,7 @@ import { DAY_MEMO_NORMAL_DIFFERENCE_CLASSIFICATIONS, classifyDayMemoNormalDiffer
 
 export type DayMemoNormalDifferenceCheckpointSafety =
   | 'normal_difference_checkpoint_ready' | 'normal_difference_checkpoint_no_candidates'
+  | 'normal_difference_checkpoint_unresolved_ready'
   | 'normal_difference_checkpoint_cursor_not_advanced' | 'normal_difference_checkpoint_cursor_invalid'
   | 'normal_difference_checkpoint_unresolved_not_reconstructable' | 'normal_difference_checkpoint_validator_failed'
   | 'normal_difference_checkpoint_pending_remaining' | 'normal_difference_checkpoint_intent_remaining'
@@ -79,6 +80,7 @@ function localSignature(memos: DayMemo[]): string {
 
 function nextAction(safety: DayMemoNormalDifferenceCheckpointSafety): string {
   if (safety === 'normal_difference_checkpoint_ready') return '次Phaseでcheckpointを明示保存し、その後も未解決差異を1件ずつ確認してください。'
+  if (safety === 'normal_difference_checkpoint_unresolved_ready') return '新しいcheckpoint保存は不要です。未解決差異を後続Phaseで1件ずつ確認してください。'
   if (safety === 'normal_difference_checkpoint_no_candidates') return '完全一致のbaseline候補がありません。差異を種類別に確認してください。'
   return '永続状態を変更せず、安全条件を最初から確認してください。'
 }
@@ -141,9 +143,6 @@ export function useDayMemoNormalDifferenceRecoveryCheckpointCheck({ dayMemos, is
         || pulled.maxChangeSequence < metadata.lastPulledChangeSequence) {
         finish('normal_difference_checkpoint_cursor_invalid', remoteCommon); return
       }
-      if (pulled.maxChangeSequence === metadata.lastPulledChangeSequence) {
-        finish('normal_difference_checkpoint_cursor_not_advanced', remoteCommon); return
-      }
       const localByDate = new Map(stored.memos.map((memo) => [memo.date, memo]))
       const dates = [...new Set([...localByDate.keys(), ...remoteByDate.keys(), ...Object.keys(metadata.baselines)])].sort()
       const original = new Map(dates.map((date) => [date, classifyDayMemoNormalDifference(
@@ -152,13 +151,28 @@ export function useDayMemoNormalDifferenceRecoveryCheckpointCheck({ dayMemos, is
       const unresolvedDates = dates.filter((date) => UNRESOLVED.includes(original.get(date)!))
       const unresolvedCounts = emptyCounts()
       for (const date of unresolvedDates) unresolvedCounts[original.get(date)!] += 1
+      const currentCounts = emptyCounts()
+      for (const classification of original.values()) currentCounts[classification] += 1
       if (dates.some((date) => ['revision_lineage_mismatch', 'active_tombstone_mismatch', 'unknown'].includes(original.get(date)!))) {
         finish('normal_difference_checkpoint_revision_mismatch', { ...remoteCommon, exactBaselineCandidateCount: exactDates.length,
-          unresolvedCount: unresolvedDates.length, unresolvedCounts, unresolvedDates }); return
+          unresolvedCount: unresolvedDates.length, unresolvedCounts, unresolvedDates, reclassifiedCounts: currentCounts }); return
+      }
+      if (pulled.maxChangeSequence === metadata.lastPulledChangeSequence) {
+        const savedCheckpointIsReconstructable = metadata.baselineStatus === 'recovery_required'
+          && exactDates.length === 0 && unresolvedDates.length > 0
+          && currentCounts.exact_match_baseline_confirmed === Object.keys(metadata.baselines).length
+        finish(savedCheckpointIsReconstructable
+          ? 'normal_difference_checkpoint_unresolved_ready'
+          : 'normal_difference_checkpoint_cursor_not_advanced', {
+          ...remoteCommon, exactBaselineCandidateCount: exactDates.length,
+          unresolvedCount: unresolvedDates.length, unresolvedCounts, unresolvedDates,
+          metadataValidatorPassed: true, unresolvedReconstructable: savedCheckpointIsReconstructable,
+          reclassifiedCounts: currentCounts, oneByOneRecoveryPossible: savedCheckpointIsReconstructable,
+        }); return
       }
       if (!exactDates.length) {
         finish('normal_difference_checkpoint_no_candidates', { ...remoteCommon, unresolvedCount: unresolvedDates.length,
-          unresolvedCounts, unresolvedDates }); return
+          unresolvedCounts, unresolvedDates, metadataValidatorPassed: true, reclassifiedCounts: currentCounts }); return
       }
       const baselines: DayMemoSyncMetadataV4['baselines'] = { ...metadata.baselines }
       for (const date of exactDates) {

@@ -1111,6 +1111,7 @@ export function ThemeSettings({
                             <li>validator：{dayMemoNormalDifferenceRecoveryCheckpointCheck.result.metadataValidatorPassed ? '正常' : '未確認または失敗'}</li>
                             <li>未解決差異の再構築：{dayMemoNormalDifferenceRecoveryCheckpointCheck.result.unresolvedReconstructable ? '可能' : '未確認または不可'}</li>
                             <li>仮適用後baseline確認済み：{dayMemoNormalDifferenceRecoveryCheckpointCheck.result.reclassifiedCounts.exact_match_baseline_confirmed}件</li>
+                            {dayMemoNormalDifferenceRecoveryCheckpointCheck.result.safety === 'normal_difference_checkpoint_unresolved_ready' ? <li>新しいcheckpoint保存：不要</li> : null}
                             <li>仮適用後の通常同期ready：いいえ</li>
                             <li>後続Phaseで1件ずつ復旧：{dayMemoNormalDifferenceRecoveryCheckpointCheck.result.oneByOneRecoveryPossible ? '可能' : '安全条件未達'}</li>
                             <li>永続変更：なし</li>

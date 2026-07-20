@@ -2463,3 +2463,6 @@ cleanup後VERIFY結果：
 - Phase B-3f5e3として、B-3f5e2のready snapshotを起点に、別の明示操作でmetadata v4の復旧checkpointを保存する処理を追加した。保存直前にmetadata／DayMemo／workspaceの鮮度と完全full pullを再確認し、snapshotとremote全件、候補日付、未解決分類が同一の場合だけ進む。
 - 保存するのは完全一致baselineと同一checkpoint内のcursorだけで、`baselineStatus = recovery_required`、確認日時nullを維持し、未解決日付へbaselineを作らない。verified save/read-back後にReact metadataを更新し、失敗時は既存utilityのverified rollback結果を区別する。
 - checkpoint保存は差異解消や通常同期readyへの復帰ではない。自動pull／retry／merge／修復／競合解決、Supabase書き込みはなく、実機保存確認、本文相違の選択、remote-only採用、local-only準備、全差異解消後のconfirmed復帰、取消・一括処理は未実装である。
+- B-3f5e3保存後、cursorとfull pull最大sequenceが一致するとB-3f5e2が日付別分類前に終了し、未解決差異を0件表示していた。永続データ消失ではなく、cursor差分0の早期終了による表示・分類上の問題だった。
+- 保存済みcheckpoint（metadata v4、`recovery_required`、cursor一致）でもlocal／remote／baselineの和集合を再分類し、既存baselineの完全一致と未解決差異を再構築できる場合は`normal_difference_checkpoint_unresolved_ready`とする。新しいcheckpoint snapshotは作らず、再保存を禁止したまま後続Phaseの1件ずつの復旧へ渡す。
+- この修正はread-only分類と表示だけであり、metadata、baseline、cursor、DayMemo、pending、intent、pushBlock、remoteを変更しない。実機での再確認、commit、pushは未実施。
