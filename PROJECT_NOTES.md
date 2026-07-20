@@ -2478,3 +2478,11 @@ cleanup後VERIFY結果：
 - A version 4 upsert pending is uniquely migrated as normal because the strict version 4 validator rejects unknown fields. No recovery mode or missing lineage is inferred. Invalid or unsupported pending data blocks migration.
 - The normal send preflight and sender accept only version 5 normal upsert pending or delete pending. A recovery upsert cannot enter the normal send path. Existing normal preview/upload, recovery planning/checkpoint, body-mismatch comparison, baseline state, and safety checks read version 5.
 - UI exposes only version, classification, pending count/kind, validation booleans, persistence/read-back/rollback state, time, and a safe next action. It does not expose content, payload, identifiers, credentials, or raw metadata. No automatic migration, recovery pending creation, Supabase operation, RPC, SQL, retry, merge, repair, stage, commit, or push occurs in this phase.
+## Phase B-3f5e4b: body mismatch local recovery preparation
+
+- B-3f5e4aで明示確定したlocal候補1件だけを、metadata v5の`body_mismatch_recovery` upsert pendingとして永続準備する。
+- 最終確認後にcandidate、local storage、metadata、workspace、checkpointを再検証し、完全full pullでremote revision・change sequence・updatedAt・本文と全差異分類の不変を確認する。
+- operation IDは全read-only確認成功後に1回だけ生成する。pendingにはremote由来のbase情報と現在localのupdatedAtを保存する。
+- 変更対象はpendingOperationだけ。DayMemo、baseline、cursor、baselineStatus、intent、pushBlock、remoteは変更せず、Supabase送信も行わない。
+- 保存はmetadata v5 validator、verified read-back、失敗時のverified rollbackを必須とする。成功後も`recovery_required`かつ通常同期ready=falseを維持する。
+- 自動pull、自動送信、自動retry、merge、修復、競合解決は行わない。実機確認と後続の送信前remote確認・明示送信は未実装。

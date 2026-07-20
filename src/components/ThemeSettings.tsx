@@ -26,6 +26,7 @@ import type { useDayMemoNormalDifferenceRecoveryPlan } from '../hooks/useDayMemo
 import type { useDayMemoNormalDifferenceRecoveryCheckpointCheck } from '../hooks/useDayMemoNormalDifferenceRecoveryCheckpointCheck'
 import type { useDayMemoNormalDifferenceRecoveryCheckpointSave } from '../hooks/useDayMemoNormalDifferenceRecoveryCheckpointSave'
 import type { useDayMemoNormalBodyMismatchCandidate } from '../hooks/useDayMemoNormalBodyMismatchCandidate'
+import type { useDayMemoNormalBodyMismatchLocalPreparation } from '../hooks/useDayMemoNormalBodyMismatchLocalPreparation'
 import type { useDayMemoMetadataV4Migration } from '../hooks/useDayMemoMetadataV4Migration'
 import type { useDayMemoMetadataV5Migration } from '../hooks/useDayMemoMetadataV5Migration'
 import type { useDayMemoSyncMetadataMigration } from '../hooks/useDayMemoSyncMetadataMigration'
@@ -75,6 +76,7 @@ interface ThemeSettingsProps {
   dayMemoNormalDifferenceRecoveryCheckpointCheck: ReturnType<typeof useDayMemoNormalDifferenceRecoveryCheckpointCheck>
   dayMemoNormalDifferenceRecoveryCheckpointSave: ReturnType<typeof useDayMemoNormalDifferenceRecoveryCheckpointSave>
   dayMemoNormalBodyMismatchCandidate: ReturnType<typeof useDayMemoNormalBodyMismatchCandidate>
+  dayMemoNormalBodyMismatchLocalPreparation: ReturnType<typeof useDayMemoNormalBodyMismatchLocalPreparation>
   dayMemoSyncBaseline: ReturnType<typeof useDayMemoSyncBaseline>
   dayMemoBaselineRebase: ReturnType<typeof useDayMemoBaselineRebase>
   dayMemoUpdatePreview: ReturnType<typeof useDayMemoUpdatePreview>
@@ -263,6 +265,7 @@ export function ThemeSettings({
   dayMemoNormalDifferenceRecoveryCheckpointCheck,
   dayMemoNormalDifferenceRecoveryCheckpointSave,
   dayMemoNormalBodyMismatchCandidate,
+  dayMemoNormalBodyMismatchLocalPreparation,
   dayMemoSyncBaseline,
   dayMemoBaselineRebase,
   dayMemoUpdatePreview,
@@ -1199,7 +1202,43 @@ export function ThemeSettings({
                       ) : null}
                     </div>
                   ) : null}
-                  <DayMemoBodyMismatchComparison candidate={dayMemoNormalBodyMismatchCandidate} />
+                  <DayMemoBodyMismatchComparison candidate={dayMemoNormalBodyMismatchCandidate}
+                    disabled={dayMemoNormalBodyMismatchLocalPreparation.preparing} />
+                  {dayMemoNormalBodyMismatchLocalPreparation.eligible || dayMemoNormalBodyMismatchLocalPreparation.result ? (
+                    <div className="cloud-day-memo-baseline-panel" role="region" aria-labelledby="day-memo-body-mismatch-local-prepare-heading">
+                      <h4 id="day-memo-body-mismatch-local-prepare-heading">本文相違local候補のrecovery準備</h4>
+                      <p>local候補を同期先へ上書きするためのpendingだけを準備します。この段階ではSupabaseへ送信せず、DayMemo・baseline・cursorは変更しません。</p>
+                      {dayMemoNormalBodyMismatchLocalPreparation.eligible ? (
+                        <button type="button" className="health-primary-button cloud-sync-button" disabled={dayMemoNormalBodyMismatchLocalPreparation.preparing}
+                          onClick={() => { void dayMemoNormalBodyMismatchLocalPreparation.prepare() }}>
+                          {dayMemoNormalBodyMismatchLocalPreparation.preparing ? 'local候補を再確認中…' : 'local候補をrecovery操作として準備'}
+                        </button>
+                      ) : null}
+                      {dayMemoNormalBodyMismatchLocalPreparation.result ? (
+                        <div role="status">
+                          <p><strong>safety：{dayMemoNormalBodyMismatchLocalPreparation.result.safety}</strong></p>
+                          <ul className="cloud-day-memo-preview-summary">
+                            <li>対象日：{dayMemoNormalBodyMismatchLocalPreparation.result.date ?? '確認不能'}</li><li>採用候補：local</li>
+                            <li>candidate確認：{dayMemoNormalBodyMismatchLocalPreparation.result.candidateFresh ? '確認済み' : '未確認'}</li>
+                            <li>remote再確認：{dayMemoNormalBodyMismatchLocalPreparation.result.remoteRechecked ? '確認済み' : '未確認'}</li>
+                            <li>operation ID：{dayMemoNormalBodyMismatchLocalPreparation.result.operationIdGenerated ? '生成済み（実値は非表示）' : '未生成'}</li>
+                            <li>recovery pending：{dayMemoNormalBodyMismatchLocalPreparation.result.pendingCreated ? '作成済み' : '未作成'}</li>
+                            <li>operation mode：{dayMemoNormalBodyMismatchLocalPreparation.result.operationMode ?? 'なし'}</li>
+                            <li>DayMemo変更：なし</li><li>baseline・cursor変更：なし</li>
+                            <li>baselineStatus：{dayMemoNormalBodyMismatchLocalPreparation.result.baselineStatus ?? '確認不能'}</li>
+                            <li>metadata保存：{dayMemoNormalBodyMismatchLocalPreparation.result.metadataSaved ? '成功' : 'なし／失敗'}</li>
+                            <li>read-back：{dayMemoNormalBodyMismatchLocalPreparation.result.readBackSucceeded ? '成功' : '未成功'}</li>
+                            <li>rollback：{dayMemoNormalBodyMismatchLocalPreparation.result.rollbackAttempted ? (dayMemoNormalBodyMismatchLocalPreparation.result.rollbackSucceeded ? '成功' : '失敗') : '未実行'}</li>
+                            <li>RPC送信：なし</li><li>通常同期ready：いいえ</li>
+                            <li>確認日時：{new Date(dayMemoNormalBodyMismatchLocalPreparation.result.checkedAt).toLocaleString('ja-JP')}</li>
+                          </ul>
+                          <p>{dayMemoNormalBodyMismatchLocalPreparation.result.nextAction}</p>
+                          <button type="button" className="health-secondary-button cloud-sync-button" disabled={dayMemoNormalBodyMismatchLocalPreparation.preparing}
+                            onClick={dayMemoNormalBodyMismatchLocalPreparation.discard}>local準備結果を破棄</button>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
                   {dayMemoBaselineRebase.eligible ? (
                     <div className="cloud-day-memo-rebase-panel">
                       <h4>baseline差異の安全確認</h4>

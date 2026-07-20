@@ -242,6 +242,14 @@ export function useDayMemoNormalBodyMismatchCandidate({ dayMemos, isConfigured, 
     return snapshot
   }, [checkpointResult, connection, dayMemos])
 
+  const consumeCandidateSnapshot = useCallback(() => {
+    comparisonSnapshotRef.current = null
+    candidateSnapshotRef.current = null
+    setComparison(null)
+    setChoice(null)
+    setResult(null)
+  }, [])
+
   return { eligible, bodyMismatchDates, selectedDate, setSelectedDate, checking, comparison, choice, setChoice: selectChoice,
-    result, compare, confirmCandidate, discard, getCandidateSnapshot }
+    result, compare, confirmCandidate, discard, getCandidateSnapshot, consumeCandidateSnapshot }
 }

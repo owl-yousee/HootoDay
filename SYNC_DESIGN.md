@@ -1667,3 +1667,8 @@ Minimal future files are a focused `useDayMemoRemoteAdoptionPreflight.ts`, the e
 - Existing normal-operation preparation creates only normal upsert pending. Normal remote preflight and explicit send reject recovery mode before any RPC. Recovery-mode preparation and transmission remain future phases.
 - Version 5 is the current format for normal-difference planning, checkpoint checking/saving, body-mismatch candidate comparison, normal update/local-only/resurrection/delete flows, baseline state, and shared safety classification. Version 4 remains readable only for the explicit v5 migration boundary.
 - This phase changes no DayMemo, syncConnection, pending status vocabulary, delete-intent structure, JSON backup envelope, Supabase SQL, RLS, policy, or RPC contract. It performs no migration execution, remote read/write, automatic retry, merge, repair, or conflict resolution.
+## B-3f5e4b 本文相違local候補のrecovery upsert永続準備
+
+B-3f5e4aのlocal candidate snapshotを正本とし、明示確認後の完全full pullで対象remote active recordと対象外を含む差異分類が不変の場合だけ準備する。operation IDはremote再確認後に1回生成し、metadata v5の`body_mismatch_recovery` pendingへ、remoteのrevision・change sequence・payload updatedAt・active stateと現在local updatedAtを保存する。metadata cursorをbase change sequenceの代用にしない。
+
+永続変更はpendingOperation 1件だけとし、対象日のbaselineは作らず、既存baseline、cursor、`recovery_required`、`baselineConfirmedAt=null`、未解決差異を維持する。verified保存・read-backに失敗した場合は元metadataへverified rollbackし、証明不能ならfail-closedとする。通常upsert preflight/sendはrecovery modeを拒否し、後続専用Phaseだけが扱う。自動処理、Supabase書き込み、DayMemo再保存は行わない。

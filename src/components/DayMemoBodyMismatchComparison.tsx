@@ -2,15 +2,16 @@ import type { useDayMemoNormalBodyMismatchCandidate } from '../hooks/useDayMemoN
 
 interface Props {
   candidate: ReturnType<typeof useDayMemoNormalBodyMismatchCandidate>
+  disabled?: boolean
 }
 
-export function DayMemoBodyMismatchComparison({ candidate }: Props) {
+export function DayMemoBodyMismatchComparison({ candidate, disabled = false }: Props) {
   if (!candidate.eligible) return null
   return (
     <div className="cloud-day-memo-baseline-panel" role="region" aria-labelledby="day-memo-body-mismatch-heading">
       <h4 id="day-memo-body-mismatch-heading">本文相違の比較と採用候補</h4>
       <p>本文相違の日付を1件だけ選び、明示操作でlocalとremoteを読み取り専用比較します。候補確定は採用実行ではありません。</p>
-      <fieldset disabled={candidate.checking}>
+      <fieldset disabled={candidate.checking || disabled}>
         <legend>比較する日付</legend>
         {candidate.bodyMismatchDates.map((date) => (
           <label key={date}><input type="radio" name="day-memo-body-mismatch-date" value={date}
@@ -18,7 +19,7 @@ export function DayMemoBodyMismatchComparison({ candidate }: Props) {
         ))}
       </fieldset>
       <button type="button" className="health-secondary-button cloud-sync-button"
-        disabled={!candidate.selectedDate || candidate.checking} onClick={() => { void candidate.compare() }}>
+        disabled={!candidate.selectedDate || candidate.checking || disabled} onClick={() => { void candidate.compare() }}>
         {candidate.checking ? 'local／remoteを確認中…' : 'local／remote内容を比較'}
       </button>
       {candidate.comparison ? (
@@ -32,7 +33,7 @@ export function DayMemoBodyMismatchComparison({ candidate }: Props) {
           <p>remote revision／change sequence：{candidate.comparison.remoteRevision}／{candidate.comparison.remoteChangeSequence}（検証済み）</p>
           <label><input type="radio" name="day-memo-body-mismatch-choice" checked={candidate.choice === 'local'} onChange={() => candidate.setChoice('local')} /> localを採用候補にする</label>
           <label><input type="radio" name="day-memo-body-mismatch-choice" checked={candidate.choice === 'remote'} onChange={() => candidate.setChoice('remote')} /> remoteを採用候補にする</label>
-          <button type="button" className="health-secondary-button cloud-sync-button" disabled={!candidate.choice} onClick={candidate.confirmCandidate}>この候補を確定</button>
+          <button type="button" className="health-secondary-button cloud-sync-button" disabled={!candidate.choice || disabled} onClick={candidate.confirmCandidate}>この候補を確定</button>
         </div>
       ) : null}
       {candidate.result ? (
@@ -48,7 +49,7 @@ export function DayMemoBodyMismatchComparison({ candidate }: Props) {
           <p>{candidate.result.nextAction}</p>
         </div>
       ) : null}
-      <button type="button" className="health-secondary-button cloud-sync-button" onClick={candidate.discard}>比較・候補結果を破棄</button>
+      <button type="button" className="health-secondary-button cloud-sync-button" disabled={disabled} onClick={candidate.discard}>比較・候補結果を破棄</button>
     </div>
   )
 }
