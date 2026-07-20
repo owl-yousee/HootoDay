@@ -34,6 +34,18 @@ export interface DayMemoConflictPreviewItem {
   checkedAt: string
 }
 
+export interface DayMemoConflictAdoptionSnapshot {
+  workspaceId: string
+  item: DayMemoConflictPreviewItem
+  metadataRaw: string
+  localStorageSerialized: string
+  localMemos: DayMemo[]
+  pendingOperation: DayMemoPendingOperationV3 | null
+  localDeleteIntents: DayMemoSyncMetadataV3['localDeleteIntents']
+  baseline: DayMemoSyncMetadataV3['baselines'][string] | null
+  remoteRecord: RemoteDayMemoRecord
+}
+
 interface UseDayMemoConflictPreviewInput {
   dayMemos: DayMemo[]
   isConfigured: boolean
@@ -168,6 +180,7 @@ export function useDayMemoConflictPreview({ dayMemos, isConfigured, isSignedIn, 
   const [items, setItems] = useState<DayMemoConflictPreviewItem[]>([])
   const [safeErrorMessage, setSafeErrorMessage] = useState<string | null>(null)
   const generation = useRef(0)
+  const adoptionSnapshotsRef = useRef<Map<string, DayMemoConflictAdoptionSnapshot>>(new Map())
   const signature = useMemo(() => localSignature(dayMemos), [dayMemos])
   const latestSignature = useRef(signature)
   latestSignature.current = signature
@@ -175,6 +188,7 @@ export function useDayMemoConflictPreview({ dayMemos, isConfigured, isSignedIn, 
 
   const reset = useCallback(() => {
     generation.current += 1
+    adoptionSnapshotsRef.current.clear()
     setItems([])
     setSafeErrorMessage(null)
     if (!connectionEligible || !connection?.workspaceId) {
@@ -196,6 +210,7 @@ export function useDayMemoConflictPreview({ dayMemos, isConfigured, isSignedIn, 
   const checkConflicts = useCallback(async () => {
     if (!connectionEligible || !connection?.workspaceId || !supabaseClient || state !== 'idle') return
     setState('checking')
+    adoptionSnapshotsRef.current.clear()
     setItems([])
     setSafeErrorMessage(null)
     const before = loadDayMemoSyncMetadataAny(window.localStorage)
@@ -233,7 +248,7 @@ export function useDayMemoConflictPreview({ dayMemos, isConfigured, isSignedIn, 
       setState('checked')
       return
     }
-    setItems(evidences.map((evidence) => {
+    const nextItems: DayMemoConflictPreviewItem[] = evidences.map((evidence) => {
       const remote = findRemote(pulled.records, evidence.date)
       return {
         date: evidence.date,
@@ -247,9 +262,42 @@ export function useDayMemoConflictPreview({ dayMemos, isConfigured, isSignedIn, 
         pendingStatus: evidence.pendingStatus,
         checkedAt,
       }
-    }))
+    })
+    for (const item of nextItems) {
+      const remoteRecord = findRemote(pulled.records, item.date)
+      if ((item.classification === 'remote_state_unknown' || item.classification === 'pending_metadata_mismatch')
+        || !remoteRecord || item.remoteState === 'unknown') continue
+      adoptionSnapshotsRef.current.set(item.date, {
+        workspaceId: connection.workspaceId,
+        item: { ...item },
+        metadataRaw: after.raw,
+        localStorageSerialized: afterStored.serialized,
+        localMemos: afterStored.memos.map((memo) => ({ ...memo })),
+        pendingOperation: after.metadata.pendingOperation ? { ...after.metadata.pendingOperation } : null,
+        localDeleteIntents: Object.fromEntries(Object.entries(after.metadata.localDeleteIntents).map(([date, intent]) => [date, { ...intent }])),
+        baseline: after.metadata.baselines[item.date] ? { ...after.metadata.baselines[item.date] } : null,
+        remoteRecord: {
+          ...remoteRecord,
+          payload: remoteRecord.payload ? { ...remoteRecord.payload } : null,
+        },
+      })
+    }
+    setItems(nextItems)
     setState('checked')
   }, [connection?.workspaceId, connectionEligible, signature, state])
+
+  const getAdoptionSnapshot = useCallback((date: string): DayMemoConflictAdoptionSnapshot | null => {
+    const snapshot = adoptionSnapshotsRef.current.get(date)
+    return snapshot ? {
+      ...snapshot,
+      item: { ...snapshot.item },
+      localMemos: snapshot.localMemos.map((memo) => ({ ...memo })),
+      pendingOperation: snapshot.pendingOperation ? { ...snapshot.pendingOperation } : null,
+      localDeleteIntents: Object.fromEntries(Object.entries(snapshot.localDeleteIntents).map(([intentDate, intent]) => [intentDate, { ...intent }])),
+      baseline: snapshot.baseline ? { ...snapshot.baseline } : null,
+      remoteRecord: { ...snapshot.remoteRecord, payload: snapshot.remoteRecord.payload ? { ...snapshot.remoteRecord.payload } : null },
+    } : null
+  }, [])
 
   return {
     eligible: state !== 'unavailable',
@@ -259,5 +307,6 @@ export function useDayMemoConflictPreview({ dayMemos, isConfigured, isSignedIn, 
     safeErrorMessage,
     checkConflicts,
     discardPreview: reset,
+    getAdoptionSnapshot,
   }
 }

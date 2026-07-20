@@ -13,6 +13,7 @@ import type { useDayMemoSyncBaseline } from '../hooks/useDayMemoSyncBaseline'
 import type { useDayMemoSyncRecoveryCheck } from '../hooks/useDayMemoSyncRecoveryCheck'
 import type { useDayMemoSyncRecoveryApply } from '../hooks/useDayMemoSyncRecoveryApply'
 import type { useDayMemoConflictPreview } from '../hooks/useDayMemoConflictPreview'
+import type { useDayMemoRemoteAdoptionPreflight } from '../hooks/useDayMemoRemoteAdoptionPreflight'
 import type { useDayMemoSyncMetadataMigration } from '../hooks/useDayMemoSyncMetadataMigration'
 import type { useDayMemoDeleteIntent } from '../hooks/useDayMemoDeleteIntent'
 import type { useDayMemoDeletePreview } from '../hooks/useDayMemoDeletePreview'
@@ -65,6 +66,7 @@ interface ThemeSettingsProps {
   dayMemoSyncSafety: DayMemoSyncSafety
   dayMemoSyncRecoveryCheck: ReturnType<typeof useDayMemoSyncRecoveryCheck>
   dayMemoConflictPreview: ReturnType<typeof useDayMemoConflictPreview>
+  dayMemoRemoteAdoptionPreflight: ReturnType<typeof useDayMemoRemoteAdoptionPreflight>
   dayMemoSyncRecoveryApply: ReturnType<typeof useDayMemoSyncRecoveryApply>
   dayMemoSyncMetadataMigration: ReturnType<typeof useDayMemoSyncMetadataMigration>
   dayMemoDeleteIntent: ReturnType<typeof useDayMemoDeleteIntent>
@@ -116,6 +118,16 @@ const CONFLICT_REMOTE_STATE_LABELS: Record<ReturnType<typeof useDayMemoConflictP
   active: '通常レコード',
   deleted: '削除済み',
   unknown: '確認不能',
+}
+
+const REMOTE_ADOPTION_PREFLIGHT_LABELS: Record<NonNullable<ReturnType<typeof useDayMemoRemoteAdoptionPreflight>['result']>['classification'], string> = {
+  ready_remote_active: '同期先の通常状態を採用可能',
+  ready_remote_tombstone: '同期先の削除状態を採用可能',
+  blocked_snapshot_changed: '確認後に端末または同期設定が変化',
+  blocked_remote_changed: '確認後に同期先状態が変化',
+  blocked_other_mismatch: '対象外に未処理の不一致あり',
+  blocked_invalid_remote: '同期先状態を安全に検証不能',
+  blocked_unknown: '最終確認を完了不能',
 }
 
 function getCloudSyncPresentation(
@@ -228,6 +240,7 @@ export function ThemeSettings({
   dayMemoSyncSafety,
   dayMemoSyncRecoveryCheck,
   dayMemoConflictPreview,
+  dayMemoRemoteAdoptionPreflight,
   dayMemoSyncRecoveryApply,
   dayMemoSyncMetadataMigration,
   dayMemoDeleteIntent,
@@ -448,6 +461,21 @@ export function ThemeSettings({
                                 <span>同期先状態：{CONFLICT_REMOTE_STATE_LABELS[item.remoteState]}</span>
                                 <span>未完了処理状態：{item.pendingStatus === 'intent_recorded' ? '削除意図あり' : item.pendingStatus}</span>
                                 <small>確認日時：{new Date(item.checkedAt).toLocaleString('ja-JP')}</small>
+                                {item.classification !== 'remote_state_unknown'
+                                  && item.classification !== 'pending_metadata_mismatch'
+                                  && item.remoteState !== 'unknown' ? (
+                                    <label>
+                                      <input
+                                        type="radio"
+                                        name="day-memo-remote-adoption-candidate"
+                                        value={item.date}
+                                        checked={dayMemoRemoteAdoptionPreflight.selectedDate === item.date}
+                                        onChange={() => dayMemoRemoteAdoptionPreflight.selectCandidate(item.date)}
+                                        disabled={!dayMemoRemoteAdoptionPreflight.eligible || dayMemoRemoteAdoptionPreflight.state === 'checking'}
+                                      />
+                                      この競合をremote採用候補にする
+                                    </label>
+                                  ) : null}
                               </li>
                             ))}
                           </ul>
@@ -458,6 +486,55 @@ export function ThemeSettings({
                         </div>
                       ) : null}
                       {dayMemoConflictPreview.safeErrorMessage ? <p className="cloud-pairing-error" role="alert">{dayMemoConflictPreview.safeErrorMessage}</p> : null}
+                      {dayMemoRemoteAdoptionPreflight.selectedDate ? (
+                        <div className="cloud-day-memo-apply-confirmation">
+                          <h4>remote採用の最終確認</h4>
+                          <p>選択対象日付：{dayMemoRemoteAdoptionPreflight.selectedDate}</p>
+                          <p>同期先と端末の状態を読み取り専用で再確認します。まだDayMemoや同期情報は変更しません。</p>
+                          {dayMemoRemoteAdoptionPreflight.state === 'selected' ? (
+                            <button type="button" className="health-secondary-button cloud-sync-button" onClick={() => { void dayMemoRemoteAdoptionPreflight.runPreflight() }}>
+                              同期先の状態を最終確認
+                            </button>
+                          ) : null}
+                          {dayMemoRemoteAdoptionPreflight.state === 'checking' ? (
+                            <button type="button" className="health-secondary-button cloud-sync-button" disabled>最終確認中…</button>
+                          ) : null}
+                          {dayMemoRemoteAdoptionPreflight.result ? (
+                            <div role="status">
+                              <p><strong>preflight結果：{REMOTE_ADOPTION_PREFLIGHT_LABELS[dayMemoRemoteAdoptionPreflight.result.classification]}</strong></p>
+                              <ul className="cloud-day-memo-preview-summary">
+                                <li>対象日付：{dayMemoRemoteAdoptionPreflight.result.date}</li>
+                                <li>競合分類：{CONFLICT_CLASSIFICATION_LABELS[dayMemoRemoteAdoptionPreflight.result.conflictClassification]}</li>
+                                <li>この端末の操作：{CONFLICT_OPERATION_LABELS[dayMemoRemoteAdoptionPreflight.result.localOperation]}</li>
+                                <li>同期先状態：{CONFLICT_REMOTE_STATE_LABELS[dayMemoRemoteAdoptionPreflight.result.remoteState]}</li>
+                                <li>base revision：{dayMemoRemoteAdoptionPreflight.result.baseRevision}</li>
+                                <li>同期先revision：{dayMemoRemoteAdoptionPreflight.result.remoteRevision}</li>
+                                <li>baseline change sequence：{dayMemoRemoteAdoptionPreflight.result.baselineChangeSequence}</li>
+                                <li>同期先change sequence：{dayMemoRemoteAdoptionPreflight.result.remoteChangeSequence}</li>
+                                <li>対象外不一致：{dayMemoRemoteAdoptionPreflight.result.otherMismatchCount}件</li>
+                                <li>確認日時：{new Date(dayMemoRemoteAdoptionPreflight.result.checkedAt).toLocaleString('ja-JP')}</li>
+                              </ul>
+                              <p>{dayMemoRemoteAdoptionPreflight.result.localEffect === 'replace'
+                                ? 'この端末の同日DayMemoは同期先の内容へ置き換わります。他の日付は変更されません。'
+                                : dayMemoRemoteAdoptionPreflight.result.localEffect === 'add'
+                                  ? '同期先のDayMemoがこの端末へ追加されます。他の日付は変更されません。'
+                                  : dayMemoRemoteAdoptionPreflight.result.localEffect === 'delete'
+                                    ? 'この端末の同日DayMemoは削除されます。他の日付は変更されません。'
+                                    : 'この端末には対象DayMemoがないため、同期情報だけを同期先の削除状態へ合わせる予定です。'}</p>
+                              <p className="cloud-sync-note">採用完了時には対象pendingとlocalDeleteIntentを解消する予定ですが、このPhaseでは変更しません。</p>
+                              <p className="cloud-sync-note">{dayMemoRemoteAdoptionPreflight.result.classification === 'ready_remote_active'
+                                ? '次のPhaseで同期先の内容をこの端末へ反映できます。'
+                                : dayMemoRemoteAdoptionPreflight.result.classification === 'ready_remote_tombstone'
+                                  ? '次のPhaseで同期先の削除状態をこの端末へ反映できます。'
+                                  : '状態が変化したため、競合確認からやり直してください。'}</p>
+                            </div>
+                          ) : null}
+                          {dayMemoRemoteAdoptionPreflight.safeErrorMessage ? <p className="cloud-pairing-error" role="alert">{dayMemoRemoteAdoptionPreflight.safeErrorMessage}</p> : null}
+                          <button type="button" className="health-secondary-button cloud-sync-button" onClick={dayMemoRemoteAdoptionPreflight.discard} disabled={dayMemoRemoteAdoptionPreflight.state === 'checking'}>
+                            remote採用確認を破棄
+                          </button>
+                        </div>
+                      ) : null}
                     </div>
                   ) : null}
                   {dayMemoSyncRecoveryCheck.eligible ? (

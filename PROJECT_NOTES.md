@@ -2356,3 +2356,14 @@ cleanup後VERIFY結果：
 - previewは保存開始前だけReact stateから破棄でき、保存開始後は成功・verified rollback・recovery requiredのいずれかまで破棄不可とする。複数競合は一覧表示のみ許可し、1件採用後は必ずfull pullと競合previewをやり直す。
 - PhaseはB-3f5d1a（候補選択・最終preflight）、B-3f5d1b（active 1件反映）、B-3f5d1c（tombstone 1件反映）、B-3f5d1d（pending・intent・baseline・safety確認）へ分割する。次の最小Phaseは書き込みを行わないB-3f5d1aである。
 - 今回は設計文書だけを更新した。src、package、SQL、RPC、localStorage、DayMemo、metadata、baseline、pending、intentは変更せず、Supabase操作、commit、pushも行っていない。
+
+## Phase B-3f5d1a：remote採用候補の選択・最終preflight（2026-07-20）
+
+- delete-aware conflict previewの安全なactive/tombstone結果からラジオボタンで1件だけを選び、明示的な「同期先の状態を最終確認」でだけ共通full pullを再実行するpreflightを追加した。
+- conflict previewはmetadata raw、local DayMemo全体、pending、intent、対象baseline、workspace、remote recordをReactメモリ内snapshotとして保持する。本文を含むpayloadはvalidatorと比較だけに使い、UI、console、storage、metadataへ出さない。
+- preflightはversion 3、workspace、confirmed baseline、pushBlockなし、metadata/local/pending/intent/baselineの完全一致、remote revision/change sequence/stateの一致を再検証する。
+- remote activeはstrict validator済みpayloadから重複のない完成local配列をメモリ内で構築し、remote tombstoneは対象日だけを除いた完成配列またはmetadata-only候補を構築する。いずれも保存しない。
+- 対象外のremote-only、local-only、内容不一致、tombstone不一致、別pending、別intentを全件比較し、1件でもあれば`blocked_other_mismatch`として採用準備を禁止する。
+- 結果はready active/tombstone、snapshot変更、remote変更、対象外不一致、remote不正、unknownへ分類し、対象日・revision・change sequence・影響・不一致件数だけを表示する。
+- 選択、snapshot、remote参照、完成配列候補、結果はReact state/refだけに保持し、「remote採用確認を破棄」または再読み込みで消える。競合のpending、intent、baseline、cursor、local/remote DayMemoは変更しない。
+- B-3f5d1b/cの反映処理、operation ID生成、自動採用、自動retry、merge、競合解決は未実装である。実競合がない場合の実機preflight確認、commit、pushは未実施である。
