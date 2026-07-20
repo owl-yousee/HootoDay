@@ -15,6 +15,7 @@ import type { useDayMemoSyncRecoveryApply } from '../hooks/useDayMemoSyncRecover
 import type { useDayMemoSyncMetadataMigration } from '../hooks/useDayMemoSyncMetadataMigration'
 import type { useDayMemoDeleteIntent } from '../hooks/useDayMemoDeleteIntent'
 import type { useDayMemoDeletePreview } from '../hooks/useDayMemoDeletePreview'
+import type { useDayMemoDeleteUpload } from '../hooks/useDayMemoDeleteUpload'
 import type { useDayMemoUpdatePreview } from '../hooks/useDayMemoUpdatePreview'
 import type { useDayMemoUpdateUpload } from '../hooks/useDayMemoUpdateUpload'
 import { useSupabasePairing, useSupabasePairingJoin } from '../hooks/useSupabasePairing'
@@ -62,6 +63,7 @@ interface ThemeSettingsProps {
   dayMemoSyncMetadataMigration: ReturnType<typeof useDayMemoSyncMetadataMigration>
   dayMemoDeleteIntent: ReturnType<typeof useDayMemoDeleteIntent>
   dayMemoDeletePreview: ReturnType<typeof useDayMemoDeletePreview>
+  dayMemoDeleteUpload: ReturnType<typeof useDayMemoDeleteUpload>
   onClose: () => void
 }
 
@@ -195,6 +197,7 @@ export function ThemeSettings({
   dayMemoSyncMetadataMigration,
   dayMemoDeleteIntent,
   dayMemoDeletePreview,
+  dayMemoDeleteUpload,
   onClose,
 }: ThemeSettingsProps) {
   const dialogRef = useRef<HTMLDialogElement>(null)
@@ -655,8 +658,8 @@ export function ThemeSettings({
                     <div className="cloud-day-memo-update-panel">
                       <h4>DayMemo削除候補</h4>
                       <p>明示的に記録した削除意図だけを、同期先の全件pullで読み取り専用確認します。今回は削除送信しません。</p>
-                      {dayMemoDeletePreview.state === 'idle' ? <button type="button" className="health-secondary-button cloud-sync-button" onClick={() => { void dayMemoDeletePreview.previewDeletes() }}>削除候補を確認</button> : null}
-                      {dayMemoDeletePreview.state === 'checking' ? <button type="button" className="health-secondary-button cloud-sync-button" disabled>削除候補を確認中…</button> : null}
+                      {dayMemoDeletePreview.state === 'idle' && dayMemoDeleteUpload.state === 'idle' ? <button type="button" className="health-secondary-button cloud-sync-button" onClick={() => { void dayMemoDeletePreview.previewDeletes() }}>削除状態を確認</button> : null}
+                      {dayMemoDeletePreview.state === 'checking' ? <button type="button" className="health-secondary-button cloud-sync-button" disabled>削除状態を確認中…</button> : null}
                       {dayMemoDeletePreview.summary ? (
                         <ul className="cloud-day-memo-preview-summary">
                           <li>削除意図：{dayMemoDeletePreview.summary.intentCount}件</li>
@@ -669,9 +672,44 @@ export function ThemeSettings({
                         </ul>
                       ) : null}
                       {dayMemoDeletePreview.items.length > 0 ? <ul className="cloud-day-memo-preview-items">{dayMemoDeletePreview.items.map((item) => <li key={`${item.date}-${item.classification}`}><strong>{item.date}</strong><span>{item.classification}</span><small>baseline revision {item.baselineRevision ?? '－'}／remote revision {item.remoteRevision ?? '－'}・baseline change {item.baselineChangeSequence ?? '－'}／remote change {item.remoteChangeSequence ?? '－'}</small></li>)}</ul> : null}
+                      {dayMemoDeletePreview.summary?.intentCount === 1
+                        && dayMemoDeletePreview.summary.localDeletedCandidateCount === 1
+                        && dayMemoDeletePreview.summary.localMissingUnconfirmedCount === 0
+                        && dayMemoDeletePreview.summary.remoteDeletedCandidateCount === 0
+                        && dayMemoDeletePreview.summary.remoteDeletedLocalMissingCount === 0
+                        && dayMemoDeletePreview.summary.deleteConflictCount === 0
+                        && dayMemoDeletePreview.summary.deleteUnknownCount === 0
+                        && dayMemoDeleteUpload.state === 'idle' ? (
+                          <button type="button" className="health-secondary-button cloud-sync-button" onClick={dayMemoDeleteUpload.prepareDelete}>
+                            この削除候補を同期
+                          </button>
+                        ) : null}
+                      {dayMemoDeleteUpload.state === 'preparing' ? <p>operation IDとpending deleteを安全に保存しています…</p> : null}
+                      {dayMemoDeleteUpload.state === 'prepared' ? (
+                        <div className="cloud-day-memo-upload-confirm">
+                          <p>削除候補1件を送信する準備ができました。同期先にはまだ送信していません。</p>
+                          <button type="button" className="health-primary-button cloud-sync-button" onClick={() => { void dayMemoDeleteUpload.uploadPreparedDelete() }}>
+                            削除を同期
+                          </button>
+                        </div>
+                      ) : null}
+                      {dayMemoDeleteUpload.state === 'uploading' ? <p>削除候補1件を同期先へ送信しています。画面を閉じずにお待ちください…</p> : null}
+                      {dayMemoDeleteUpload.state === 'completed' && dayMemoDeleteUpload.result ? (
+                        <div className="cloud-day-memo-upload-result" role="status">
+                          <strong>削除同期完了</strong>
+                          <ul>
+                            <li>対象日付：{dayMemoDeleteUpload.result.date}</li>
+                            <li>revision：{dayMemoDeleteUpload.result.revision}</li>
+                            <li>change sequence：{dayMemoDeleteUpload.result.changeSequence}</li>
+                            <li>tombstone：作成済み</li>
+                            <li>local DayMemo：削除済み</li>
+                          </ul>
+                        </div>
+                      ) : null}
                       {dayMemoDeletePreview.state === 'no_intents' ? <p className="cloud-sync-note">明示的な削除意図はありません。</p> : null}
                       {dayMemoDeletePreview.safeErrorMessage ? <p className="cloud-pairing-error" role="alert">{dayMemoDeletePreview.safeErrorMessage}</p> : null}
-                      {dayMemoDeletePreview.summary || dayMemoDeletePreview.items.length > 0 ? <button type="button" className="health-secondary-button cloud-sync-button" onClick={dayMemoDeletePreview.discardPreview}>確認結果を破棄</button> : null}
+                      {dayMemoDeleteUpload.safeErrorMessage ? <p className="cloud-pairing-error" role="alert">{dayMemoDeleteUpload.safeErrorMessage}</p> : null}
+                      {(dayMemoDeletePreview.summary || dayMemoDeletePreview.items.length > 0) && !dayMemoDeleteUpload.hasPendingOperation ? <button type="button" className="health-secondary-button cloud-sync-button" onClick={() => { dayMemoDeleteUpload.reset(); dayMemoDeletePreview.discardPreview() }}>確認結果を破棄</button> : null}
                       {dayMemoDeleteIntent.safeErrorMessage ? <p className="cloud-pairing-error" role="alert">{dayMemoDeleteIntent.safeErrorMessage}</p> : null}
                       <p className="cloud-sync-note">削除意図の取消しには本文の復元が必要なため未実装です。delete RPC・tombstone作成・自動再試行は行いません。</p>
                     </div>

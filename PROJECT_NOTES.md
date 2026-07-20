@@ -2252,3 +2252,12 @@ cleanup後VERIFY結果：
 - 追加調査で、baseline mismatch保存時に`baselines`が空になるため、baseline有無を先に見る判定では同期済みDayMemoを`local_delete`へ誤分類し、handlerも通常削除へ進み得ることを確認した。
 - 削除modeはbaselineStatusを先に評価する。`confirmed`またはremote全件空を確認済みの`remote_empty`以外、metadata不正、workspace不一致、pending operation、pushBlockはbaselineの有無にかかわらず`sync_delete_blocked`とする。
 - `confirmed`で対象baselineがない場合だけ未同期local DayMemoとして`local_delete`を許可する。handlerもmodeを正本にし、blockedではDayMemo・metadata・Supabaseを変更しない。実機再確認待ちで、commit・pushは未実施。
+
+### Phase B-3f3：明示deleteによるtombstone作成（実装済み・実機確認待ち）
+
+- B-3f2のread-only full pullで`local_deleted_candidate`が1件だけ、その他の危険分類が0件と確認できた場合に限り、明示操作でdelete送信準備へ進める。
+- operation IDは送信準備時に共通UUID v4 utilityで1回だけ生成し、本文を含まないdelete pendingをRPC前に保存・read-backする。preview時、自動処理、複数件処理では生成しない。
+- `hooto_day_delete_sync_record`は別の明示ボタンから1回だけ呼ぶ。SQL定義どおりworkspace、day_memo、date、base revision、operation ID、client updated time、source device IDを渡す。
+- applied結果はworkspace・entity、revision増加、change sequence増加、deletedAt、payload null、conflict falseを検証する。成功後だけactive baselineをtombstoneへ変更し、intentを削除、pendingをnull化する。
+- conflict／response unknown／RPC成功後metadata保存失敗ではpendingとoperation IDを保持し、自動retry・新ID生成・local復元を行わない。delete競合解決、復活、tombstoneの別端末反映、複数deleteは未実装。
+- Codex作業中のSupabase接続・RPC・SQL、実データ変更は行わない。実機確認、stage、commit、pushは未実施。

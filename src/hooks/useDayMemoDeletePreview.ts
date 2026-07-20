@@ -5,10 +5,20 @@ import { readDayMemoStorageSnapshot } from '../utils/dayMemoStorage'
 import { pullAllDayMemoSyncRecords } from '../utils/dayMemoSyncPull'
 import { loadDayMemoSyncMetadataAny } from '../utils/dayMemoSyncStorage'
 import { isUuid } from '../utils/syncConnectionStorage'
+import type { DayMemoLocalDeleteIntentV3, DayMemoRemoteBaselineV3 } from '../types/dayMemoSync'
 
 export type DayMemoDeleteClassification = 'local_deleted_candidate' | 'local_missing_unconfirmed' | 'remote_deleted_candidate' | 'remote_deleted_local_missing' | 'delete_conflict' | 'delete_unknown'
 export interface DayMemoDeletePreviewItem { date: string; classification: DayMemoDeleteClassification; baselineRevision: number | null; remoteRevision: number | null; baselineChangeSequence: number | null; remoteChangeSequence: number | null }
 export interface DayMemoDeletePreviewSummary { intentCount: number; localDeletedCandidateCount: number; localMissingUnconfirmedCount: number; remoteDeletedCandidateCount: number; remoteDeletedLocalMissingCount: number; deleteConflictCount: number; deleteUnknownCount: number }
+export interface DayMemoDeleteUploadCandidateSnapshot {
+  workspaceId: string
+  metadataRaw: string
+  localStorageSerialized: string
+  date: string
+  intent: DayMemoLocalDeleteIntentV3
+  baseline: DayMemoRemoteBaselineV3
+  previousChangeSequence: number
+}
 export type DayMemoDeletePreviewState = 'unavailable' | 'idle' | 'checking' | 'preview_ready' | 'no_intents' | 'blocked' | 'error'
 
 interface Input { isConfigured: boolean; isSignedIn: boolean; connection: SyncConnection | null }
@@ -23,14 +33,16 @@ export function useDayMemoDeletePreview({ isConfigured, isSignedIn, connection }
   const [summary, setSummary] = useState<DayMemoDeletePreviewSummary | null>(null)
   const [safeErrorMessage, setSafeErrorMessage] = useState<string | null>(null)
   const runIdRef = useRef(0)
+  const uploadCandidateRef = useRef<DayMemoDeleteUploadCandidateSnapshot | null>(null)
   const eligible = Boolean(isConfigured && isSignedIn && connection?.workspaceId && isUuid(connection.workspaceId))
-  const discardPreview = useCallback(() => { runIdRef.current += 1; setItems([]); setSummary(null); setSafeErrorMessage(null); setState(eligible ? 'idle' : 'unavailable') }, [eligible])
+  const discardPreview = useCallback(() => { runIdRef.current += 1; uploadCandidateRef.current = null; setItems([]); setSummary(null); setSafeErrorMessage(null); setState(eligible ? 'idle' : 'unavailable') }, [eligible])
   useEffect(() => { discardPreview() }, [discardPreview, connection?.workspaceId])
 
   const previewDeletes = useCallback(async () => {
     if (!eligible || !connection?.workspaceId || !supabaseClient || state === 'checking') return
     const runId = runIdRef.current + 1
     runIdRef.current = runId
+    uploadCandidateRef.current = null
     setState('checking'); setItems([]); setSummary(null); setSafeErrorMessage(null)
     const before = loadDayMemoSyncMetadataAny(window.localStorage)
     const storedBefore = readDayMemoStorageSnapshot(window.localStorage)
@@ -70,7 +82,26 @@ export function useDayMemoDeletePreview({ isConfigured, isSignedIn, connection }
       else if (intent && remote) classification = 'delete_conflict'
       return { date, classification, baselineRevision: baseline?.remoteRevision ?? null, remoteRevision: remote?.revision ?? null, baselineChangeSequence: baseline?.remoteChangeSequence ?? null, remoteChangeSequence: remote?.changeSequence ?? null }
     })
-    setItems(classified); setSummary(summarize(classified, intentDates.length)); setState('preview_ready')
+    const nextSummary = summarize(classified, intentDates.length)
+    if (nextSummary.intentCount === 1 && nextSummary.localDeletedCandidateCount === 1
+      && nextSummary.localMissingUnconfirmedCount === 0 && nextSummary.remoteDeletedCandidateCount === 0
+      && nextSummary.remoteDeletedLocalMissingCount === 0 && nextSummary.deleteConflictCount === 0
+      && nextSummary.deleteUnknownCount === 0) {
+      const candidate = classified.find((item) => item.classification === 'local_deleted_candidate')!
+      const intent = metadata.localDeleteIntents[candidate.date]
+      const baseline = metadata.baselines[candidate.date]
+      uploadCandidateRef.current = {
+        workspaceId: connection.workspaceId,
+        metadataRaw: before.raw,
+        localStorageSerialized: storedBefore.serialized,
+        date: candidate.date,
+        intent: { ...intent },
+        baseline: { ...baseline },
+        previousChangeSequence: pull.maxChangeSequence,
+      }
+    }
+    setItems(classified); setSummary(nextSummary); setState('preview_ready')
   }, [connection?.workspaceId, eligible, state])
-  return { eligible, state, items, summary, safeErrorMessage, previewDeletes, discardPreview }
+  const getSingleDeleteCandidateSnapshot = useCallback(() => uploadCandidateRef.current, [])
+  return { eligible, state, items, summary, safeErrorMessage, previewDeletes, discardPreview, getSingleDeleteCandidateSnapshot }
 }

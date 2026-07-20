@@ -75,3 +75,26 @@ export function isConflictDayMemoSyncResult(
     && (value.server_updated_at === null || isIsoDateTime(value.server_updated_at))
     && (value.deleted_at === null || isIsoDateTime(value.deleted_at))
 }
+
+export function isAppliedDayMemoDeleteSyncResult(
+  value: unknown,
+  workspaceId: string,
+  date: string,
+  baseRevision: number,
+  previousChangeSequence: number,
+): value is DayMemoSyncResultRecord {
+  return isRecord(value)
+    && value.status === 'applied'
+    && value.workspace_id === workspaceId
+    && value.entity_type === 'day_memo'
+    && value.entity_id === date
+    && DATE_PATTERN.test(date)
+    && Boolean(fromDateKey(date))
+    && value.revision === baseRevision + 1
+    && Number.isSafeInteger(value.change_sequence)
+    && Number(value.change_sequence) > previousChangeSequence
+    && isIsoDateTime(value.server_updated_at)
+    && isIsoDateTime(value.deleted_at)
+    && value.payload === null
+    && value.conflict === false
+}

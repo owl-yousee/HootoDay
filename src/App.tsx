@@ -31,6 +31,7 @@ import { useDayMemoSyncRecoveryApply } from './hooks/useDayMemoSyncRecoveryApply
 import { useDayMemoSyncMetadataMigration } from './hooks/useDayMemoSyncMetadataMigration'
 import { useDayMemoDeleteIntent } from './hooks/useDayMemoDeleteIntent'
 import { useDayMemoDeletePreview } from './hooks/useDayMemoDeletePreview'
+import { useDayMemoDeleteUpload } from './hooks/useDayMemoDeleteUpload'
 import { useDayMemoUpdatePreview } from './hooks/useDayMemoUpdatePreview'
 import { useDayMemoUpdateUpload } from './hooks/useDayMemoUpdateUpload'
 import { useDailyAchievements } from './hooks/useDailyAchievements'
@@ -101,6 +102,13 @@ function App() {
     isConfigured: supabaseAuth.isConfigured,
     isSignedIn: supabaseAuth.isSignedIn,
     connection: supabaseWorkspace.connection,
+  })
+  const dayMemoDeleteUpload = useDayMemoDeleteUpload({
+    isConfigured: supabaseAuth.isConfigured,
+    isSignedIn: supabaseAuth.isSignedIn,
+    connection: supabaseWorkspace.connection,
+    getSingleDeleteCandidateSnapshot: dayMemoDeletePreview.getSingleDeleteCandidateSnapshot,
+    discardDeletePreview: dayMemoDeletePreview.discardPreview,
   })
   const dayMemoInitialUpload = useDayMemoInitialUpload({
     dayMemos,
@@ -510,6 +518,7 @@ function App() {
           dayMemoSyncMetadataMigration={dayMemoSyncMetadataMigration}
           dayMemoDeleteIntent={dayMemoDeleteIntent}
           dayMemoDeletePreview={dayMemoDeletePreview}
+          dayMemoDeleteUpload={dayMemoDeleteUpload}
           onClose={() => setIsThemeSettingsOpen(false)}
         />
       )}

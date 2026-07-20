@@ -45,8 +45,6 @@ export function classifyDayMemoSyncSafety(
   const metadata = loaded.metadata
   if (metadata.workspaceId !== workspaceId) return result('metadata_invalid')
 
-  if (Object.keys(metadata.localDeleteIntents).length > 0) return result('pending_operation', true)
-
   const pending = metadata.pendingOperation
   if (pending !== null) {
     if (pending.status === 'conflict') return result('conflict', true)
@@ -54,6 +52,7 @@ export function classifyDayMemoSyncSafety(
     if (pending.status === 'recovery_required') return result('recovery_required', true)
     return result('pending_operation', true)
   }
+  if (Object.keys(metadata.localDeleteIntents).length > 0) return result('pending_operation', true)
   if (metadata.pushBlock !== null || metadata.baselineStatus !== 'confirmed' || metadata.baselineConfirmedAt === null) {
     return result('recovery_required')
   }
