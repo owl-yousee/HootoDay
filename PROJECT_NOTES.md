@@ -2168,4 +2168,18 @@ cleanup後VERIFY結果：
 - 送信は保存済みoperation IDで`hooto_day_upsert_sync_record`を1回だけ呼び、status applied、conflict false、revision 1、増加したchange sequence、payload一致、deleted_at nullを共通validatorで確認する。
 - 成功時だけ対象日のbaselineを追加し、cursor、成功日時を更新してpendingOperationを解消する。local DayMemo、他baseline、初回upload履歴、workspace、migration、pushBlockは維持する。
 - conflict、response unknown、RPC後metadata保存失敗では自動再試行や新operation ID発行を行わず、pending情報を消さず安全停止する。delete、tombstone復活、複数件処理は未実装である。
+
+### Phase B-3e5準備: conflict／response unknown安全停止仕様
+
+- 現行upsertは、明示previewとfull pull preflight後にoperation IDを生成し、`prepared` pendingを保存・read-backしてから`送信中`へ遷移する。RPC結果は共通validatorでappliedまたはconflictを検証し、applied確定と完成metadataの保存・read-backが両方成功した場合だけpendingをnullにする。
+- SQLでは、対象recordがなくbase revisionが0以外、または現在revisionとbase revisionが異なる場合に`status = conflict`、`conflict = true`を返す。既存recordがある場合は現在のrevision、change sequence、server updated time、deletedAt、payloadを返し、record本体とchange sequenceは変更せず、conflict結果だけをoperation履歴へ保存する。record不在時はrevision/change sequence 0、payload nullを返す。
+- tombstoneも既存recordなので、古いrevisionのupsertは現在のtombstone revision・change sequence・deletedAt・payload nullを伴うconflictとなる。最新tombstone revisionによる明示復活はRPC上可能だがB-3e5では扱わず、B-3fへ分離する。
+- 同じoperation IDの同一fingerprint再送は保存済みapplied/conflict結果を返す。workspace、entity、kind、caller、base revisionまたはfingerprintが異なる再利用は例外`operation_id was already used for a different request`であり、通常conflict応答ではない。自動再送や新IDへの差替えは禁止する。
+- conflict時はlocal DayMemoとremoteを変更せず、pendingを`conflict`のまま保持する。UIは対象日付、競合発生、再確認が必要であることだけを表示し、本文、payload、UUID、operation ID、tokenを表示しない。
+- RPC呼出し前後の通信断、結果受信前の終了、戻り値validator不一致はremote反映有無を断定できないため`response_unknown`として扱う。ブラウザ終了などで`送信中`のまま残ったpendingも、再起動後はresponse unknown相当のrecovery requiredとし、blind retryしない。
+- RPC成功後の完成metadata保存失敗では、保存utilityが原則として直前の`送信中`metadataへrollbackするため、未送信状態へ戻さない。pendingを保持し、remote full pullによる復旧確認へ送る。remoteが対象local payloadと一致しrevisionがbase + 1ならmetadataだけを確定できるが、不一致・tombstone・さらに進んだrevisionでは自動確定しない。
+- pendingの正式寿命は、明示準備で`prepared`、RPC直前に`送信中`、結果不明で`response_unknown`、競合で`conflict`、保存や復旧確認不能で`recovery_required`とする。`applied`はRPC結果検証から完成metadata保存までの論理的な一時状態で、現行version 2へ別値として永続化しない。完成metadata保存成功時だけpendingをnullにする。
+- operation IDはpreparedからconflict／response unknown／recovery requiredまで保持し、勝手に再生成しない。成功してbaselineとcursorの保存が完了した後だけpendingとともに破棄できる。
+- 実装順はB-3e5a「既存conflict／unknown表示と再起動時fail-closedの統一」、B-3e5b「同じoperationを再送しないread-only remote確認」、B-3e5c「remote applied確認後のmetadata-only復旧」、B-3e5d「競合内容を本文非表示で比較し次操作を選ぶUI」とする。delete、tombstone、復活、local削除はB-3fへ分離する。
+- 実機テストは通常データではなく専用workspace・匿名端末・専用日付のDayMemoを用いる。端末Aが古いbaselineを保持したまま端末Bでrevisionを1回進め、Aのstale upsertがconflictとなりremoteがBの結果のままか確認する。response unknownは専用データで通信遮断点を制御し、同じoperationを再送せずfull pull確認へ進む。実UUID・本文・operation IDは記録しない。
 - 今回は調査・設計文書更新のみ。src、SQL、package、localStorage、metadataは変更せず、Supabase操作、commit、pushは行っていない。
