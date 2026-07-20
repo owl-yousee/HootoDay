@@ -2287,3 +2287,16 @@ cleanup後VERIFY結果：
 - 対象DayMemoをverified write/read-backで削除後、active baselineをtombstone baselineへ変更し、cursor・baseline確認日時・最終成功日時を更新する。保存成功後だけReact stateを更新する。
 - DayMemoまたはmetadata保存・read-back失敗では元rawへrollbackし、rollback失敗は`recovery_required`として自動retryせず停止する。
 - Supabaseへのupsert/delete、operation ID生成、pending作成、intent変更、復活、競合解決、pushBlock解除は行わない。実機確認、stage、commit、pushは未実施である。
+## Phase B-3f5準備：復活・削除競合仕様（2026-07-20）
+
+- remote tombstoneと同じ日付にlocal DayMemoが再作成された状態は、新規作成ではなく「復活」と定義する。同じ`entity_id`を継続利用するため、`base_revision = 0`は禁止し、完全なfull pullで確認した最新tombstone revisionをbase revisionに使う。
+- SQL契約上、`hooto_day_upsert_sync_record`は既存tombstoneのrevisionとbase revisionが一致する場合にpayloadを復元し、revisionを1進め、`deleted_at`をnullへ戻せる。したがって復活は既存の`upsert` operationとして表現でき、新しいoperation kindは追加しない。
+- 復活候補previewではoperation IDを生成しない。明示的な送信準備時だけ日付ごとに1つ生成し、`kind = upsert`のpending operationをRPC前にverified write/read-backする。conflict、response unknown、recovery requiredでは同じpendingとoperation IDを保持し、自動再送・新ID生成・blind retryを行わない。
+- 復活可能条件は、metadata version 3、workspace binding一致、confirmed baseline、完全なfull pull、tombstone revision/change sequence/deletedAt一致、validなlocal DayMemo、React stateとstorage一致、pendingなし、pushBlockなし、localDeleteIntentなしである。どれかを証明できなければfail-closedとする。
+- updateとdeleteが競合した場合、先にremoteへ適用されrevisionを進めた操作だけが成立し、古いbase revisionを使う後続操作はconflictになる。delete優先・update優先の固定規則、自動merge、自動復活、本文比較による自動解決は採用しない。
+- 復活UIは「削除済みDayMemoを復活」の明示操作とし、日付、revision、change sequence、状態だけを表示する。DayMemo本文、payload、UUID、operation ID、token等は表示しない。
+- localDeleteIntentが残る日付は、削除意図の帰属と完了状態を確定できないため復活禁止とし、先に別の明示的なintent復旧・解消が必要である。
+- tombstone baselineだけならnormal状態を許可する。tombstone baselineと同日のlocal DayMemoは復活候補として通常の新規・更新uploadから分離し、pending、conflict、unknown、pushBlock中は送信を禁止する。
+- `json_restore`または`full_reset`のpushBlock中は復活・deleteを禁止する。read-only previewだけを許可し、pushBlockを自動解除せず、解除Phase後にremote/local状態を再確認する。
+- 実装はB-3f5a（read-only復活候補preview）、B-3f5b（1件の明示復活upsert）、B-3f5c（delete-aware update/delete競合確認UI）、B-3f5d（明示的な競合判断・復旧）へ分割する。次の最小PhaseはB-3f5aとする。
+- 今回は設計文書だけを更新し、src、package、SQL、RPC、localStorage、DayMemo、metadataを変更していない。Supabase操作、stage、commit、pushも行っていない。

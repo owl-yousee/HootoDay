@@ -1329,3 +1329,54 @@ The next smallest implementation phase is B-3f4a. This design step changes docum
 - DayMemo完成配列を1回verified write/read-backし、その後metadataをverified write/read-backする。成功metadataは対象baselineをpayloadなしのtombstone状態へ置換し、remote revision/change sequence/server updated time/deletedAt、`baselineLocalUpdatedAt = null`、cursor、確認日時、最終成功日時を保存する。他baseline、workspace、initialUpload、migration、pushBlockは維持する。
 - DayMemo保存失敗は内部rollbackを確認する。metadata構築・保存失敗時は元DayMemo rawへ戻し、metadata保存utilityのrollbackも確認する。どちらかのrollbackを確認できなければ`recovery_required`として停止し、自動retryしない。
 - remote modified/missing/unknown、intentあり、pendingあり、pushBlockありでは反映しない。Supabase RPC、operation ID、pending、intent変更、復活、競合解決、複数件処理は含めない。
+## Phase B-3f5: resurrection and update/delete conflict design
+
+### Resurrection definition and RPC contract
+
+- Recreating a DayMemo for a date whose remote baseline is a tombstone is a **resurrection**, not a new entity. The date remains the same `entity_id`.
+- Resurrection uses `hooto_day_upsert_sync_record` with the latest verified tombstone revision as `base_revision`. Base revision `0` is prohibited because the remote row already exists and the SQL contract returns a conflict for a mismatched base revision.
+- When the tombstone revision matches, the current SQL upsert contract can write the new payload, increment revision by one, allocate a new change sequence, and clear `deleted_at`. No SQL/RPC change and no new operation kind are required.
+- A complete full pull must confirm the same workspace, date, tombstone revision, change sequence, and deletion timestamp immediately before preparation. A historical or cached tombstone alone is insufficient.
+
+### Eligibility and explicit UI
+
+Resurrection is eligible only when all conditions below are proven:
+
+- valid metadata version 3 and matching workspace binding;
+- `baselineStatus = confirmed` and a valid tombstone baseline for the date;
+- complete full pull with exactly the expected current tombstone;
+- one valid local DayMemo for the same date, with valid content and `updatedAt`;
+- React state and `hootoDay.dayMemos` storage are identical;
+- no pending operation, push block, local delete intent, conflict, unknown result, or concurrent metadata/local change.
+
+The UI must use a separate explicit action such as 「削除済みDayMemoを復活」. It may show only the date, baseline/remote revision, change sequence, and safe status. It must not show DayMemo content, payload, UUIDs, operation ID, credentials, or internal exception text. Automatic resurrection and treating the item as an ordinary local-only upload are prohibited.
+
+### Pending operation and operation ID
+
+- Read-only resurrection preview creates no UUID, operation ID, or pending operation.
+- Explicit preparation generates one operation ID for one date and persists a `kind = upsert` pending operation before the RPC, using the existing verified write/read-back path. A distinct `restore` kind is unnecessary because the SQL operation and fingerprint are upsert; the preview/UI classification supplies the resurrection meaning.
+- The base revision is the verified tombstone revision and the expected applied revision is `baseRevision + 1`.
+- On success, baseline/cursor metadata is updated and read back before pending becomes null. On conflict, response unknown, or recovery required, pending and operation ID remain unchanged; no new ID, blind retry, automatic retry, or automatic cancellation is allowed.
+
+### Update/delete conflict ordering
+
+- Concurrent update and delete use optimistic revision control. Whichever valid operation is serialized first advances the remote revision; the operation using the now-stale base revision returns conflict without changing remote state.
+- There is no permanent “delete wins” or “update wins” policy. Remote revision order is authoritative only for detecting which operation was applied first, not for automatically choosing user intent.
+- If update succeeds before delete, the stale delete stops as conflict. If delete succeeds before update, the stale update stops as conflict and must not implicitly resurrect the tombstone.
+- Conflict handling preserves local DayMemo, remote row/tombstone, baseline, cursor, pending operation, and operation ID. The UI may show date, baseline/remote revision, baseline/remote change sequence, status, and confirmation time only. Merge, retry, local adoption, remote adoption, and content display remain out of scope.
+
+### Delete intent, safety state, and restore/reset boundaries
+
+- A remaining `localDeleteIntent` blocks resurrection. Pull data cannot attribute the deleting operation, so intent reconciliation must be a separate explicit recovery step before resurrection can be prepared.
+- A valid tombstone baseline with no local memo is normal. A local memo on a tombstone baseline is a resurrection candidate and must be excluded from ordinary update and local-only upload paths until the resurrection preview proves it safe.
+- Pending, conflict, response unknown, recovery required, invalid metadata, incomplete pull, unknown lineage, or push block is fail-closed. Read-only inspection may remain available where already permitted, but no mutation is allowed.
+- During `json_restore` or `full_reset` push block, resurrection and delete are prohibited. The block is never cleared automatically; after the dedicated unblock phase, full remote/local classification must run again.
+
+### Implementation phases
+
+1. **B-3f5a — resurrection candidate preview:** read-only full pull, classify tombstone-baseline/local-active dates, and retain results only in React memory.
+2. **B-3f5b — one explicit resurrection:** prepare and submit one verified upsert using the latest tombstone revision, then update metadata only after validated success.
+3. **B-3f5c — delete-aware conflict confirmation UI:** extend read-only recovery/conflict information for both upsert and delete pending operations without resolving either.
+4. **B-3f5d — explicit conflict decision and recovery:** design and implement user-directed choices separately; automatic merge, retry, and resurrection remain prohibited.
+
+The next smallest implementation phase is B-3f5a. This preparation changes documentation only and performs no source/package/SQL/RPC change, Supabase call, localStorage/DayMemo/metadata mutation, stage, commit, or push.
