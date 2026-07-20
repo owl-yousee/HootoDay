@@ -132,7 +132,7 @@ export function useDayMemoLocalOnlyPreview({ dayMemos, isConfigured, isSignedIn,
       return
     }
     const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
-    if (loaded.status !== 'ready' || loaded.metadata.version !== 2) {
+    if (loaded.status !== 'ready' || loaded.metadata.version !== 3) {
       setPreviewState('metadata_invalid')
       setSafeErrorMessage(safeMessage('metadata_invalid'))
     } else if (loaded.metadata.workspaceId !== connection.workspaceId) {
@@ -170,7 +170,7 @@ export function useDayMemoLocalOnlyPreview({ dayMemos, isConfigured, isSignedIn,
 
     try {
       const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
-      if (loaded.status !== 'ready' || loaded.metadata.version !== 2) return fail('metadata_invalid')
+      if (loaded.status !== 'ready' || loaded.metadata.version !== 3) return fail('metadata_invalid')
       const metadata = loaded.metadata
       if (metadata.workspaceId !== connection.workspaceId) return fail('workspace_mismatch')
       if (metadata.pendingOperation !== null) return fail('pending_operation_present')

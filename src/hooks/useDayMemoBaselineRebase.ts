@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabaseClient } from '../lib/supabaseClient'
 import type { DayMemo } from '../types/dayMemo'
-import type { DayMemoSyncMetadataV2 } from '../types/dayMemoSync'
+import type { DayMemoSyncMetadataV3 } from '../types/dayMemoSync'
 import type { SyncConnection } from '../types/sync'
 import { fromDateKey } from '../utils/date'
 import { readDayMemoStorageSnapshot } from '../utils/dayMemoStorage'
@@ -204,7 +204,7 @@ export function useDayMemoBaselineRebase({ dayMemos, isConfigured, isSignedIn, c
     }
     const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
     setState(loaded.status === 'ready'
-      && loaded.metadata.version === 2
+      && loaded.metadata.version === 3
       && loaded.metadata.workspaceId === connection.workspaceId
       && loaded.metadata.baselineStatus === 'mismatch'
       && loaded.metadata.pendingOperation === null
@@ -223,7 +223,7 @@ export function useDayMemoBaselineRebase({ dayMemos, isConfigured, isSignedIn, c
     setSafeErrorMessage(null)
 
     const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
-    if (loaded.status !== 'ready' || loaded.metadata.version !== 2) {
+    if (loaded.status !== 'ready' || loaded.metadata.version !== 3) {
       setState('metadata_invalid')
       setSafeErrorMessage(safeMessage('metadata_invalid'))
       return
@@ -308,7 +308,7 @@ export function useDayMemoBaselineRebase({ dayMemos, isConfigured, isSignedIn, c
     setState('saving')
     setSafeErrorMessage(null)
     const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
-    if (loaded.status !== 'ready' || loaded.metadata.version !== 2 || loaded.raw !== preview.metadataRaw) {
+    if (loaded.status !== 'ready' || loaded.metadata.version !== 3 || loaded.raw !== preview.metadataRaw) {
       setState('metadata_invalid')
       setSafeErrorMessage(safeMessage('metadata_invalid'))
       previewRef.current = null
@@ -346,7 +346,7 @@ export function useDayMemoBaselineRebase({ dayMemos, isConfigured, isSignedIn, c
       return
     }
     const localByDate = new Map(preview.localMemos.map((memo) => [memo.date, memo]))
-    const baselines: DayMemoSyncMetadataV2['baselines'] = Object.fromEntries(preview.remoteRecords.map((record) => [record.entityId, {
+    const baselines: DayMemoSyncMetadataV3['baselines'] = Object.fromEntries(preview.remoteRecords.map((record) => [record.entityId, {
       date: record.entityId,
       remoteRevision: record.revision,
       remoteChangeSequence: record.changeSequence,
@@ -355,7 +355,7 @@ export function useDayMemoBaselineRebase({ dayMemos, isConfigured, isSignedIn, c
       deletedAt: null,
     }]))
     const now = new Date().toISOString()
-    const next: DayMemoSyncMetadataV2 = {
+    const next: DayMemoSyncMetadataV3 = {
       ...loaded.metadata,
       baselines,
       lastPulledChangeSequence: preview.maxChangeSequence,

@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabaseClient } from '../lib/supabaseClient'
 import type { DayMemo } from '../types/dayMemo'
-import type { DayMemoBaselineStatusV2, DayMemoSyncMetadataV2 } from '../types/dayMemoSync'
+import type { DayMemoBaselineStatusV2, DayMemoSyncMetadataV3 } from '../types/dayMemoSync'
 import type { SyncConnection } from '../types/sync'
 import { readDayMemoStorageSnapshot } from '../utils/dayMemoStorage'
 import {
   loadDayMemoSyncMetadataAny,
-  migrateDayMemoSyncMetadataToV2,
+  migrateDayMemoSyncMetadataToV3,
   replaceDayMemoSyncMetadataV2,
   type DayMemoSyncV2SaveResult,
 } from '../utils/dayMemoSyncStorage'
@@ -100,7 +100,7 @@ function baselineSaveFailure(result: DayMemoSyncV2SaveResult): DayMemoBaselineFa
 
 export function useDayMemoSyncBaseline({ dayMemos, isConfigured, isSignedIn, connection }: UseDayMemoSyncBaselineInput) {
   const [baselineState, setBaselineState] = useState<DayMemoBaselineUiState>('unavailable')
-  const [metadata, setMetadata] = useState<DayMemoSyncMetadataV2 | null>(null)
+  const [metadata, setMetadata] = useState<DayMemoSyncMetadataV3 | null>(null)
   const [summary, setSummary] = useState<DayMemoBaselineSummary | null>(null)
   const [safeErrorMessage, setSafeErrorMessage] = useState<string | null>(null)
   const [failureReason, setFailureReason] = useState<DayMemoBaselineFailureReason | null>(null)
@@ -135,7 +135,7 @@ export function useDayMemoSyncBaseline({ dayMemos, isConfigured, isSignedIn, con
       setFailureReason('migration_invalid')
       return
     }
-    if (loaded.status === 'ready' && loaded.metadata.version === 2) {
+    if (loaded.status === 'ready' && loaded.metadata.version === 3) {
       setMetadata(loaded.metadata)
       const restoredState = stateFromBaselineStatus(loaded.metadata.baselineStatus)
       setBaselineState(restoredState)
@@ -173,7 +173,7 @@ export function useDayMemoSyncBaseline({ dayMemos, isConfigured, isSignedIn, con
       return
     }
 
-    const migration = migrateDayMemoSyncMetadataToV2(window.localStorage, connection.workspaceId, dayMemos)
+    const migration = migrateDayMemoSyncMetadataToV3(window.localStorage, connection.workspaceId, dayMemos)
     if (migration.status !== 'ready') {
       const reason: DayMemoBaselineFailureReason = migration.status === 'workspace_mismatch' ? 'migration_invalid' : migration.status
       setBaselineState('recovery_required')
@@ -187,7 +187,7 @@ export function useDayMemoSyncBaseline({ dayMemos, isConfigured, isSignedIn, con
       setSafeErrorMessage(safeMessage('pending_operation_present'))
       return
     }
-    const confirming: DayMemoSyncMetadataV2 = {
+    const confirming: DayMemoSyncMetadataV3 = {
       ...migration.metadata,
       baselineStatus: 'confirming',
       baselineConfirmedAt: null,
@@ -260,7 +260,7 @@ export function useDayMemoSyncBaseline({ dayMemos, isConfigured, isSignedIn, con
       lastPulledChangeSequence: pullResult.maxChangeSequence,
     }
     const now = new Date().toISOString()
-    let next: DayMemoSyncMetadataV2
+    let next: DayMemoSyncMetadataV3
     let nextState: DayMemoBaselineUiState
     if (pullResult.records.length === 0) {
       nextState = dayMemos.length === 0 ? 'remote_empty' : 'mismatch'

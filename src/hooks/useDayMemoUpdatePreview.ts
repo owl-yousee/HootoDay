@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { DayMemo } from '../types/dayMemo'
-import type { DayMemoRemoteBaselineV2, DayMemoSyncMetadataV2 } from '../types/dayMemoSync'
+import type { DayMemoRemoteBaselineV3, DayMemoSyncMetadataV3 } from '../types/dayMemoSync'
 import type { SyncConnection } from '../types/sync'
 import { readDayMemoStorageSnapshot } from '../utils/dayMemoStorage'
 import { loadDayMemoSyncMetadataAny } from '../utils/dayMemoSyncStorage'
@@ -100,7 +100,7 @@ function connectionIsEligible(connection: SyncConnection | null): boolean {
 }
 
 function classify(
-  metadata: DayMemoSyncMetadataV2,
+  metadata: DayMemoSyncMetadataV3,
   localMemos: DayMemo[],
 ): { items: DayMemoUpdatePreviewItem[]; summary: Omit<DayMemoUpdatePreviewSummary, 'baselineConfirmedAt' | 'lastPulledChangeSequence'> } {
   const localByDate = new Map(localMemos.map((memo) => [memo.date, memo]))
@@ -148,7 +148,7 @@ function classify(
   }
 }
 
-function baselineIsUsable(baseline: DayMemoRemoteBaselineV2, expectedDate: string): boolean {
+function baselineIsUsable(baseline: DayMemoRemoteBaselineV3, expectedDate: string): boolean {
   return baseline.date === expectedDate
     && Number.isSafeInteger(baseline.remoteRevision)
     && baseline.remoteRevision >= 1
@@ -201,7 +201,7 @@ export function useDayMemoUpdatePreview({ dayMemos, isConfigured, isSignedIn, co
       return
     }
     const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
-    if (loaded.status !== 'ready' || loaded.metadata.version !== 2) {
+    if (loaded.status !== 'ready' || loaded.metadata.version !== 3) {
       const state = loaded.status === 'metadata_invalid' || loaded.status === 'storage_unavailable' ? 'metadata_invalid' : 'baseline_not_confirmed'
       setPreviewState(state)
       setSafeErrorMessage(messageForState(state))
@@ -239,7 +239,7 @@ export function useDayMemoUpdatePreview({ dayMemos, isConfigured, isSignedIn, co
     setSafeErrorMessage(null)
     try {
       const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
-      if (loaded.status !== 'ready' || loaded.metadata.version !== 2) {
+      if (loaded.status !== 'ready' || loaded.metadata.version !== 3) {
         const state = loaded.status === 'metadata_invalid' || loaded.status === 'storage_unavailable' ? 'metadata_invalid' : 'baseline_not_confirmed'
         setPreviewState(state)
         setSafeErrorMessage(messageForState(state))

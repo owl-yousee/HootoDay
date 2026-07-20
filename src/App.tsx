@@ -28,6 +28,7 @@ import { useDayMemoBaselineRebase } from './hooks/useDayMemoBaselineRebase'
 import { useDayMemoSyncBaseline } from './hooks/useDayMemoSyncBaseline'
 import { useDayMemoSyncRecoveryCheck } from './hooks/useDayMemoSyncRecoveryCheck'
 import { useDayMemoSyncRecoveryApply } from './hooks/useDayMemoSyncRecoveryApply'
+import { useDayMemoSyncMetadataMigration } from './hooks/useDayMemoSyncMetadataMigration'
 import { useDayMemoUpdatePreview } from './hooks/useDayMemoUpdatePreview'
 import { useDayMemoUpdateUpload } from './hooks/useDayMemoUpdateUpload'
 import { useDailyAchievements } from './hooks/useDailyAchievements'
@@ -144,6 +145,7 @@ function App() {
     window.localStorage,
     supabaseWorkspace.connection?.workspaceId ?? null,
   )
+  const dayMemoSyncMetadataMigration = useDayMemoSyncMetadataMigration({ dayMemos, connection: supabaseWorkspace.connection })
   const dayMemoSyncRecoveryCheck = useDayMemoSyncRecoveryCheck({
     dayMemos,
     isConfigured: supabaseAuth.isConfigured,
@@ -491,6 +493,7 @@ function App() {
           dayMemoSyncSafety={dayMemoSyncSafety}
           dayMemoSyncRecoveryCheck={dayMemoSyncRecoveryCheck}
           dayMemoSyncRecoveryApply={dayMemoSyncRecoveryApply}
+          dayMemoSyncMetadataMigration={dayMemoSyncMetadataMigration}
           onClose={() => setIsThemeSettingsOpen(false)}
         />
       )}

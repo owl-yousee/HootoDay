@@ -39,11 +39,13 @@ export function classifyDayMemoSyncSafety(
   loaded: DayMemoSyncAnyLoadResult,
   workspaceId: string | null,
 ): DayMemoSyncSafety {
-  if (!workspaceId || !isUuid(workspaceId) || loaded.status !== 'ready' || loaded.metadata.version !== 2) {
+  if (!workspaceId || !isUuid(workspaceId) || loaded.status !== 'ready' || loaded.metadata.version !== 3) {
     return result('metadata_invalid')
   }
   const metadata = loaded.metadata
   if (metadata.workspaceId !== workspaceId) return result('metadata_invalid')
+
+  if (Object.keys(metadata.localDeleteIntents).length > 0) return result('pending_operation', true)
 
   const pending = metadata.pendingOperation
   if (pending !== null) {

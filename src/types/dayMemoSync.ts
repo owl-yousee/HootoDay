@@ -80,6 +80,29 @@ export interface DayMemoPendingOperationV2 {
   status: 'prepared' | 'sending' | 'response_unknown' | 'conflict' | 'recovery_required'
 }
 
+export type DayMemoRemoteBaselineV3 = DayMemoRemoteBaselineV2
+
+export interface DayMemoLocalDeleteIntentV3 {
+  date: string
+  baselineRevision: number
+  baselineChangeSequence: number
+  deletedLocalUpdatedAt: string
+  createdAt: string
+  status: 'intent_recorded' | 'preview_ready' | 'prepared' | 'sending' | 'conflict' | 'response_unknown' | 'recovery_required'
+}
+
+export type DayMemoPendingOperationV3 =
+  | DayMemoPendingOperationV2
+  | {
+    kind: 'delete'
+    date: string
+    operationId: string
+    baseRevision: number
+    preparedAt: string
+    clientDeletedAt: string
+    status: 'prepared' | 'sending' | 'response_unknown' | 'conflict' | 'recovery_required'
+  }
+
 export type DayMemoBaselineStatusV2 =
   | 'not_confirmed'
   | 'confirming'
@@ -112,7 +135,26 @@ export interface DayMemoSyncMetadataV2 {
   }
 }
 
-export type DayMemoSyncMetadata = DayMemoSyncMetadataV1 | DayMemoSyncMetadataV2
+export interface DayMemoSyncMetadataV3 {
+  version: 3
+  workspaceId: string
+  initialUpload: DayMemoSyncMetadataV2['initialUpload']
+  baselines: Record<string, DayMemoRemoteBaselineV3>
+  localDeleteIntents: Record<string, DayMemoLocalDeleteIntentV3>
+  lastPulledChangeSequence: number
+  baselineStatus: DayMemoBaselineStatusV2
+  baselineConfirmedAt: string | null
+  pendingOperation: DayMemoPendingOperationV3 | null
+  pushBlock: DayMemoSyncMetadataV2['pushBlock']
+  lastSuccessfulSyncAt: string | null
+  migration: {
+    sourceVersion: 1 | 2 | 3
+    status: 'completed'
+    migratedAt: string
+  }
+}
+
+export type DayMemoSyncMetadata = DayMemoSyncMetadataV1 | DayMemoSyncMetadataV2 | DayMemoSyncMetadataV3
 
 export type DayMemoPullPreviewState =
   | 'unavailable'

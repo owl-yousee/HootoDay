@@ -2226,3 +2226,12 @@ cleanup後VERIFY結果：
 - `json_restore`／`full_reset` pushBlock中はdelete意図作成とdelete送信を禁止する。読み取り専用確認は可能だが、全初期化やlocal不在をクラウド全削除へ変換しない。
 - 実装順は B-3f1 metadata version 3 migration、B-3f2 delete／tombstone候補preview、B-3f3 active record 1件の明示delete、B-3f4 tombstoneの明示pull反映、B-3f5復活・削除競合UIとする。次の最小Phaseは書き込みを伴わないB-3f1である。
 - 今回は調査と設計記録のみで、src・package・SQL・RPC・RLS・policy・localStorage・DayMemo・同期metadataを変更していない。Supabase操作、stage、commit、pushも行っていない。
+
+### Phase B-3f1：DayMemo同期metadata version 3（実装済み・実機確認待ち）
+
+- metadata version 3を追加し、active／tombstone baselineの厳格な組み合わせ、本文を含まないlocal delete intent、upsert／deleteを区別するpending operationを表現できるようにした。
+- version 2は厳格検証後に既存workspace、初回upload履歴、baseline、安全状態、cursor、pending、pushBlock、最終成功日時を維持してversion 3へ移行する。version 1は既存の安全なv1→v2変換を内部経路として再利用してv3へ移行する。
+- migrationは明示操作だけで行い、保存・read-back・完全一致確認を必須とする。失敗時は旧raw metadataへrollbackし、rollback失敗は独立した安全停止状態とする。
+- local delete intentとdelete pendingは型・validatorの土台だけで、今回作成しない。operation ID生成、delete／upsert RPC、tombstone作成・反映、復活、pushBlock解除は実装していない。
+- 既存upsert Hook、baseline、preview、recovery、安全状態をversion 3対応とし、通常upsert後もversion 3を維持する。DayMemo本文、localStorageキー、JSONバックアップ形式、SQLは変更していない。
+- PC親機・iPhone子機でのmigrationと既存機能回帰確認は未実施。Supabase操作、stage、commit、pushも行っていない。

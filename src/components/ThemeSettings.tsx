@@ -12,6 +12,7 @@ import type { useDayMemoBaselineRebase } from '../hooks/useDayMemoBaselineRebase
 import type { useDayMemoSyncBaseline } from '../hooks/useDayMemoSyncBaseline'
 import type { useDayMemoSyncRecoveryCheck } from '../hooks/useDayMemoSyncRecoveryCheck'
 import type { useDayMemoSyncRecoveryApply } from '../hooks/useDayMemoSyncRecoveryApply'
+import type { useDayMemoSyncMetadataMigration } from '../hooks/useDayMemoSyncMetadataMigration'
 import type { useDayMemoUpdatePreview } from '../hooks/useDayMemoUpdatePreview'
 import type { useDayMemoUpdateUpload } from '../hooks/useDayMemoUpdateUpload'
 import { useSupabasePairing, useSupabasePairingJoin } from '../hooks/useSupabasePairing'
@@ -56,6 +57,7 @@ interface ThemeSettingsProps {
   dayMemoSyncSafety: DayMemoSyncSafety
   dayMemoSyncRecoveryCheck: ReturnType<typeof useDayMemoSyncRecoveryCheck>
   dayMemoSyncRecoveryApply: ReturnType<typeof useDayMemoSyncRecoveryApply>
+  dayMemoSyncMetadataMigration: ReturnType<typeof useDayMemoSyncMetadataMigration>
   onClose: () => void
 }
 
@@ -186,6 +188,7 @@ export function ThemeSettings({
   dayMemoSyncSafety,
   dayMemoSyncRecoveryCheck,
   dayMemoSyncRecoveryApply,
+  dayMemoSyncMetadataMigration,
   onClose,
 }: ThemeSettingsProps) {
   const dialogRef = useRef<HTMLDialogElement>(null)
@@ -428,6 +431,22 @@ export function ThemeSettings({
                         </div>
                       ) : null}
                       {dayMemoSyncRecoveryApply.safeErrorMessage ? <p className="cloud-pairing-error" role="alert">{dayMemoSyncRecoveryApply.safeErrorMessage}</p> : null}
+                    </div>
+                  ) : null}
+                  {dayMemoSyncMetadataMigration.eligible ? (
+                    <div className="cloud-day-memo-baseline-panel">
+                      <h4>DayMemo同期metadata</h4>
+                      <p>metadata version：{dayMemoSyncMetadataMigration.metadataVersion ?? '旧version'}</p>
+                      <p>version 3はactive／tombstone baselineと将来のdelete同期を安全に区別する土台です。</p>
+                      {dayMemoSyncMetadataMigration.state === 'needs_migration' ? (
+                        <button type="button" className="health-secondary-button cloud-sync-button" onClick={dayMemoSyncMetadataMigration.migrate}>
+                          同期metadataをversion 3へ更新
+                        </button>
+                      ) : null}
+                      {dayMemoSyncMetadataMigration.state === 'migrating' ? <button type="button" className="health-secondary-button cloud-sync-button" disabled>metadataを更新中…</button> : null}
+                      {dayMemoSyncMetadataMigration.state === 'completed' ? <p className="cloud-day-memo-success" role="status">version 3へ移行済みです。</p> : null}
+                      {dayMemoSyncMetadataMigration.safeErrorMessage ? <p className="cloud-pairing-error" role="alert">{dayMemoSyncMetadataMigration.safeErrorMessage}</p> : null}
+                      <p className="cloud-sync-note">DayMemo本文とSupabaseデータは変更しません。delete送信とtombstone反映は未実装です。</p>
                     </div>
                   ) : null}
                   {dayMemoSyncBaseline.eligible ? (
