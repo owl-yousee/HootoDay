@@ -2341,3 +2341,18 @@ cleanup後VERIFY結果：
 - iPhoneの通常状態と、PCのbaseline mismatch／pending conflictなしの復旧必要状態で非表示になることを確認した。baseline mismatchだけでは対象日付・操作種別・base revisionを特定できないため、競合と推測せず非表示を維持する。
 - response unknown／recovery requiredは既存read-only recovery check、明示的なconflictは本previewが担当し、責務を分離する。表示条件の変更は行っていない。
 - 通常／mismatch時の非表示、自動pull・自動解決・自動retryがないこと、previewが永続状態を変更しないことは確認済みである。実pending conflict、conflict intent、full pull実行、各分類表示、複数競合一覧の実機確認は未実施であり、人工的な競合は生成していない。
+
+## Phase B-3f5d1準備：remote状態の1件明示採用設計（2026-07-20）
+
+- remote採用は、delete-aware conflict previewが安全に分類した1件だけを対象に、明示選択・最終read-only full pull・明示反映の順で行う。unknown／metadata mismatch、複数候補、pushBlock、workspace・認証・local・metadata・pending・intent・baseline・remote系譜の変化があれば停止する。
+- remote activeはstrict検証済みpayloadで対象日のlocal DayMemoを置換または追加し、active baselineへ更新する。remote tombstoneは対象日のlocal DayMemoを削除し、既に存在しない場合はmetadata-only反映を許可できるが、いずれも対象外の日付を変更しない。
+- 通常tombstone pull applyはpending／intentなしが前提だが、競合remote採用は対象pending／intentを明示解消する処理を含む。upsert/delete RPC、remote変更、operation ID生成は行わない。
+- 保存は採用前snapshot保持、local保存、local read-back、完成metadata保存、metadata read-back、React更新、preview破棄の順とする。metadataを先に確定するとlocal未反映のままnormal化し得るため採用しない。
+- local保存またはread-back失敗はverified rollbackする。metadata保存失敗もlocalを元snapshotへrollbackし、いずれかのrollbackを確認できなければrecovery requiredとして自動再試行しない。metadata保存済みでReact更新だけ失敗した場合はstorageを正本とし、再読み込みで復元する。
+- pending null化と対象intent削除は、local完成値とbaselineを含む完成metadataをvalidatorへ通し、保存・read-backを確認する同じmetadata更新でだけ行う。明示採用完了後は元operation IDを再送に使わないためpendingとともに破棄してよい。
+- 採用開始条件はbaselineStatus confirmedとし、最終full pullで対象外のactive/tombstone、local-only/remote-only、content/updatedAt、baseline系譜も再検証する。他不一致や他競合があれば1件採用を開始しない。成功時も他intent・pending・pushBlockが残ればsafety stateはnormalに戻さない。
+- cursorは`max(既存lastPulledChangeSequence, 採用recordのchange sequence)`とし、full pull全体の最大値を無条件に保存しない。対象外remote変更をbaselineへ反映せずcursorだけ進めることを禁止する。
+- UIは「競合状態を確認」→1件選択→「同期先の状態を再確認」→結果警告→activeなら「同期先の内容をこの端末へ反映」、tombstoneなら「同期先の削除状態をこの端末へ反映」とする。本文を表示しなくても、active採用では端末内容が置換される警告を必須とする。
+- previewは保存開始前だけReact stateから破棄でき、保存開始後は成功・verified rollback・recovery requiredのいずれかまで破棄不可とする。複数競合は一覧表示のみ許可し、1件採用後は必ずfull pullと競合previewをやり直す。
+- PhaseはB-3f5d1a（候補選択・最終preflight）、B-3f5d1b（active 1件反映）、B-3f5d1c（tombstone 1件反映）、B-3f5d1d（pending・intent・baseline・safety確認）へ分割する。次の最小Phaseは書き込みを行わないB-3f5d1aである。
+- 今回は設計文書だけを更新した。src、package、SQL、RPC、localStorage、DayMemo、metadata、baseline、pending、intentは変更せず、Supabase操作、commit、pushも行っていない。

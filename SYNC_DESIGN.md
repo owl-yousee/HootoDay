@@ -1466,3 +1466,49 @@ The minimal B-3f5c implementation candidates are `src/hooks/useDayMemoSyncRecove
 - Response-unknown and recovery-required handling remains the responsibility of the existing read-only recovery check. The conflict preview remains narrowly responsible for explicit conflict evidence; its eligibility condition is unchanged.
 - Verified on PC/iPhone: normal and mismatch-only states remain hidden, there is no automatic pull, retry, or resolution, and no pending, intent, baseline, or metadata mutation occurs from rendering.
 - Not yet device-tested: actual conflict-pending visibility, conflict-intent visibility, execution of the read-only full pull, each classification presentation, and multiple-conflict listing. No artificial conflict was created; these cases remain for a dedicated safe test phase or a naturally occurring conflict.
+
+## Phase B-3f5d1 preparation: explicit adoption of one remote state
+
+### Eligibility and final preflight
+
+- Adoption is an explicit one-item conflict-resolution operation, never an automatic consequence of preview. Require version 3 metadata, matching authenticated workspace connection, `baselineStatus = confirmed`, no push block, exactly one selected safe conflict item, and a proven active or tombstone remote row with valid revision/change sequence.
+- Reject `remote_state_unknown`, `pending_metadata_mismatch`, zero/multiple selected items, missing remote rows, incomplete pull, invalid metadata/payload, workspace mismatch, or any change to local storage, metadata raw value, pending, intent, baseline, connection, revision, or change sequence since preview.
+- Immediately before presenting the final apply action, run the shared complete full pull again. Reconcile every non-target date against its baseline/local state; do not resolve one target while silently skipping another remote/local/baseline difference.
+- The preflight snapshot may retain the strictly validated target payload in an in-memory ref for active adoption, but the UI result must not expose or persist its content.
+
+### Active and tombstone adoption
+
+- **Remote active:** validate date/content/updatedAt with the authoritative DayMemo validator, replace the same-date local memo or add it if absent, preserve all other dates, reject duplicates, and store an active baseline whose local timestamp equals the adopted remote payload timestamp.
+- **Remote tombstone:** remove the same-date local memo while preserving all others. If it is already absent and the immutable snapshots still prove the same conflict target, allow metadata-only completion. Store revision, change sequence, server updated time, `baselineLocalUpdatedAt = null`, and validated `deletedAt` in a tombstone baseline.
+- A normal tombstone pull apply requires no pending and no intent. Conflict tombstone adoption is different: it consumes the explicitly selected conflict and clears only its associated pending/intent after the local and metadata result has been verified.
+- Neither path calls upsert/delete RPCs, changes the remote row, generates an operation ID, retries the stale operation, or adopts a local payload remotely.
+
+### Save order, rollback, and completion
+
+1. Hold immutable metadata raw, local serialized snapshot, React signature, pending, intent, baseline, connection, and selected remote snapshot.
+2. Optionally require the existing verified pre-apply backup to be saved/reused without changing its format; an unrelated existing backup blocks adoption rather than being overwritten.
+3. Write the complete local DayMemo array once and verify strict read-back.
+4. Build and validate completed metadata containing the adopted baseline, target pending cleared, target intent removed, safe cursor/timestamps, and preserved unrelated fields.
+5. Save metadata with expected-raw compare-and-swap and verify read-back.
+6. Adopt the verified local array into React state, then discard the preview.
+
+Metadata-first is unsafe because it can clear fail-closed state while local content is still stale. Before metadata success, any local write/read-back or metadata validation/save failure must attempt verified local rollback. Metadata storage already rolls itself back; if either rollback cannot be proven, enter recovery-required UI and never retry automatically. After verified metadata success, a React update failure leaves storage authoritative and requires reload/recovery rather than reversing completed storage.
+
+Pending becomes null and the target intent is removed only inside the fully validated completed metadata written after local read-back. The stale operation ID is discarded with its pending because explicit remote adoption will never resend that request; no new ID is generated. Active adoption abandons the local delete intent, while tombstone adoption completes the same intended result. Unrelated intents remain untouched.
+
+### Baseline status and cursor
+
+- Starting from mismatch is not eligible. Final full-pull preflight must prove that all non-target baselines/local records remain coherent. Only then can the completed metadata preserve/confirm the global baseline state.
+- Metadata `confirmed` alone does not imply normal safety: any unrelated pending, intent, push block, or detected discrepancy keeps the device fail-closed. If another conflict exists, do not start this one-item adoption; resolve and re-preview sequentially.
+- Set `lastPulledChangeSequence` to `max(existing cursor, adopted record change sequence)`. Never advance it to the full-pull maximum unless every intervening record is also represented by a verified baseline; otherwise later remote changes could be skipped.
+
+### UI, discard, and phases
+
+- UI stages are conflict inspection, one-item selection, final remote recheck, impact confirmation, and explicit apply. Use 「同期先の内容をこの端末へ反映」 for active and 「同期先の削除状態をこの端末へ反映」 for tombstone.
+- Show date, remote state, revision/change sequence, local operation, and explicit effects on local memo/pending/intent. Never show content, payload, identifiers, credentials, raw metadata, or internal errors. Active adoption must warn: 「この端末の内容は同期先の内容へ置き換わります」 even though content remains hidden.
+- Before persistence starts, discard clears React-only preparation. Once persistence starts, disable discard until success, verified rollback, or recovery-required termination. All uploads/deletes/resurrection/local-only actions remain disabled throughout.
+- Multiple conflicts may be listed but never batch-adopted. After one adoption, discard stale snapshots and require a new full pull and conflict preview.
+
+Split implementation into B-3f5d1a (read-only candidate selection/final preflight), B-3f5d1b (one active adoption), B-3f5d1c (one tombstone adoption), and B-3f5d1d (post-adoption pending/intent/baseline/safety verification). The next smallest phase is B-3f5d1a.
+
+Minimal future files are a focused `useDayMemoRemoteAdoptionPreflight.ts`, the existing conflict-preview snapshot provider, `App.tsx`, `ThemeSettings.tsx`, and the design documents. Active/tombstone write phases can share a focused apply hook plus existing `dayMemoStorage`, `dayMemoSyncStorage`, full-pull, validators, and verified rollback utilities. Avoid SQL/RPC, metadata-schema, DayMemo-format, syncConnection-format, and JSON-backup-format changes.
