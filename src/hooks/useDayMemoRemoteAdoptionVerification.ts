@@ -42,6 +42,16 @@ export interface DayMemoRemoteAdoptionVerificationResult {
   nextAction: string
 }
 
+export interface DayMemoLocalOperationPreparationSnapshot {
+  workspaceId: string
+  metadataRaw: string
+  localStorageSerialized: string
+  localSignature: string
+  targetRemoteUpdatedAt: string
+  targetDeletedAt: string | null
+  result: DayMemoRemoteAdoptionVerificationResult
+}
+
 interface Input {
   dayMemos: DayMemo[]
   isConfigured: boolean
@@ -92,6 +102,7 @@ export function useDayMemoRemoteAdoptionVerification({ dayMemos, isConfigured, i
   const [result, setResult] = useState<DayMemoRemoteAdoptionVerificationResult | null>(null)
   const [safeErrorMessage, setSafeErrorMessage] = useState<string | null>(null)
   const generation = useRef(0)
+  const preparationSnapshotRef = useRef<DayMemoLocalOperationPreparationSnapshot | null>(null)
   const signature = useMemo(() => localSignature(dayMemos), [dayMemos])
   const latestSignature = useRef(signature)
   latestSignature.current = signature
@@ -105,6 +116,7 @@ export function useDayMemoRemoteAdoptionVerification({ dayMemos, isConfigured, i
     setState('idle')
     setResult(null)
     setSafeErrorMessage(null)
+    preparationSnapshotRef.current = null
   }, [])
 
   useEffect(() => { discard() }, [adoptionResultSignature, connection?.workspaceId, discard, signature])
@@ -114,6 +126,7 @@ export function useDayMemoRemoteAdoptionVerification({ dayMemos, isConfigured, i
     setState('checking')
     setResult(null)
     setSafeErrorMessage(null)
+    preparationSnapshotRef.current = null
     const checkedAt = new Date().toISOString()
     const target = chooseTarget(activeResult, tombstoneResult)
     const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
@@ -169,6 +182,8 @@ export function useDayMemoRemoteAdoptionVerification({ dayMemos, isConfigured, i
     let localState: DayMemoRemoteAdoptionVerificationResult['localState'] = target ? 'mismatch' : 'overall_valid'
     let baselineState: DayMemoRemoteAdoptionVerificationResult['baselineState'] = target ? 'mismatch' : 'overall_valid'
     let targetMatches = target === null
+    let targetRemoteUpdatedAt: string | null = null
+    let targetDeletedAt: string | null = null
 
     if (target) {
       const remoteMatches = pulled.records.filter((record) => record.entityId === target.date)
@@ -186,6 +201,7 @@ export function useDayMemoRemoteAdoptionVerification({ dayMemos, isConfigured, i
         localState = localValid ? 'active_match' : 'mismatch'
         baselineState = baselineValid ? 'match' : 'mismatch'
         targetMatches = remoteValid && localValid && baselineValid
+        if (targetMatches && remote?.payload) targetRemoteUpdatedAt = remote.payload.updatedAt
       } else {
         const remoteValid = Boolean(remote && remote.deletedAt !== null && Number.isFinite(Date.parse(remote.deletedAt))
           && remote.payload === null && remote.revision === target.revision && remote.changeSequence === target.changeSequence)
@@ -196,6 +212,10 @@ export function useDayMemoRemoteAdoptionVerification({ dayMemos, isConfigured, i
         localState = localValid ? 'deleted_match' : 'mismatch'
         baselineState = baselineValid ? 'match' : 'mismatch'
         targetMatches = remoteValid && localValid && baselineValid
+        if (targetMatches && remote) {
+          targetRemoteUpdatedAt = remote.serverUpdatedAt
+          targetDeletedAt = remote.deletedAt
+        }
       }
     }
 
@@ -211,14 +231,34 @@ export function useDayMemoRemoteAdoptionVerification({ dayMemos, isConfigured, i
       else classification = 'adoption_state_unknown'
     }
 
-    setResult({
+    const nextResult: DayMemoRemoteAdoptionVerificationResult = {
       scope: target ? 'adoption_target' : 'overall', classification, adoptionKind: target?.kind ?? 'overall',
       date: target?.date ?? null, remoteRevision: target?.revision ?? null, remoteChangeSequence: target?.changeSequence ?? null,
       localState, baselineState, pendingResolved, targetIntentResolved, otherIntentCount, cursorValid, outside,
       checkedAt, nextAction: nextAction(classification),
-    })
+    }
+    setResult(nextResult)
+    preparationSnapshotRef.current = target && classification === 'adoption_verified_normal' && targetRemoteUpdatedAt
+      ? {
+        workspaceId: connection.workspaceId,
+        metadataRaw: after.raw,
+        localStorageSerialized: afterStored.serialized,
+        localSignature: signature,
+        targetRemoteUpdatedAt,
+        targetDeletedAt,
+        result: { ...nextResult, outside: { ...nextResult.outside } },
+      }
+      : null
     setState('checked')
   }, [activeResult, connection?.workspaceId, eligible, signature, state, tombstoneResult])
 
-  return { eligible, state, result, safeErrorMessage, verify, discard }
+  const getPreparationSnapshot = useCallback((): DayMemoLocalOperationPreparationSnapshot | null => {
+    const snapshot = preparationSnapshotRef.current
+    return snapshot ? {
+      ...snapshot,
+      result: { ...snapshot.result, outside: { ...snapshot.result.outside } },
+    } : null
+  }, [])
+
+  return { eligible, state, result, safeErrorMessage, verify, discard, getPreparationSnapshot }
 }

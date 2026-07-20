@@ -2398,3 +2398,14 @@ cleanup後VERIFY結果：
 - 再読み込み後など採用成功結果がない場合は対象日を推測せず、現在のmetadata・local・full pullによる端末全体の整合確認として実行する。特定の採用完了とは表示しない。
 - 結果とremote参照はReact stateだけに保持し、破棄・再読み込みで消える。localStorage、DayMemo、metadata、baseline、cursor、pending、intent、remoteを変更せず、自動修復、自動retry、operation ID生成を行わない。
 - B-3f5d1a〜cの採用処理は変更していない。実競合・実採用後の対象別確認は未実機確認であり、Supabase実操作、commit、pushも行っていない。
+
+## Phase B-3f5d2a: 新しいlocal操作のread-only準備条件確認
+
+- B-3f5d1dのremote採用後確認を受け、local編集・保存・削除の新しい操作を準備できるかを明示操作で確認するread-only Hookを追加した。操作自体は開始しない。
+- 鮮度確認では、B-3f5d1dがReactメモリに保持した`adoption_verified_normal`結果、workspace binding、同期metadata raw、DayMemo storageのserialized値、React上のDayMemo signatureを現在値と完全一致比較する。再読み込み、結果破棄、workspace変更、metadata/local変更後は再確認が必要になる。
+- active採用後はversion 3 metadata、対象active baseline、local DayMemo、remote revision・change sequence・updatedAt、cursorが整合し、pending、delete intent、pushBlock、対象外不一致がない場合だけ編集・保存・削除準備をreadyとする。
+- tombstoneまたはmetadata-only採用後はlocal DayMemo不在とtombstone baselineの整合を必須とし、編集・保存準備だけをreadyにできる。active local DayMemoがないため削除準備はreadyにしない。
+- readyは`local_operation_prepare_ready`。それ以外は`local_operation_prepare_target_only`、`local_operation_prepare_pending_remaining`、`local_operation_prepare_delete_intent_remaining`、`local_operation_prepare_push_blocked`、`local_operation_prepare_cursor_invalid`、`local_operation_prepare_state_changed`、`local_operation_prepare_target_mismatch`、`local_operation_prepare_verification_missing`、`local_operation_prepare_verification_stale`、`local_operation_prepare_unsupported_adoption`、`local_operation_prepare_prerequisite_missing`、`local_operation_prepare_state_unknown`へfail-closed分類する。
+- UIは安全なscalar状態、操作種別、対象日付、採用種別、各安全確認結果、件数、cursor、鮮度、次の操作だけを表示する。DayMemo本文、payload、UUID、operation ID、credential、metadata rawは表示しない。
+- 結果はReact stateだけに保持し、明示破棄できる。pull、Supabase操作、localStorage/metadata書き込み、DayMemo変更、operation ID生成、pending/intent作成、自動retry・merge・修復・競合解決は行わない。
+- B-3f5d2bの実操作準備、pending/intent/operation ID作成、upload/delete、複数件処理は未実装。実機確認、stage、commit、pushは行っていない。

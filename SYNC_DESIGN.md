@@ -1555,3 +1555,28 @@ Minimal future files are a focused `useDayMemoRemoteAdoptionPreflight.ts`, the e
 - After reload, if no safe in-memory adoption result exists, do not infer an adopted date. Run only an overall consistency check and label the scope accordingly. No new persistence field is introduced.
 - Discard clears only React result/error/remote comparison state. No localStorage, DayMemo, metadata, baseline, cursor, pending, intent, remote, operation ID, automatic repair, retry, or merge is involved.
 - B-3f5d1a through B-3f5d1c behavior remains unchanged. Real-conflict and real-post-adoption target verification are not device-tested; no Supabase operation, commit, or push has been performed.
+
+## Phase B-3f5d2a: read-only preparation eligibility after remote adoption
+
+### Input and freshness contract
+
+- Accept only a current B-3f5d1d `adoption_verified_normal` result with a known adoption target. The verification Hook exposes a cloned in-memory snapshot containing workspace binding, metadata raw, serialized DayMemo storage, React-local signature, and the safe verification result.
+- On explicit checking, reread and strictly validate version 3 metadata and DayMemo storage, then compare every snapshot field exactly. A reload, discard, workspace change, metadata/local change, or replaced verification result makes the evidence stale and requires B-3f5d1d verification again.
+- This Hook does not call full pull or any Supabase API. It consumes completed verification evidence and current local state only.
+
+### Active and tombstone rules
+
+- Active adoption requires one valid same-date local DayMemo, an active baseline, matching adopted revision/change sequence, matching local/baseline/remote timestamps, cursor coverage, and no non-target mismatch. Edit, save, and delete preparation may then be reported ready.
+- Tombstone or metadata-only adoption requires no same-date local DayMemo, a matching tombstone baseline, `baselineLocalUpdatedAt = null`, matching revision/sequence, and cursor coverage. Only edit/save preparation can be ready; delete preparation is a missing prerequisite.
+- Every path requires the same workspace, valid version 3 metadata, `baselineStatus = confirmed`, no push block, no pending operation, no local delete intent, and zero outside inconsistency. Uncertainty is stopped rather than inferred as ready.
+
+### Classification and UI
+
+- Ready is `local_operation_prepare_ready`. Fail-closed results are `local_operation_prepare_target_only`, `local_operation_prepare_pending_remaining`, `local_operation_prepare_delete_intent_remaining`, `local_operation_prepare_push_blocked`, `local_operation_prepare_cursor_invalid`, `local_operation_prepare_state_changed`, `local_operation_prepare_target_mismatch`, `local_operation_prepare_verification_missing`, `local_operation_prepare_verification_stale`, `local_operation_prepare_unsupported_adoption`, `local_operation_prepare_prerequisite_missing`, and `local_operation_prepare_state_unknown`.
+- The user selects `local_edit_prepare`, `local_save_prepare`, or `local_delete_prepare` and runs one explicit check. Results are safe scalar data in React memory only, are not restored after reload, and can be discarded without persistent changes.
+- Display readiness, date, adopted kind, chosen operation, metadata/workspace/pending/intent/push-block/cursor/freshness checks, outside mismatch count, confirmation time, and next safe action. Never expose content, payload, UUIDs, operation IDs, credentials, internal exceptions, or raw storage.
+
+### Safety boundary
+
+- Do not create or modify pending operations, local delete intents, operation IDs, baselines, cursors, metadata, local DayMemos, localStorage, sessionStorage, or remote state. Do not automatically pull, retry, merge, repair, or resolve conflicts.
+- A ready classification authorizes only proceeding to a future explicit preparation phase. Editing, saving, deletion, upload, and delete synchronization remain unimplemented until B-3f5d2b.
