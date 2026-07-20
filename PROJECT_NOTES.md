@@ -2300,3 +2300,10 @@ cleanup後VERIFY結果：
 - `json_restore`または`full_reset`のpushBlock中は復活・deleteを禁止する。read-only previewだけを許可し、pushBlockを自動解除せず、解除Phase後にremote/local状態を再確認する。
 - 実装はB-3f5a（read-only復活候補preview）、B-3f5b（1件の明示復活upsert）、B-3f5c（delete-aware update/delete競合確認UI）、B-3f5d（明示的な競合判断・復旧）へ分割する。次の最小PhaseはB-3f5aとする。
 - 今回は設計文書だけを更新し、src、package、SQL、RPC、localStorage、DayMemo、metadataを変更していない。Supabase操作、stage、commit、pushも行っていない。
+## Phase B-3f5a：復活候補read-only preview（2026-07-20）
+
+- tombstone baselineと同日付のlocal DayMemoだけを復活確認対象とし、設定画面の明示操作時だけ既存full pull utilityで同期先を完全取得する。
+- remote tombstoneがbaselineのrevision・change sequence・deletedAtと一致し、localDeleteIntentとpendingがない場合だけ`resurrection_candidate`とする。系譜・remote状態・intentに問題があれば`resurrection_conflict`、安全に判定できなければ`resurrection_unknown`として停止する。
+- preview結果はReact stateだけに保持し、日付、分類、tombstone revision、change sequence、deletedAtだけを表示する。DayMemo本文、payload、UUID、operation ID、認証情報は保持・表示しない。
+- preview破棄または再読み込みで結果を消去する。metadata、baseline、cursor、localDeleteIntent、pendingOperation、local DayMemoは変更しない。
+- upsert/delete RPC、operation ID生成、pending作成、自動復活、自動retryは実装していない。Supabase実操作、commit、pushは未実施である。
