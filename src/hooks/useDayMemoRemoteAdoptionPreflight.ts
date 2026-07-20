@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabaseClient } from '../lib/supabaseClient'
 import type { DayMemo } from '../types/dayMemo'
-import type { DayMemoSyncMetadataV4 } from '../types/dayMemoSync'
+import type { DayMemoSyncMetadataV5 } from '../types/dayMemoSync'
 import type { SyncConnection } from '../types/sync'
 import { isStoredDayMemo, readDayMemoStorageSnapshot } from '../utils/dayMemoStorage'
 import { pullAllDayMemoSyncRecords, type RemoteDayMemoRecord } from '../utils/dayMemoSyncPull'
@@ -91,7 +91,7 @@ export interface DayMemoRemoteConsistencySummary {
 }
 
 export function inspectRemoteAdoptionConsistency(
-  metadata: DayMemoSyncMetadataV4,
+  metadata: DayMemoSyncMetadataV5,
   localMemos: DayMemo[],
   records: RemoteDayMemoRecord[],
   targetDate: string | null,
@@ -155,7 +155,7 @@ export function inspectRemoteAdoptionConsistency(
 }
 
 export function countRemoteAdoptionMismatches(
-  metadata: DayMemoSyncMetadataV4,
+  metadata: DayMemoSyncMetadataV5,
   localMemos: DayMemo[],
   records: RemoteDayMemoRecord[],
   targetDate: string,
@@ -203,7 +203,7 @@ export function useDayMemoRemoteAdoptionPreflight({ dayMemos, isConfigured, isSi
   const itemsSignature = useMemo(() => JSON.stringify(conflictItems), [conflictItems])
   const currentMetadata = connection?.workspaceId ? loadDayMemoSyncMetadataAny(window.localStorage) : null
   const metadataEligible = Boolean(currentMetadata?.status === 'ready'
-    && currentMetadata.metadata.version === 4
+    && currentMetadata.metadata.version === 5
     && currentMetadata.metadata.workspaceId === connection?.workspaceId
     && currentMetadata.metadata.baselineStatus === 'confirmed'
     && currentMetadata.metadata.pushBlock === null)
@@ -254,7 +254,7 @@ export function useDayMemoRemoteAdoptionPreflight({ dayMemos, isConfigured, isSi
     const before = loadDayMemoSyncMetadataAny(window.localStorage)
     const stored = readDayMemoStorageSnapshot(window.localStorage)
     const checkedAt = new Date().toISOString()
-    if (before.status !== 'ready' || before.metadata.version !== 4
+    if (before.status !== 'ready' || before.metadata.version !== 5
       || before.metadata.workspaceId !== connection.workspaceId || snapshot.workspaceId !== connection.workspaceId
       || before.metadata.baselineStatus !== 'confirmed' || before.metadata.pushBlock !== null
       || before.raw !== snapshot.metadataRaw || stored.status !== 'ready'
@@ -279,7 +279,7 @@ export function useDayMemoRemoteAdoptionPreflight({ dayMemos, isConfigured, isSi
     }
     const after = loadDayMemoSyncMetadataAny(window.localStorage)
     const afterStored = readDayMemoStorageSnapshot(window.localStorage)
-    if (after.status !== 'ready' || after.metadata.version !== 4 || after.raw !== snapshot.metadataRaw
+    if (after.status !== 'ready' || after.metadata.version !== 5 || after.raw !== snapshot.metadataRaw
       || afterStored.status !== 'ready' || afterStored.serialized !== snapshot.localStorageSerialized
       || latestSignature.current !== signature) {
       setResult(blockedResult(snapshot, 'blocked_snapshot_changed', checkedAt))

@@ -2469,3 +2469,12 @@ cleanup後VERIFY結果：
 - Phase B-3f5e4aとして、保存済みcheckpointで再構築した`body_mismatch`日付から1日だけを選び、明示的な完全full pull後にlocal／remote本文を専用比較画面で確認するread-only処理を追加した。local-only／remote-onlyなど他分類は候補へ混在させない。
 - localまたはremoteの候補選択と確定はReact state内snapshotの固定だけであり、採用、merge、DayMemo・metadata・baseline・cursor更新、pending・intent・operation ID作成、RPC送信を行わない。本文は専用比較UI以外、console、文書へ出さない。
 - B-3f5e4bはlocal候補の永続準備、B-3f5e4cはremote候補の明示local反映、B-3f5e4dは採用後のbaselineと未解決差異再確認を担当する。各Phaseはmetadata、local、workspace、cursor、remote revision／sequence／updatedAt／状態と分類を再取得・再確認する。実機確認、2件目、local-only、remote-only、confirmed復帰、一括処理、commit、pushは未実施。
+
+## Phase B-3f5e4m metadata v5 preparation
+
+- Metadata version 5 adds an explicit discriminator to upsert pending operations. Existing update, local-only, resurrection, and local-operation pending entries migrate to `operationMode: normal`; delete pending keeps its version 4 shape.
+- The reserved `body_mismatch_recovery` upsert shape carries the remote base revision, base change sequence, remote updated timestamp, and active-state marker needed by a later recovery phase. This phase validates that shape but never creates one, generates an operation ID, or sends it.
+- Version 4 to 5 migration is explicit and two-step: a read-only condition check creates an in-memory snapshot, and a separate user action revalidates the raw metadata and workspace before verified save/read-back. Failure uses verified rollback and remains fail-closed when restoration cannot be proven.
+- A version 4 upsert pending is uniquely migrated as normal because the strict version 4 validator rejects unknown fields. No recovery mode or missing lineage is inferred. Invalid or unsupported pending data blocks migration.
+- The normal send preflight and sender accept only version 5 normal upsert pending or delete pending. A recovery upsert cannot enter the normal send path. Existing normal preview/upload, recovery planning/checkpoint, body-mismatch comparison, baseline state, and safety checks read version 5.
+- UI exposes only version, classification, pending count/kind, validation booleans, persistence/read-back/rollback state, time, and a safe next action. It does not expose content, payload, identifiers, credentials, or raw metadata. No automatic migration, recovery pending creation, Supabase operation, RPC, SQL, retry, merge, repair, stage, commit, or push occurs in this phase.

@@ -1,11 +1,11 @@
 import { useCallback, useRef, useState } from 'react'
 import { supabaseClient } from '../lib/supabaseClient'
 import type { DayMemo } from '../types/dayMemo'
-import type { DayMemoSyncMetadataV4 } from '../types/dayMemoSync'
+import type { DayMemoSyncMetadataV5 } from '../types/dayMemoSync'
 import type { SyncConnection } from '../types/sync'
 import { isStoredDayMemo, readDayMemoStorageSnapshot } from '../utils/dayMemoStorage'
 import { pullAllDayMemoSyncRecords, type RemoteDayMemoRecord } from '../utils/dayMemoSyncPull'
-import { isDayMemoSyncMetadataV4, loadDayMemoSyncMetadataAny, replaceDayMemoSyncMetadataV2 } from '../utils/dayMemoSyncStorage'
+import { isDayMemoSyncMetadataV5, loadDayMemoSyncMetadataAny, replaceDayMemoSyncMetadataV2 } from '../utils/dayMemoSyncStorage'
 import {
   isAppliedDayMemoDeleteSyncResult,
   isAppliedDayMemoSyncResult,
@@ -88,7 +88,7 @@ function recordEquals(left: RemoteDayMemoRecord, right: RemoteDayMemoRecord): bo
     && JSON.stringify(left.payload) === JSON.stringify(right.payload)
 }
 
-function recordsMatchBaselines(metadata: DayMemoSyncMetadataV4, records: RemoteDayMemoRecord[]): boolean {
+function recordsMatchBaselines(metadata: DayMemoSyncMetadataV5, records: RemoteDayMemoRecord[]): boolean {
   if (records.length !== Object.keys(metadata.baselines).length) return false
   const byDate = new Map(records.map((record) => [record.entityId, record]))
   if (byDate.size !== records.length) return false
@@ -149,12 +149,12 @@ export function useDayMemoLocalOperationSend({ dayMemos, isConfigured, isSignedI
   }, [])
 
   const persistAfterRpcFailure = useCallback((
-    metadata: DayMemoSyncMetadataV4,
+    metadata: DayMemoSyncMetadataV5,
     expectedRaw: string,
     status: 'response_unknown' | 'conflict',
   ): boolean => {
     if (!metadata.pendingOperation) return false
-    const next: DayMemoSyncMetadataV4 = {
+    const next: DayMemoSyncMetadataV5 = {
       ...metadata,
       pendingOperation: { ...metadata.pendingOperation, status },
     }
@@ -163,9 +163,9 @@ export function useDayMemoLocalOperationSend({ dayMemos, isConfigured, isSignedI
 
   const persistRecoveryRequired = useCallback((expectedOperationId: string): boolean => {
     const current = loadDayMemoSyncMetadataAny(window.localStorage)
-    if (current.status !== 'ready' || !isDayMemoSyncMetadataV4(current.metadata)
+    if (current.status !== 'ready' || !isDayMemoSyncMetadataV5(current.metadata)
       || current.metadata.pendingOperation?.operationId !== expectedOperationId) return false
-    const recovery: DayMemoSyncMetadataV4 = {
+    const recovery: DayMemoSyncMetadataV5 = {
       ...current.metadata,
       pendingOperation: { ...current.metadata.pendingOperation, status: 'recovery_required' },
     }
@@ -199,7 +199,7 @@ export function useDayMemoLocalOperationSend({ dayMemos, isConfigured, isSignedI
       }
       const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
       const stored = readDayMemoStorageSnapshot(window.localStorage)
-      if (loaded.status !== 'ready' || !isDayMemoSyncMetadataV4(loaded.metadata) || stored.status !== 'ready') {
+      if (loaded.status !== 'ready' || !isDayMemoSyncMetadataV5(loaded.metadata) || stored.status !== 'ready') {
         finish('local_operation_send_state_unknown', common)
         return
       }
@@ -225,7 +225,8 @@ export function useDayMemoLocalOperationSend({ dayMemos, isConfigured, isSignedI
         finish('local_operation_send_pending_missing', common)
         return
       }
-      if (pending.status !== 'prepared' || pending.kind !== requestedKind) {
+      if (pending.status !== 'prepared' || pending.kind !== requestedKind
+        || (pending.kind === 'upsert' && pending.operationMode !== 'normal')) {
         finish('local_operation_send_pending_invalid', common)
         return
       }
@@ -296,11 +297,11 @@ export function useDayMemoLocalOperationSend({ dayMemos, isConfigured, isSignedI
         return
       }
 
-      const sending: DayMemoSyncMetadataV4 = {
+      const sending: DayMemoSyncMetadataV5 = {
         ...metadata,
         pendingOperation: { ...pending, status: 'sending' },
       }
-      if (!isDayMemoSyncMetadataV4(sending)) {
+      if (!isDayMemoSyncMetadataV5(sending)) {
         finish('local_operation_send_pending_invalid', { ...common, remoteRechecked: true })
         return
       }
@@ -377,7 +378,7 @@ export function useDayMemoLocalOperationSend({ dayMemos, isConfigured, isSignedI
       const applied = appliedResult
       const remainingIntents = { ...sending.localDeleteIntents }
       if (pending.kind === 'delete') delete remainingIntents[pending.date]
-      const completed: DayMemoSyncMetadataV4 = {
+      const completed: DayMemoSyncMetadataV5 = {
         ...sending,
         baselines: {
           ...sending.baselines,
@@ -406,7 +407,7 @@ export function useDayMemoLocalOperationSend({ dayMemos, isConfigured, isSignedI
         pendingOperation: null,
         lastSuccessfulSyncAt: now,
       }
-      if (!isDayMemoSyncMetadataV4(completed)
+      if (!isDayMemoSyncMetadataV5(completed)
         || replaceDayMemoSyncMetadataV2(window.localStorage, completed, sendingRaw) !== 'saved') {
         const recoveryPersisted = persistRecoveryRequired(pending.operationId)
         finish('local_operation_send_remote_succeeded_local_update_failed', {

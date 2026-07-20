@@ -32,7 +32,7 @@ export function useDayMemoSyncMetadataMigration({ dayMemos, connection }: Input)
     const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
     if (loaded.status === 'ready' && loaded.metadata.workspaceId === connection.workspaceId) {
       setMetadataVersion(loaded.metadata.version)
-      setState(loaded.metadata.version === 3 || loaded.metadata.version === 4 ? 'completed' : 'needs_migration')
+      setState(loaded.metadata.version === 3 || loaded.metadata.version === 4 || loaded.metadata.version === 5 ? 'completed' : 'needs_migration')
       return
     }
     setState(loaded.status === 'absent' ? 'needs_migration' : 'error')

@@ -39,7 +39,7 @@ export function classifyDayMemoSyncSafety(
   loaded: DayMemoSyncAnyLoadResult,
   workspaceId: string | null,
 ): DayMemoSyncSafety {
-  if (!workspaceId || !isUuid(workspaceId) || loaded.status !== 'ready' || loaded.metadata.version !== 4) {
+  if (!workspaceId || !isUuid(workspaceId) || loaded.status !== 'ready' || loaded.metadata.version !== 5) {
     return result('metadata_invalid')
   }
   const metadata = loaded.metadata

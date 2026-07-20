@@ -122,7 +122,7 @@ export function useDayMemoLocalOperationPreparationCheck({
     const stored = readDayMemoStorageSnapshot(window.localStorage)
     const date = verificationResult?.date ?? null
     const adoptionKind = verificationResult?.adoptionKind ?? 'overall'
-    const metadata = loaded.status === 'ready' && loaded.metadata.version === 4 ? loaded.metadata : null
+    const metadata = loaded.status === 'ready' && loaded.metadata.version === 5 ? loaded.metadata : null
     const metadataValid = metadata !== null
     const workspaceValid = Boolean(metadata && connection?.workspaceId
       && metadata.workspaceId === connection.workspaceId && snapshot?.workspaceId === connection.workspaceId)

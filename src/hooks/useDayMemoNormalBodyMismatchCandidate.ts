@@ -1,11 +1,11 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { supabaseClient } from '../lib/supabaseClient'
 import type { DayMemo } from '../types/dayMemo'
-import type { DayMemoSyncMetadataV4 } from '../types/dayMemoSync'
+import type { DayMemoSyncMetadataV5 } from '../types/dayMemoSync'
 import type { SyncConnection } from '../types/sync'
 import { isStoredDayMemo, readDayMemoStorageSnapshot } from '../utils/dayMemoStorage'
 import { pullAllDayMemoSyncRecords, type RemoteDayMemoRecord } from '../utils/dayMemoSyncPull'
-import { isDayMemoSyncMetadataV4, loadDayMemoSyncMetadataAny } from '../utils/dayMemoSyncStorage'
+import { isDayMemoSyncMetadataV5, loadDayMemoSyncMetadataAny } from '../utils/dayMemoSyncStorage'
 import { isUuid } from '../utils/syncConnectionStorage'
 import { classifyDayMemoNormalDifference, type DayMemoNormalDifferenceClassification } from './useDayMemoNormalDifferenceRecoveryPlan'
 import type { DayMemoNormalDifferenceCheckpointResult } from './useDayMemoNormalDifferenceRecoveryCheckpointCheck'
@@ -63,7 +63,7 @@ interface Input {
   isConfigured: boolean
   isSignedIn: boolean
   connection: SyncConnection | null
-  reactMetadata: DayMemoSyncMetadataV4 | null
+  reactMetadata: DayMemoSyncMetadataV5 | null
   checkpointResult: DayMemoNormalDifferenceCheckpointResult | null
 }
 
@@ -113,7 +113,7 @@ export function useDayMemoNormalBodyMismatchCandidate({ dayMemos, isConfigured, 
   const bodyMismatchDates = useMemo(() => checkpointResult?.safety === 'normal_difference_checkpoint_unresolved_ready'
     ? checkpointResult.bodyMismatchDates : [], [checkpointResult])
   const eligible = Boolean(isConfigured && isSignedIn && supabaseClient && connectionIsEligible(connection)
-    && reactMetadata?.version === 4 && checkpointResult?.safety === 'normal_difference_checkpoint_unresolved_ready'
+    && reactMetadata?.version === 5 && checkpointResult?.safety === 'normal_difference_checkpoint_unresolved_ready'
     && checkpointResult.normalSyncReady === false && bodyMismatchDates.length > 0)
 
   const finish = useCallback((safety: DayMemoNormalBodyMismatchSafety, date: string | null = selectedDate, candidate: DayMemoNormalBodyMismatchChoice | null = null, verified = false) => {
@@ -146,7 +146,7 @@ export function useDayMemoNormalBodyMismatchCandidate({ dayMemos, isConfigured, 
         || !checkpointResult.bodyMismatchDates.includes(selectedDate)) { finish('normal_body_mismatch_checkpoint_missing'); return }
       const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
       const stored = readDayMemoStorageSnapshot(window.localStorage)
-      if (loaded.status !== 'ready' || !isDayMemoSyncMetadataV4(loaded.metadata) || !reactMetadata
+      if (loaded.status !== 'ready' || !isDayMemoSyncMetadataV5(loaded.metadata) || !reactMetadata
         || JSON.stringify(loaded.metadata) !== JSON.stringify(reactMetadata) || stored.status !== 'ready') {
         finish('normal_body_mismatch_verification_stale'); return
       }

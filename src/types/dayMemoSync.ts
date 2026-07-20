@@ -177,7 +177,49 @@ export interface DayMemoSyncMetadataV4 {
   }
 }
 
-export type DayMemoSyncMetadata = DayMemoSyncMetadataV1 | DayMemoSyncMetadataV2 | DayMemoSyncMetadataV3 | DayMemoSyncMetadataV4
+export interface DayMemoNormalUpsertPendingOperationV5 extends DayMemoPendingOperationV2 {
+  operationMode: 'normal'
+}
+
+export interface DayMemoBodyMismatchRecoveryPendingOperationV5 {
+  kind: 'upsert'
+  operationMode: 'body_mismatch_recovery'
+  date: string
+  operationId: string
+  baseRevision: number
+  baseChangeSequence: number
+  baseRemoteUpdatedAt: string
+  baseRemoteState: 'active'
+  preparedLocalUpdatedAt: string
+  preparedAt: string
+  status: 'prepared' | 'sending' | 'response_unknown' | 'conflict' | 'recovery_required'
+}
+
+export type DayMemoPendingOperationV5 =
+  | DayMemoNormalUpsertPendingOperationV5
+  | DayMemoBodyMismatchRecoveryPendingOperationV5
+  | Exclude<DayMemoPendingOperationV3, DayMemoPendingOperationV2>
+
+export interface DayMemoSyncMetadataV5 {
+  version: 5
+  workspaceId: string
+  initialUpload: DayMemoSyncMetadataV2['initialUpload']
+  baselines: Record<string, DayMemoRemoteBaselineV3>
+  localDeleteIntents: Record<string, DayMemoLocalDeleteIntentV4>
+  lastPulledChangeSequence: number
+  baselineStatus: DayMemoBaselineStatusV2
+  baselineConfirmedAt: string | null
+  pendingOperation: DayMemoPendingOperationV5 | null
+  pushBlock: DayMemoSyncMetadataV2['pushBlock']
+  lastSuccessfulSyncAt: string | null
+  migration: {
+    sourceVersion: 1 | 2 | 3 | 4 | 5
+    status: 'completed'
+    migratedAt: string
+  }
+}
+
+export type DayMemoSyncMetadata = DayMemoSyncMetadataV1 | DayMemoSyncMetadataV2 | DayMemoSyncMetadataV3 | DayMemoSyncMetadataV4 | DayMemoSyncMetadataV5
 
 export type DayMemoPullPreviewState =
   | 'unavailable'

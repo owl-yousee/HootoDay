@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabaseClient } from '../lib/supabaseClient'
 import type { DayMemo } from '../types/dayMemo'
-import type { DayMemoPendingOperationV2, DayMemoSyncMetadataV4 } from '../types/dayMemoSync'
+import type { DayMemoNormalUpsertPendingOperationV5, DayMemoSyncMetadataV5 } from '../types/dayMemoSync'
 import type { SyncConnection } from '../types/sync'
 import { readDayMemoStorageSnapshot } from '../utils/dayMemoStorage'
 import { pullAllDayMemoSyncRecords, type RemoteDayMemoRecord } from '../utils/dayMemoSyncPull'
@@ -89,7 +89,7 @@ function messageForState(state: DayMemoResurrectionUploadState): string | null {
   }
 }
 
-function metadataMatchesPreview(metadata: DayMemoSyncMetadataV4, raw: string, preview: DayMemoResurrectionUploadSnapshot): boolean {
+function metadataMatchesPreview(metadata: DayMemoSyncMetadataV5, raw: string, preview: DayMemoResurrectionUploadSnapshot): boolean {
   const baseline = metadata.baselines[preview.memo.date]
   return raw === preview.metadataRaw
     && metadata.workspaceId === preview.workspaceId
@@ -115,7 +115,7 @@ function localMatchesPreview(dayMemos: DayMemo[], preview: DayMemoResurrectionUp
     && localSignature([preview.memo]) === localSignature(stored.memos.filter((memo) => memo.date === preview.memo.date))
 }
 
-function remoteMatchesAllBaselines(metadata: DayMemoSyncMetadataV4, records: RemoteDayMemoRecord[]): boolean {
+function remoteMatchesAllBaselines(metadata: DayMemoSyncMetadataV5, records: RemoteDayMemoRecord[]): boolean {
   if (records.length !== Object.keys(metadata.baselines).length) return false
   const remoteByDate = new Map(records.map((record) => [record.entityId, record]))
   if (remoteByDate.size !== records.length) return false
@@ -187,7 +187,7 @@ export function useDayMemoResurrectionUpload({
       return
     }
     const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
-    if (loaded.status !== 'ready' || loaded.metadata.version !== 4 || !metadataMatchesPreview(loaded.metadata, loaded.raw, preview)) {
+    if (loaded.status !== 'ready' || loaded.metadata.version !== 5 || !metadataMatchesPreview(loaded.metadata, loaded.raw, preview)) {
       setState('metadata_changed')
       setSafeErrorMessage(messageForState('metadata_changed'))
       return
@@ -209,7 +209,7 @@ export function useDayMemoResurrectionUpload({
     }
     const latest = loadDayMemoSyncMetadataAny(window.localStorage)
     if (latest.status !== 'ready'
-      || latest.metadata.version !== 4
+      || latest.metadata.version !== 5
       || !metadataMatchesPreview(latest.metadata, latest.raw, preview)) {
       setState('metadata_changed')
       setSafeErrorMessage(messageForState('metadata_changed'))
@@ -247,7 +247,7 @@ export function useDayMemoResurrectionUpload({
     }
     const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
     if (loaded.status !== 'ready'
-      || loaded.metadata.version !== 4
+      || loaded.metadata.version !== 5
       || !metadataMatchesPreview(loaded.metadata, loaded.raw, preflight.preview)) {
       setState('metadata_changed')
       setSafeErrorMessage(messageForState('metadata_changed'))
@@ -259,8 +259,9 @@ export function useDayMemoResurrectionUpload({
       setSafeErrorMessage('この環境では復活用operation IDを安全に作成できませんでした。RPCは実行していません。')
       return
     }
-    const pendingOperation: DayMemoPendingOperationV2 = {
+    const pendingOperation: DayMemoNormalUpsertPendingOperationV5 = {
       kind: 'upsert',
+      operationMode: 'normal',
       date: preflight.preview.memo.date,
       operationId,
       baseRevision: preflight.preview.baseline.remoteRevision,
@@ -268,7 +269,7 @@ export function useDayMemoResurrectionUpload({
       preparedAt: new Date().toISOString(),
       status: 'prepared',
     }
-    const next: DayMemoSyncMetadataV4 = { ...loaded.metadata, pendingOperation }
+    const next: DayMemoSyncMetadataV5 = { ...loaded.metadata, pendingOperation }
     const saved = replaceDayMemoSyncMetadataV2(window.localStorage, next, loaded.raw)
     if (saved !== 'saved') {
       const failureState: DayMemoResurrectionUploadState = saved === 'rollback_failed' ? 'recovery_required' : 'storage_failed'
@@ -285,15 +286,15 @@ export function useDayMemoResurrectionUpload({
     if (!eligible || !connection?.workspaceId || !connection.deviceId || !supabaseClient || state !== 'prepared' || !prepared) return
     const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
     const pending = loaded.status === 'ready'
-      && loaded.metadata.version === 4
+      && loaded.metadata.version === 5
       && loaded.metadata.pendingOperation?.kind === 'upsert'
       ? loaded.metadata.pendingOperation
       : null
-    const baseline = loaded.status === 'ready' && loaded.metadata.version === 4
+    const baseline = loaded.status === 'ready' && loaded.metadata.version === 5
       ? loaded.metadata.baselines[prepared.preview.memo.date]
       : null
     if (loaded.status !== 'ready'
-      || loaded.metadata.version !== 4
+      || loaded.metadata.version !== 5
       || loaded.raw !== prepared.preparedMetadataRaw
       || loaded.metadata.workspaceId !== connection.workspaceId
       || loaded.metadata.baselineStatus !== 'confirmed'
@@ -318,7 +319,7 @@ export function useDayMemoResurrectionUpload({
       setSafeErrorMessage(messageForState('local_changed'))
       return
     }
-    const sending: DayMemoSyncMetadataV4 = {
+    const sending: DayMemoSyncMetadataV5 = {
       ...loaded.metadata,
       pendingOperation: { ...pending, status: 'sending' },
     }
@@ -349,7 +350,7 @@ export function useDayMemoResurrectionUpload({
       if (response.error) throw new Error('rpc_result_unknown')
       data = response.data
     } catch {
-      const unknown: DayMemoSyncMetadataV4 = {
+      const unknown: DayMemoSyncMetadataV5 = {
         ...sending,
         pendingOperation: { ...sending.pendingOperation!, status: 'response_unknown' },
       }
@@ -363,7 +364,7 @@ export function useDayMemoResurrectionUpload({
     }
     const normalized = normalizeDayMemoSyncResult(data)
     if (isConflictDayMemoSyncResult(normalized, connection.workspaceId, memo.date)) {
-      const conflict: DayMemoSyncMetadataV4 = {
+      const conflict: DayMemoSyncMetadataV5 = {
         ...sending,
         pendingOperation: { ...sending.pendingOperation!, status: 'conflict' },
       }
@@ -382,7 +383,7 @@ export function useDayMemoResurrectionUpload({
       prepared.preview.baseline.remoteRevision,
       prepared.preview.baseline.remoteChangeSequence,
     )) {
-      const unknown: DayMemoSyncMetadataV4 = {
+      const unknown: DayMemoSyncMetadataV5 = {
         ...sending,
         pendingOperation: { ...sending.pendingOperation!, status: 'response_unknown' },
       }
@@ -395,7 +396,7 @@ export function useDayMemoResurrectionUpload({
       return
     }
     const completedAt = new Date().toISOString()
-    const completed: DayMemoSyncMetadataV4 = {
+    const completed: DayMemoSyncMetadataV5 = {
       ...sending,
       baselines: {
         ...sending.baselines,

@@ -1,12 +1,12 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { supabaseClient } from '../lib/supabaseClient'
 import type { DayMemo } from '../types/dayMemo'
-import type { DayMemoSyncMetadataV4 } from '../types/dayMemoSync'
+import type { DayMemoSyncMetadataV5 } from '../types/dayMemoSync'
 import type { SyncConnection } from '../types/sync'
 import { saveDayMemoPullApplyBackup } from '../utils/dayMemoPullApplyBackupStorage'
 import { isStoredDayMemo, readDayMemoStorageSnapshot, replaceStoredDayMemosVerified } from '../utils/dayMemoStorage'
 import { pullAllDayMemoSyncRecords } from '../utils/dayMemoSyncPull'
-import { isDayMemoSyncMetadataV4, loadDayMemoSyncMetadataAny, replaceDayMemoSyncMetadataV2 } from '../utils/dayMemoSyncStorage'
+import { isDayMemoSyncMetadataV5, loadDayMemoSyncMetadataAny, replaceDayMemoSyncMetadataV2 } from '../utils/dayMemoSyncStorage'
 import { isUuid } from '../utils/syncConnectionStorage'
 import { countRemoteAdoptionMismatches, type DayMemoRemoteActiveAdoptionSnapshot, type DayMemoRemoteAdoptionPreflightResult } from './useDayMemoRemoteAdoptionPreflight'
 
@@ -109,7 +109,7 @@ export function useDayMemoRemoteActiveAdoption({
       || snapshot.result.otherMismatchCount !== 0
       || !sameJson(snapshot.result, preflightResult)
       || snapshot.conflictSnapshot.workspaceId !== connection.workspaceId
-      || loaded.status !== 'ready' || loaded.metadata.version !== 4
+      || loaded.status !== 'ready' || loaded.metadata.version !== 5
       || loaded.metadata.workspaceId !== connection.workspaceId
       || loaded.metadata.baselineStatus !== 'confirmed' || loaded.metadata.pushBlock !== null
       || loaded.raw !== snapshot.conflictSnapshot.metadataRaw
@@ -145,7 +145,7 @@ export function useDayMemoRemoteActiveAdoption({
     const remote = remoteMatches.length === 1 ? remoteMatches[0] : null
     if (!liveEligibility.current.isConfigured || !liveEligibility.current.isSignedIn
       || liveEligibility.current.workspaceId !== connection.workspaceId
-      || afterPullMetadata.status !== 'ready' || afterPullMetadata.metadata.version !== 4
+      || afterPullMetadata.status !== 'ready' || afterPullMetadata.metadata.version !== 5
       || afterPullMetadata.raw !== snapshot.conflictSnapshot.metadataRaw
       || afterPullStored.status !== 'ready' || afterPullStored.serialized !== snapshot.conflictSnapshot.localStorageSerialized
       || !remote || remote.deletedAt !== null || !remote.payload || !isStoredDayMemo(remote.payload)
@@ -191,7 +191,7 @@ export function useDayMemoRemoteActiveAdoption({
     }
     const completedAt = new Date().toISOString()
     const { [snapshot.result.date]: removedIntent, ...remainingIntents } = loaded.metadata.localDeleteIntents
-    const completedMetadata: DayMemoSyncMetadataV4 = {
+    const completedMetadata: DayMemoSyncMetadataV5 = {
       ...loaded.metadata,
       baselines: {
         ...loaded.metadata.baselines,
@@ -211,7 +211,7 @@ export function useDayMemoRemoteActiveAdoption({
       pendingOperation: null,
       lastSuccessfulSyncAt: completedAt,
     }
-    if (!isDayMemoSyncMetadataV4(completedMetadata)) {
+    if (!isDayMemoSyncMetadataV5(completedMetadata)) {
       const rollback = replaceStoredDayMemosVerified(window.localStorage, afterPullStored.memos, savedLocal.serialized)
       setState(rollback === 'saved' ? 'metadata_failed' : 'recovery_required')
       setSafeErrorMessage(rollback === 'saved'

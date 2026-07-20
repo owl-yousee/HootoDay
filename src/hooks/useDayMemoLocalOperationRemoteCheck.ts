@@ -1,11 +1,11 @@
 import { useCallback, useRef, useState } from 'react'
 import type { DayMemo } from '../types/dayMemo'
-import type { DayMemoPendingOperationV3, DayMemoSyncMetadataV4 } from '../types/dayMemoSync'
+import type { DayMemoPendingOperationV5, DayMemoSyncMetadataV5 } from '../types/dayMemoSync'
 import type { SyncConnection } from '../types/sync'
 import { supabaseClient } from '../lib/supabaseClient'
 import { isStoredDayMemo, readDayMemoStorageSnapshot } from '../utils/dayMemoStorage'
 import { pullAllDayMemoSyncRecords, type RemoteDayMemoRecord } from '../utils/dayMemoSyncPull'
-import { isDayMemoSyncMetadataV4, loadDayMemoSyncMetadataAny } from '../utils/dayMemoSyncStorage'
+import { isDayMemoSyncMetadataV5, loadDayMemoSyncMetadataAny } from '../utils/dayMemoSyncStorage'
 import { isUuid } from '../utils/syncConnectionStorage'
 
 export type DayMemoLocalOperationRemoteCheckKind = 'upsert' | 'delete'
@@ -55,7 +55,7 @@ export interface DayMemoLocalOperationRemoteReadySnapshot {
   metadataRaw: string
   localStorageSerialized: string
   workspaceId: string
-  pendingOperation: DayMemoPendingOperationV3
+  pendingOperation: DayMemoPendingOperationV5
   remoteRecord: RemoteDayMemoRecord
 }
 
@@ -76,7 +76,7 @@ function connectionIsEligible(connection: SyncConnection | null): connection is 
 function inspectPreparedKind(connection: SyncConnection | null): DayMemoLocalOperationRemoteCheckKind | null {
   if (!connectionIsEligible(connection)) return null
   const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
-  if (loaded.status !== 'ready' || !isDayMemoSyncMetadataV4(loaded.metadata)
+  if (loaded.status !== 'ready' || !isDayMemoSyncMetadataV5(loaded.metadata)
     || loaded.metadata.workspaceId !== connection.workspaceId
     || loaded.metadata.pendingOperation?.status !== 'prepared') return null
   return loaded.metadata.pendingOperation.kind
@@ -87,7 +87,7 @@ function remoteState(record: RemoteDayMemoRecord | undefined): DayMemoLocalOpera
   return record.deletedAt === null ? 'active' : 'tombstone'
 }
 
-function recordMatchesBaseline(record: RemoteDayMemoRecord, baseline: DayMemoSyncMetadataV4['baselines'][string]): boolean {
+function recordMatchesBaseline(record: RemoteDayMemoRecord, baseline: DayMemoSyncMetadataV5['baselines'][string]): boolean {
   if (record.entityId !== baseline.date
     || record.revision !== baseline.remoteRevision
     || record.changeSequence !== baseline.remoteChangeSequence
@@ -98,7 +98,7 @@ function recordMatchesBaseline(record: RemoteDayMemoRecord, baseline: DayMemoSyn
       && baseline.baselineLocalUpdatedAt === null
 }
 
-function allRemoteRecordsMatchBaselines(metadata: DayMemoSyncMetadataV4, records: RemoteDayMemoRecord[]): boolean {
+function allRemoteRecordsMatchBaselines(metadata: DayMemoSyncMetadataV5, records: RemoteDayMemoRecord[]): boolean {
   const dates = Object.keys(metadata.baselines)
   if (dates.length !== records.length) return false
   const byDate = new Map(records.map((record) => [record.entityId, record]))
@@ -109,7 +109,7 @@ function allRemoteRecordsMatchBaselines(metadata: DayMemoSyncMetadataV4, records
 }
 
 function allOutsideLocalStateMatches(
-  metadata: DayMemoSyncMetadataV4,
+  metadata: DayMemoSyncMetadataV5,
   memos: DayMemo[],
   targetDate: string,
 ): boolean {
@@ -181,7 +181,7 @@ export function useDayMemoLocalOperationRemoteCheck({ dayMemos, isConfigured, is
     }
     const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
     const stored = readDayMemoStorageSnapshot(window.localStorage)
-    if (loaded.status !== 'ready' || !isDayMemoSyncMetadataV4(loaded.metadata) || stored.status !== 'ready') {
+    if (loaded.status !== 'ready' || !isDayMemoSyncMetadataV5(loaded.metadata) || stored.status !== 'ready') {
       finish('local_operation_remote_check_state_unknown')
       return
     }
@@ -203,7 +203,8 @@ export function useDayMemoLocalOperationRemoteCheck({ dayMemos, isConfigured, is
       finish('local_operation_remote_check_pending_missing')
       return
     }
-    if (pending.status !== 'prepared' || pending.kind !== requestedKind) {
+    if (pending.status !== 'prepared' || pending.kind !== requestedKind
+      || (pending.kind === 'upsert' && pending.operationMode !== 'normal')) {
       finish('local_operation_remote_check_pending_invalid', { date: pending.date, operationKind: pending.kind })
       return
     }

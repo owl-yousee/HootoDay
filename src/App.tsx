@@ -42,6 +42,7 @@ import { useDayMemoNormalDifferenceRecoveryCheckpointCheck } from './hooks/useDa
 import { useDayMemoNormalDifferenceRecoveryCheckpointSave } from './hooks/useDayMemoNormalDifferenceRecoveryCheckpointSave'
 import { useDayMemoNormalBodyMismatchCandidate } from './hooks/useDayMemoNormalBodyMismatchCandidate'
 import { useDayMemoMetadataV4Migration } from './hooks/useDayMemoMetadataV4Migration'
+import { useDayMemoMetadataV5Migration } from './hooks/useDayMemoMetadataV5Migration'
 import { useDayMemoSyncMetadataMigration } from './hooks/useDayMemoSyncMetadataMigration'
 import { useDayMemoDeleteIntent } from './hooks/useDayMemoDeleteIntent'
 import { useDayMemoDeletePreview } from './hooks/useDayMemoDeletePreview'
@@ -192,7 +193,7 @@ function App() {
     isConfigured: supabaseAuth.isConfigured,
     isSignedIn: supabaseAuth.isSignedIn,
     connection: supabaseWorkspace.connection,
-    reactMetadata: dayMemoSyncBaseline.metadata?.version === 4 ? dayMemoSyncBaseline.metadata : null,
+    reactMetadata: dayMemoSyncBaseline.metadata?.version === 5 ? dayMemoSyncBaseline.metadata : null,
     getReadySnapshot: dayMemoNormalDifferenceRecoveryCheckpointCheck.getReadySnapshot,
     consumeReadySnapshot: dayMemoNormalDifferenceRecoveryCheckpointCheck.consumeReadySnapshot,
     adoptVerifiedMetadata: dayMemoSyncBaseline.adoptVerifiedMetadata,
@@ -202,7 +203,7 @@ function App() {
     isConfigured: supabaseAuth.isConfigured,
     isSignedIn: supabaseAuth.isSignedIn,
     connection: supabaseWorkspace.connection,
-    reactMetadata: dayMemoSyncBaseline.metadata?.version === 4 ? dayMemoSyncBaseline.metadata : null,
+    reactMetadata: dayMemoSyncBaseline.metadata?.version === 5 ? dayMemoSyncBaseline.metadata : null,
     checkpointResult: dayMemoNormalDifferenceRecoveryCheckpointCheck.result,
   })
   const dayMemoBaselineRebase = useDayMemoBaselineRebase({
@@ -325,6 +326,10 @@ function App() {
     getReadySnapshot: dayMemoLocalOperationRemoteCheck.getReadySnapshot,
   })
   const dayMemoMetadataV4Migration = useDayMemoMetadataV4Migration(supabaseWorkspace.connection)
+  const dayMemoMetadataV5Migration = useDayMemoMetadataV5Migration(
+    supabaseWorkspace.connection,
+    dayMemoSyncBaseline.adoptVerifiedMetadata,
+  )
   const dayMemoSyncRecoveryApply = useDayMemoSyncRecoveryApply({
     dayMemos,
     isConfigured: supabaseAuth.isConfigured,
@@ -679,6 +684,7 @@ function App() {
           dayMemoLocalOperationRemoteCheck={dayMemoLocalOperationRemoteCheck}
           dayMemoLocalOperationSend={dayMemoLocalOperationSend}
           dayMemoMetadataV4Migration={dayMemoMetadataV4Migration}
+          dayMemoMetadataV5Migration={dayMemoMetadataV5Migration}
           onOpenPreparedDayMemo={(dateKey) => {
             const date = fromDateKey(dateKey)
             if (!date) return

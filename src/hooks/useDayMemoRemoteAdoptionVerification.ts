@@ -131,7 +131,7 @@ export function useDayMemoRemoteAdoptionVerification({ dayMemos, isConfigured, i
     const target = chooseTarget(activeResult, tombstoneResult)
     const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
     const stored = readDayMemoStorageSnapshot(window.localStorage)
-    if (loaded.status !== 'ready' || loaded.metadata.version !== 4
+    if (loaded.status !== 'ready' || loaded.metadata.version !== 5
       || loaded.metadata.workspaceId !== connection.workspaceId
       || loaded.metadata.pushBlock !== null
       || stored.status !== 'ready' || localSignature(stored.memos) !== signature) {
@@ -157,7 +157,7 @@ export function useDayMemoRemoteAdoptionVerification({ dayMemos, isConfigured, i
     if (!pulled || pulled.status !== 'complete'
       || !liveEligibility.current.isConfigured || !liveEligibility.current.isSignedIn
       || liveEligibility.current.workspaceId !== connection.workspaceId
-      || after.status !== 'ready' || after.metadata.version !== 4 || after.raw !== loaded.raw
+      || after.status !== 'ready' || after.metadata.version !== 5 || after.raw !== loaded.raw
       || afterStored.status !== 'ready' || afterStored.serialized !== stored.serialized
       || latestSignature.current !== signature) {
       const classification = 'adoption_state_unknown'

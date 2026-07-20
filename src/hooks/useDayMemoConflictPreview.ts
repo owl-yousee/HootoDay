@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabaseClient } from '../lib/supabaseClient'
 import type { DayMemo } from '../types/dayMemo'
-import type { DayMemoPendingOperationV3, DayMemoSyncMetadataV4 } from '../types/dayMemoSync'
+import type { DayMemoPendingOperationV5, DayMemoSyncMetadataV5 } from '../types/dayMemoSync'
 import type { SyncConnection } from '../types/sync'
 import { readDayMemoStorageSnapshot } from '../utils/dayMemoStorage'
 import { pullAllDayMemoSyncRecords, type RemoteDayMemoRecord } from '../utils/dayMemoSyncPull'
@@ -30,7 +30,7 @@ export interface DayMemoConflictPreviewItem {
   baseChangeSequence: number
   remoteChangeSequence: number | null
   remoteState: DayMemoConflictRemoteState
-  pendingStatus: DayMemoPendingOperationV3['status'] | 'intent_recorded'
+  pendingStatus: DayMemoPendingOperationV5['status'] | 'intent_recorded'
   checkedAt: string
 }
 
@@ -40,9 +40,9 @@ export interface DayMemoConflictAdoptionSnapshot {
   metadataRaw: string
   localStorageSerialized: string
   localMemos: DayMemo[]
-  pendingOperation: DayMemoPendingOperationV3 | null
-  localDeleteIntents: DayMemoSyncMetadataV4['localDeleteIntents']
-  baseline: DayMemoSyncMetadataV4['baselines'][string] | null
+  pendingOperation: DayMemoPendingOperationV5 | null
+  localDeleteIntents: DayMemoSyncMetadataV5['localDeleteIntents']
+  baseline: DayMemoSyncMetadataV5['baselines'][string] | null
   remoteRecord: RemoteDayMemoRecord
 }
 
@@ -78,7 +78,7 @@ function findRemote(records: RemoteDayMemoRecord[], date: string): RemoteDayMemo
   return matches.length === 1 ? matches[0] : null
 }
 
-function deleteIntentEvidence(metadata: DayMemoSyncMetadataV4, memos: DayMemo[], date: string): LocalEvidence {
+function deleteIntentEvidence(metadata: DayMemoSyncMetadataV5, memos: DayMemo[], date: string): LocalEvidence {
   const intent = metadata.localDeleteIntents[date]
   const baseline = metadata.baselines[date]
   return {
@@ -95,7 +95,7 @@ function deleteIntentEvidence(metadata: DayMemoSyncMetadataV4, memos: DayMemo[],
   }
 }
 
-function inspectLocalEvidence(metadata: DayMemoSyncMetadataV4, memos: DayMemo[]): LocalEvidence[] {
+function inspectLocalEvidence(metadata: DayMemoSyncMetadataV5, memos: DayMemo[]): LocalEvidence[] {
   const pending = metadata.pendingOperation
   if (pending) {
     const baseline = metadata.baselines[pending.date]
@@ -196,7 +196,7 @@ export function useDayMemoConflictPreview({ dayMemos, isConfigured, isSignedIn, 
       return
     }
     const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
-    if (loaded.status !== 'ready' || loaded.metadata.version !== 4 || loaded.metadata.workspaceId !== connection.workspaceId) {
+    if (loaded.status !== 'ready' || loaded.metadata.version !== 5 || loaded.metadata.workspaceId !== connection.workspaceId) {
       setState('unavailable')
       return
     }
@@ -215,7 +215,7 @@ export function useDayMemoConflictPreview({ dayMemos, isConfigured, isSignedIn, 
     setSafeErrorMessage(null)
     const before = loadDayMemoSyncMetadataAny(window.localStorage)
     const stored = readDayMemoStorageSnapshot(window.localStorage)
-    if (before.status !== 'ready' || before.metadata.version !== 4 || before.metadata.workspaceId !== connection.workspaceId
+    if (before.status !== 'ready' || before.metadata.version !== 5 || before.metadata.workspaceId !== connection.workspaceId
       || stored.status !== 'ready' || localSignature(stored.memos) !== signature) {
       setState('error')
       setSafeErrorMessage('競合状態を安全に確認できませんでした。')
@@ -241,7 +241,7 @@ export function useDayMemoConflictPreview({ dayMemos, isConfigured, isSignedIn, 
     }
     const after = loadDayMemoSyncMetadataAny(window.localStorage)
     const afterStored = readDayMemoStorageSnapshot(window.localStorage)
-    if (after.status !== 'ready' || after.metadata.version !== 4 || after.raw !== before.raw
+    if (after.status !== 'ready' || after.metadata.version !== 5 || after.raw !== before.raw
       || afterStored.status !== 'ready' || afterStored.serialized !== stored.serialized
       || latestSignature.current !== signature) {
       setItems(evidences.map((evidence) => unknownItem(evidence, checkedAt)))

@@ -1,12 +1,12 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { supabaseClient } from '../lib/supabaseClient'
 import type { DayMemo } from '../types/dayMemo'
-import type { DayMemoSyncMetadataV4 } from '../types/dayMemoSync'
+import type { DayMemoSyncMetadataV5 } from '../types/dayMemoSync'
 import type { SyncConnection } from '../types/sync'
 import { isStoredDayMemo, readDayMemoStorageSnapshot } from '../utils/dayMemoStorage'
 import { pullAllDayMemoSyncRecords } from '../utils/dayMemoSyncPull'
 import type { RemoteDayMemoRecord } from '../utils/dayMemoSyncPull'
-import { isDayMemoSyncMetadataV4, loadDayMemoSyncMetadataAny } from '../utils/dayMemoSyncStorage'
+import { isDayMemoSyncMetadataV5, loadDayMemoSyncMetadataAny } from '../utils/dayMemoSyncStorage'
 import { isUuid } from '../utils/syncConnectionStorage'
 import { DAY_MEMO_NORMAL_DIFFERENCE_CLASSIFICATIONS, classifyDayMemoNormalDifference, type DayMemoNormalDifferenceClassification } from './useDayMemoNormalDifferenceRecoveryPlan'
 
@@ -58,7 +58,7 @@ export interface DayMemoNormalDifferenceCheckpointSnapshot {
   localStorageSerialized: string
   workspaceId: string
   remoteRecords: RemoteDayMemoRecord[]
-  candidateMetadata: DayMemoSyncMetadataV4
+  candidateMetadata: DayMemoSyncMetadataV5
   unresolvedClassifications: Record<string, DayMemoNormalDifferenceClassification>
 }
 
@@ -114,7 +114,7 @@ export function useDayMemoNormalDifferenceRecoveryCheckpointCheck({ dayMemos, is
     try {
       const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
       const stored = readDayMemoStorageSnapshot(window.localStorage)
-      if (loaded.status !== 'ready' || !isDayMemoSyncMetadataV4(loaded.metadata) || stored.status !== 'ready') {
+      if (loaded.status !== 'ready' || !isDayMemoSyncMetadataV5(loaded.metadata) || stored.status !== 'ready') {
         finish('normal_difference_checkpoint_state_unknown'); return
       }
       const metadata = loaded.metadata
@@ -178,7 +178,7 @@ export function useDayMemoNormalDifferenceRecoveryCheckpointCheck({ dayMemos, is
         finish('normal_difference_checkpoint_no_candidates', { ...remoteCommon, unresolvedCount: unresolvedDates.length,
           unresolvedCounts, unresolvedDates, bodyMismatchDates, unresolvedClassifications, metadataValidatorPassed: true, reclassifiedCounts: currentCounts }); return
       }
-      const baselines: DayMemoSyncMetadataV4['baselines'] = { ...metadata.baselines }
+      const baselines: DayMemoSyncMetadataV5['baselines'] = { ...metadata.baselines }
       for (const date of exactDates) {
         const local = localByDate.get(date); const remote = remoteByDate.get(date)
         if (!local || !remote || remote.deletedAt !== null || !remote.payload) {
@@ -187,13 +187,13 @@ export function useDayMemoNormalDifferenceRecoveryCheckpointCheck({ dayMemos, is
         baselines[date] = { date, remoteRevision: remote.revision, remoteChangeSequence: remote.changeSequence,
           remoteUpdatedAt: remote.payload.updatedAt, baselineLocalUpdatedAt: local.updatedAt, deletedAt: null }
       }
-      const candidate: DayMemoSyncMetadataV4 = { ...metadata, baselines, lastPulledChangeSequence: pulled.maxChangeSequence,
+      const candidate: DayMemoSyncMetadataV5 = { ...metadata, baselines, lastPulledChangeSequence: pulled.maxChangeSequence,
         baselineStatus: 'recovery_required', baselineConfirmedAt: null }
       const candidateCommon = { ...remoteCommon, exactBaselineCandidateCount: exactDates.length,
         unresolvedCount: unresolvedDates.length, unresolvedCounts, unresolvedDates, bodyMismatchDates, unresolvedClassifications,
         candidateBaselineCount: Object.keys(baselines).length, candidateBaselineStatus: 'recovery_required' as const,
         candidateBaselineConfirmedAtNull: true, candidateCursor: pulled.maxChangeSequence }
-      if (!isDayMemoSyncMetadataV4(candidate)) {
+      if (!isDayMemoSyncMetadataV5(candidate)) {
         finish('normal_difference_checkpoint_validator_failed', candidateCommon); return
       }
       const reclassifiedCounts = emptyCounts()

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabaseClient } from '../lib/supabaseClient'
 import type { DayMemo } from '../types/dayMemo'
-import type { DayMemoPendingOperationV2, DayMemoPendingOperationV3, DayMemoSyncMetadataV4 } from '../types/dayMemoSync'
+import type { DayMemoNormalUpsertPendingOperationV5, DayMemoPendingOperationV2, DayMemoPendingOperationV5, DayMemoSyncMetadataV5 } from '../types/dayMemoSync'
 import type { SyncConnection } from '../types/sync'
 import { readDayMemoStorageSnapshot } from '../utils/dayMemoStorage'
 import { pullAllDayMemoSyncRecords, type RemoteDayMemoRecord } from '../utils/dayMemoSyncPull'
@@ -64,8 +64,8 @@ function connectionIsEligible(connection: SyncConnection | null): boolean {
       || (connection.deviceRole === 'child' && connection.workspaceRole === 'member' && connection.pairingStatus === 'member')))
 }
 
-function isCheckablePending(pending: DayMemoPendingOperationV3 | null): pending is DayMemoPendingOperationV2 {
-  return Boolean(pending?.kind === 'upsert' && (
+function isCheckablePending(pending: DayMemoPendingOperationV5 | null): pending is DayMemoNormalUpsertPendingOperationV5 {
+  return Boolean(pending?.kind === 'upsert' && pending.operationMode === 'normal' && (
     pending.status === 'conflict'
     || pending.status === 'response_unknown'
     || pending.status === 'recovery_required'
@@ -87,7 +87,7 @@ function requestPayloadMatches(remote: RemoteDayMemoRecord, memo: DayMemo): bool
 }
 
 function classifyRemote(
-  metadata: DayMemoSyncMetadataV4,
+  metadata: DayMemoSyncMetadataV5,
   pending: DayMemoPendingOperationV2,
   memo: DayMemo,
   records: RemoteDayMemoRecord[],
@@ -147,7 +147,7 @@ export function useDayMemoSyncRecoveryCheck({
     }
     const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
     if (loaded.status === 'ready'
-      && loaded.metadata.version === 4
+      && loaded.metadata.version === 5
       && loaded.metadata.workspaceId === connection.workspaceId
       && isCheckablePending(loaded.metadata.pendingOperation)) {
       const pending = loaded.metadata.pendingOperation
@@ -180,7 +180,7 @@ export function useDayMemoSyncRecoveryCheck({
     setSafeErrorMessage(null)
     const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
     if (loaded.status !== 'ready'
-      || loaded.metadata.version !== 4
+      || loaded.metadata.version !== 5
       || loaded.metadata.workspaceId !== connection.workspaceId
       || !isCheckablePending(loaded.metadata.pendingOperation)) {
       setState('error')
@@ -210,7 +210,7 @@ export function useDayMemoSyncRecoveryCheck({
     const afterPull = loadDayMemoSyncMetadataAny(window.localStorage)
     const afterStored = readDayMemoStorageSnapshot(window.localStorage)
     if (afterPull.status !== 'ready'
-      || afterPull.metadata.version !== 4
+      || afterPull.metadata.version !== 5
       || afterPull.raw !== loaded.raw
       || afterStored.status !== 'ready'
       || localSignature(afterStored.memos) !== currentLocalSignature) {

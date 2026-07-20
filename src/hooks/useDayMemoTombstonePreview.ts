@@ -115,7 +115,7 @@ export function useDayMemoTombstonePreview({ dayMemos, isConfigured, isSignedIn,
     }
     const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
     if (loaded.status !== 'ready'
-      || loaded.metadata.version !== 4
+      || loaded.metadata.version !== 5
       || loaded.metadata.workspaceId !== connection.workspaceId
       || loaded.metadata.baselineStatus !== 'confirmed'
       || loaded.metadata.baselineConfirmedAt === null
@@ -140,7 +140,7 @@ export function useDayMemoTombstonePreview({ dayMemos, isConfigured, isSignedIn,
     const before = loadDayMemoSyncMetadataAny(window.localStorage)
     const storedBefore = readDayMemoStorageSnapshot(window.localStorage)
     if (before.status !== 'ready'
-      || before.metadata.version !== 4
+      || before.metadata.version !== 5
       || before.metadata.workspaceId !== connection.workspaceId
       || before.metadata.baselineStatus !== 'confirmed'
       || before.metadata.baselineConfirmedAt === null
@@ -168,7 +168,7 @@ export function useDayMemoTombstonePreview({ dayMemos, isConfigured, isSignedIn,
     const after = loadDayMemoSyncMetadataAny(window.localStorage)
     const storedAfter = readDayMemoStorageSnapshot(window.localStorage)
     if (after.status !== 'ready'
-      || after.metadata.version !== 4
+      || after.metadata.version !== 5
       || after.raw !== before.raw
       || storedAfter.status !== 'ready'
       || storedAfter.serialized !== storedBefore.serialized

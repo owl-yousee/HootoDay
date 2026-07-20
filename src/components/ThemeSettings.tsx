@@ -27,6 +27,7 @@ import type { useDayMemoNormalDifferenceRecoveryCheckpointCheck } from '../hooks
 import type { useDayMemoNormalDifferenceRecoveryCheckpointSave } from '../hooks/useDayMemoNormalDifferenceRecoveryCheckpointSave'
 import type { useDayMemoNormalBodyMismatchCandidate } from '../hooks/useDayMemoNormalBodyMismatchCandidate'
 import type { useDayMemoMetadataV4Migration } from '../hooks/useDayMemoMetadataV4Migration'
+import type { useDayMemoMetadataV5Migration } from '../hooks/useDayMemoMetadataV5Migration'
 import type { useDayMemoSyncMetadataMigration } from '../hooks/useDayMemoSyncMetadataMigration'
 import type { useDayMemoDeleteIntent } from '../hooks/useDayMemoDeleteIntent'
 import type { useDayMemoDeletePreview } from '../hooks/useDayMemoDeletePreview'
@@ -92,6 +93,7 @@ interface ThemeSettingsProps {
   dayMemoLocalOperationRemoteCheck: ReturnType<typeof useDayMemoLocalOperationRemoteCheck>
   dayMemoLocalOperationSend: ReturnType<typeof useDayMemoLocalOperationSend>
   dayMemoMetadataV4Migration: ReturnType<typeof useDayMemoMetadataV4Migration>
+  dayMemoMetadataV5Migration: ReturnType<typeof useDayMemoMetadataV5Migration>
   onOpenPreparedDayMemo: (date: string) => void
   dayMemoSyncRecoveryApply: ReturnType<typeof useDayMemoSyncRecoveryApply>
   dayMemoSyncMetadataMigration: ReturnType<typeof useDayMemoSyncMetadataMigration>
@@ -279,6 +281,7 @@ export function ThemeSettings({
   dayMemoLocalOperationRemoteCheck,
   dayMemoLocalOperationSend,
   dayMemoMetadataV4Migration,
+  dayMemoMetadataV5Migration,
   onOpenPreparedDayMemo,
   dayMemoSyncRecoveryApply,
   dayMemoSyncMetadataMigration,
@@ -727,6 +730,42 @@ export function ThemeSettings({
                           ) : null}
                           <button type="button" className="health-secondary-button cloud-sync-button" onClick={dayMemoMetadataV4Migration.discard}>
                             migration結果を破棄
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {dayMemoMetadataV5Migration.eligible ? (
+                    <div className="cloud-day-memo-recovery-check-panel" role="region" aria-labelledby="day-memo-v5-migration-heading">
+                      <h4 id="day-memo-v5-migration-heading">DayMemo同期metadata v5</h4>
+                      <p>自動では移行しません。現在状態を読み取り専用で確認してから、別の明示操作で移行します。</p>
+                      <button type="button" className="health-secondary-button cloud-sync-button" onClick={dayMemoMetadataV5Migration.check}>
+                        metadata v5への移行条件を確認
+                      </button>
+                      {dayMemoMetadataV5Migration.result ? (
+                        <div role="status">
+                          <ul className="cloud-day-memo-preview-summary">
+                            <li>現在version：{dayMemoMetadataV5Migration.result.sourceVersion ?? '確認不能'}</li>
+                            <li>移行先version：{dayMemoMetadataV5Migration.result.targetVersion}</li>
+                            <li>判定：{dayMemoMetadataV5Migration.result.classification}</li>
+                            <li>pending：{dayMemoMetadataV5Migration.result.pendingCount}件</li>
+                            <li>pending種別：{dayMemoMetadataV5Migration.result.pendingKind}</li>
+                            <li>pending移行：{dayMemoMetadataV5Migration.result.pendingMigrationPossible ? '可能' : '確認不能'}</li>
+                            <li>workspace binding：{dayMemoMetadataV5Migration.result.workspaceValid ? '一致' : '確認不能'}</li>
+                            <li>validator：{dayMemoMetadataV5Migration.result.metadataValid ? '正常' : '確認不能'}</li>
+                            <li>永続変更：{dayMemoMetadataV5Migration.result.persistentChanged ? 'あり' : 'なし'}</li>
+                            <li>read-back：{dayMemoMetadataV5Migration.result.readBackSucceeded ? '確認済み' : '未実施'}</li>
+                            <li>rollback：{dayMemoMetadataV5Migration.result.rollbackAttempted ? (dayMemoMetadataV5Migration.result.rollbackSucceeded ? '成功' : '確認不能') : 'なし'}</li>
+                            <li>確認日時：{new Date(dayMemoMetadataV5Migration.result.checkedAt).toLocaleString('ja-JP')}</li>
+                          </ul>
+                          <p>{dayMemoMetadataV5Migration.result.nextAction}</p>
+                          {dayMemoMetadataV5Migration.result.ready ? (
+                            <button type="button" className="health-primary-button cloud-sync-button" onClick={dayMemoMetadataV5Migration.migrate}>
+                              metadata v5へ移行
+                            </button>
+                          ) : null}
+                          <button type="button" className="health-secondary-button cloud-sync-button" onClick={dayMemoMetadataV5Migration.discard}>
+                            migration確認結果を破棄
                           </button>
                         </div>
                       ) : null}

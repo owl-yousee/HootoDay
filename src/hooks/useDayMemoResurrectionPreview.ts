@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabaseClient } from '../lib/supabaseClient'
 import type { DayMemo } from '../types/dayMemo'
-import type { DayMemoRemoteBaselineV3, DayMemoSyncMetadataV4 } from '../types/dayMemoSync'
+import type { DayMemoRemoteBaselineV3, DayMemoSyncMetadataV5 } from '../types/dayMemoSync'
 import type { SyncConnection } from '../types/sync'
 import { readDayMemoStorageSnapshot } from '../utils/dayMemoStorage'
 import { pullAllDayMemoSyncRecords } from '../utils/dayMemoSyncPull'
@@ -110,7 +110,7 @@ export function useDayMemoResurrectionPreview({ dayMemos, isConfigured, isSigned
     }
     const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
     if (loaded.status !== 'ready'
-      || loaded.metadata.version !== 4
+      || loaded.metadata.version !== 5
       || loaded.metadata.workspaceId !== connection.workspaceId
       || loaded.metadata.baselineStatus !== 'confirmed'
       || loaded.metadata.baselineConfirmedAt === null
@@ -135,7 +135,7 @@ export function useDayMemoResurrectionPreview({ dayMemos, isConfigured, isSigned
     const before = loadDayMemoSyncMetadataAny(window.localStorage)
     const storedBefore = readDayMemoStorageSnapshot(window.localStorage)
     if (before.status !== 'ready'
-      || before.metadata.version !== 4
+      || before.metadata.version !== 5
       || before.metadata.workspaceId !== connection.workspaceId
       || before.metadata.baselineStatus !== 'confirmed'
       || before.metadata.baselineConfirmedAt === null
@@ -163,7 +163,7 @@ export function useDayMemoResurrectionPreview({ dayMemos, isConfigured, isSigned
     }
 
     const unknownItems = candidateDates.map((date): DayMemoResurrectionPreviewItem => {
-      const baseline = before.metadata.version === 4 ? before.metadata.baselines[date] : null
+      const baseline = before.metadata.version === 5 ? before.metadata.baselines[date] : null
       return {
         date,
         classification: 'resurrection_unknown',
@@ -190,7 +190,7 @@ export function useDayMemoResurrectionPreview({ dayMemos, isConfigured, isSigned
     const after = loadDayMemoSyncMetadataAny(window.localStorage)
     const storedAfter = readDayMemoStorageSnapshot(window.localStorage)
     if (after.status !== 'ready'
-      || after.metadata.version !== 4
+      || after.metadata.version !== 5
       || after.raw !== before.raw
       || storedAfter.status !== 'ready'
       || storedAfter.serialized !== storedBefore.serialized
@@ -202,7 +202,7 @@ export function useDayMemoResurrectionPreview({ dayMemos, isConfigured, isSigned
       return
     }
 
-    const metadata = after.metadata as DayMemoSyncMetadataV4
+    const metadata = after.metadata as DayMemoSyncMetadataV5
     const remoteByDate = new Map(pull.records.map((record) => [record.entityId, record]))
     const classified = candidateDates.map((date): DayMemoResurrectionPreviewItem => {
       const baseline = metadata.baselines[date]

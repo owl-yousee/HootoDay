@@ -1,11 +1,11 @@
 import { useCallback, useRef, useState } from 'react'
 import { supabaseClient } from '../lib/supabaseClient'
 import type { DayMemo } from '../types/dayMemo'
-import type { DayMemoSyncMetadataV4 } from '../types/dayMemoSync'
+import type { DayMemoSyncMetadataV5 } from '../types/dayMemoSync'
 import type { SyncConnection } from '../types/sync'
 import { readDayMemoStorageSnapshot } from '../utils/dayMemoStorage'
 import { pullAllDayMemoSyncRecords } from '../utils/dayMemoSyncPull'
-import { isDayMemoSyncMetadataV4, loadDayMemoSyncMetadataAny, replaceDayMemoSyncMetadataV2 } from '../utils/dayMemoSyncStorage'
+import { isDayMemoSyncMetadataV5, loadDayMemoSyncMetadataAny, replaceDayMemoSyncMetadataV2 } from '../utils/dayMemoSyncStorage'
 import { isUuid } from '../utils/syncConnectionStorage'
 import { classifyDayMemoNormalDifference, type DayMemoNormalDifferenceClassification } from './useDayMemoNormalDifferenceRecoveryPlan'
 import type { DayMemoNormalDifferenceCheckpointSnapshot } from './useDayMemoNormalDifferenceRecoveryCheckpointCheck'
@@ -52,10 +52,10 @@ interface Input {
   isConfigured: boolean
   isSignedIn: boolean
   connection: SyncConnection | null
-  reactMetadata: DayMemoSyncMetadataV4 | null
+  reactMetadata: DayMemoSyncMetadataV5 | null
   getReadySnapshot: () => DayMemoNormalDifferenceCheckpointSnapshot | null
   consumeReadySnapshot: () => void
-  adoptVerifiedMetadata: (metadata: DayMemoSyncMetadataV4) => void
+  adoptVerifiedMetadata: (metadata: DayMemoSyncMetadataV5) => void
 }
 
 function connectionIsEligible(connection: SyncConnection | null): connection is SyncConnection & { workspaceId: string } {
@@ -112,7 +112,7 @@ export function useDayMemoNormalDifferenceRecoveryCheckpointSave({ dayMemos, isC
         addedBaselineCount: ready.result.exactBaselineCandidateCount, baselineStatus: 'recovery_required' as const,
         baselineConfirmedAtNull: true, unresolvedCount: ready.result.unresolvedCount,
         unresolvedCounts: ready.result.unresolvedCounts, unresolvedReconstructable: ready.result.unresolvedReconstructable }
-      if (loaded.status !== 'ready' || !isDayMemoSyncMetadataV4(loaded.metadata) || stored.status !== 'ready') {
+      if (loaded.status !== 'ready' || !isDayMemoSyncMetadataV5(loaded.metadata) || stored.status !== 'ready') {
         finish('normal_difference_checkpoint_metadata_invalid', base); return
       }
       const metadata = loaded.metadata
@@ -165,7 +165,7 @@ export function useDayMemoNormalDifferenceRecoveryCheckpointSave({ dayMemos, isC
         || candidate.baselineConfirmedAt !== null || candidate.pendingOperation !== metadata.pendingOperation
         || JSON.stringify(candidate.localDeleteIntents) !== JSON.stringify(metadata.localDeleteIntents)
         || JSON.stringify(candidate.pushBlock) !== JSON.stringify(metadata.pushBlock)
-        || !isDayMemoSyncMetadataV4(candidate)) {
+        || !isDayMemoSyncMetadataV5(candidate)) {
         finish('normal_difference_checkpoint_validator_failed', base); return
       }
       const localByDate = new Map(stored.memos.map((memo) => [memo.date, memo]))
@@ -191,7 +191,7 @@ export function useDayMemoNormalDifferenceRecoveryCheckpointSave({ dayMemos, isC
       }
       const readBack = loadDayMemoSyncMetadataAny(window.localStorage)
       const expectedRaw = JSON.stringify(candidate)
-      if (readBack.status !== 'ready' || !isDayMemoSyncMetadataV4(readBack.metadata) || readBack.raw !== expectedRaw) {
+      if (readBack.status !== 'ready' || !isDayMemoSyncMetadataV5(readBack.metadata) || readBack.raw !== expectedRaw) {
         const rollback = replaceDayMemoSyncMetadataV2(window.localStorage, metadata, expectedRaw)
         finish(rollback === 'saved' ? 'normal_difference_checkpoint_rollback_succeeded' : 'normal_difference_checkpoint_rollback_failed', {
           ...base, metadataSaved: rollback !== 'saved', rollbackAttempted: true, rollbackSucceeded: rollback === 'saved',

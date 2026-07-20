@@ -1,11 +1,11 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { supabaseClient } from '../lib/supabaseClient'
 import type { DayMemo } from '../types/dayMemo'
-import type { DayMemoSyncMetadataV4 } from '../types/dayMemoSync'
+import type { DayMemoSyncMetadataV5 } from '../types/dayMemoSync'
 import type { SyncConnection } from '../types/sync'
 import { isStoredDayMemo, readDayMemoStorageSnapshot } from '../utils/dayMemoStorage'
 import { pullAllDayMemoSyncRecords, type RemoteDayMemoRecord } from '../utils/dayMemoSyncPull'
-import { isDayMemoSyncMetadataV4, loadDayMemoSyncMetadataAny } from '../utils/dayMemoSyncStorage'
+import { isDayMemoSyncMetadataV5, loadDayMemoSyncMetadataAny } from '../utils/dayMemoSyncStorage'
 import { isUuid } from '../utils/syncConnectionStorage'
 
 export type DayMemoNormalDifferenceClassification =
@@ -95,7 +95,7 @@ function localSignature(memos: DayMemo[]): string {
 export function classifyDayMemoNormalDifference(
   local: DayMemo | null,
   remote: RemoteDayMemoRecord | null,
-  baseline: DayMemoSyncMetadataV4['baselines'][string] | null,
+  baseline: DayMemoSyncMetadataV5['baselines'][string] | null,
 ): DayMemoNormalDifferenceClassification {
   if (!remote) {
     if (baseline) return 'revision_lineage_mismatch'
@@ -155,7 +155,7 @@ export function useDayMemoNormalDifferenceRecoveryPlan({ dayMemos, isConfigured,
     const checkedAt = new Date().toISOString()
     const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
     const stored = readDayMemoStorageSnapshot(window.localStorage)
-    if (loaded.status !== 'ready' || !isDayMemoSyncMetadataV4(loaded.metadata)) {
+    if (loaded.status !== 'ready' || !isDayMemoSyncMetadataV5(loaded.metadata)) {
       setResult({
         metadataVersion: loaded.status === 'ready' ? loaded.metadata.version : null,
         workspaceBound: false, metadataValid: false, pushBlocked: false, pendingCount: 0, intentCount: 0,
@@ -228,7 +228,7 @@ export function useDayMemoNormalDifferenceRecoveryPlan({ dayMemos, isConfigured,
     })
     const counts = Object.fromEntries(DAY_MEMO_NORMAL_DIFFERENCE_CLASSIFICATIONS.map((value) => [value, items.filter((item) => item.classification === value).length])) as Record<DayMemoNormalDifferenceClassification, number>
     const exactBaselineCandidateDates = items.filter((item) => item.classification === 'exact_match_baseline_missing').map((item) => item.date)
-    const candidateBaselines: DayMemoSyncMetadataV4['baselines'] = { ...metadata.baselines }
+    const candidateBaselines: DayMemoSyncMetadataV5['baselines'] = { ...metadata.baselines }
     for (const date of exactBaselineCandidateDates) {
       const local = localByDate.get(date)!
       const remote = remoteByDate.get(date)!
@@ -241,7 +241,7 @@ export function useDayMemoNormalDifferenceRecoveryPlan({ dayMemos, isConfigured,
         deletedAt: null,
       }
     }
-    const partialCandidate: DayMemoSyncMetadataV4 = {
+    const partialCandidate: DayMemoSyncMetadataV5 = {
       ...metadata,
       baselines: candidateBaselines,
       baselineStatus: 'recovery_required',
@@ -249,7 +249,7 @@ export function useDayMemoNormalDifferenceRecoveryPlan({ dayMemos, isConfigured,
     }
     const cursorValid = metadata.lastPulledChangeSequence === pulled.maxChangeSequence
     const partialBaselineSupported = exactBaselineCandidateDates.length > 0
-      && cursorValid && isDayMemoSyncMetadataV4(partialCandidate)
+      && cursorValid && isDayMemoSyncMetadataV5(partialCandidate)
     const lineageOrStateMismatchCount = counts.revision_lineage_mismatch + counts.active_tombstone_mismatch + counts.unknown
     let safety: DayMemoNormalDifferenceRecoverySafety
     if (metadata.pendingOperation) safety = 'normal_difference_pending_remaining'

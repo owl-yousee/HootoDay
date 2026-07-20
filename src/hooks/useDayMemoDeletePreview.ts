@@ -46,7 +46,7 @@ export function useDayMemoDeletePreview({ isConfigured, isSignedIn, connection }
     setState('checking'); setItems([]); setSummary(null); setSafeErrorMessage(null)
     const before = loadDayMemoSyncMetadataAny(window.localStorage)
     const storedBefore = readDayMemoStorageSnapshot(window.localStorage)
-    if (before.status !== 'ready' || before.metadata.version !== 4 || before.metadata.workspaceId !== connection.workspaceId
+    if (before.status !== 'ready' || before.metadata.version !== 5 || before.metadata.workspaceId !== connection.workspaceId
       || before.metadata.baselineStatus !== 'confirmed' || before.metadata.pendingOperation !== null || before.metadata.pushBlock !== null
       || storedBefore.status !== 'ready') {
       setState('blocked'); setSafeErrorMessage('削除候補を安全に確認できる状態ではありません。'); return
@@ -63,7 +63,7 @@ export function useDayMemoDeletePreview({ isConfigured, isSignedIn, connection }
     }
     const after = loadDayMemoSyncMetadataAny(window.localStorage)
     const storedAfter = readDayMemoStorageSnapshot(window.localStorage)
-    if (after.status !== 'ready' || after.metadata.version !== 4 || after.raw !== before.raw || storedAfter.status !== 'ready' || storedAfter.serialized !== storedBefore.serialized) {
+    if (after.status !== 'ready' || after.metadata.version !== 5 || after.raw !== before.raw || storedAfter.status !== 'ready' || storedAfter.serialized !== storedBefore.serialized) {
       setState('error'); setSafeErrorMessage('確認中に端末状態が変化したため、結果を破棄しました。'); return
     }
     const remoteByDate = new Map(pull.records.map((record) => [record.entityId, record]))
