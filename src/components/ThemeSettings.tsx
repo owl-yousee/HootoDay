@@ -27,6 +27,7 @@ import type { useDayMemoNormalDifferenceRecoveryCheckpointCheck } from '../hooks
 import type { useDayMemoNormalDifferenceRecoveryCheckpointSave } from '../hooks/useDayMemoNormalDifferenceRecoveryCheckpointSave'
 import type { useDayMemoNormalBodyMismatchCandidate } from '../hooks/useDayMemoNormalBodyMismatchCandidate'
 import type { useDayMemoNormalBodyMismatchLocalPreparation } from '../hooks/useDayMemoNormalBodyMismatchLocalPreparation'
+import type { useDayMemoBodyMismatchRecoveryPreflight } from '../hooks/useDayMemoBodyMismatchRecoveryPreflight'
 import type { useDayMemoMetadataV4Migration } from '../hooks/useDayMemoMetadataV4Migration'
 import type { useDayMemoMetadataV5Migration } from '../hooks/useDayMemoMetadataV5Migration'
 import type { useDayMemoSyncMetadataMigration } from '../hooks/useDayMemoSyncMetadataMigration'
@@ -77,6 +78,7 @@ interface ThemeSettingsProps {
   dayMemoNormalDifferenceRecoveryCheckpointSave: ReturnType<typeof useDayMemoNormalDifferenceRecoveryCheckpointSave>
   dayMemoNormalBodyMismatchCandidate: ReturnType<typeof useDayMemoNormalBodyMismatchCandidate>
   dayMemoNormalBodyMismatchLocalPreparation: ReturnType<typeof useDayMemoNormalBodyMismatchLocalPreparation>
+  dayMemoBodyMismatchRecoveryPreflight: ReturnType<typeof useDayMemoBodyMismatchRecoveryPreflight>
   dayMemoSyncBaseline: ReturnType<typeof useDayMemoSyncBaseline>
   dayMemoBaselineRebase: ReturnType<typeof useDayMemoBaselineRebase>
   dayMemoUpdatePreview: ReturnType<typeof useDayMemoUpdatePreview>
@@ -266,6 +268,7 @@ export function ThemeSettings({
   dayMemoNormalDifferenceRecoveryCheckpointSave,
   dayMemoNormalBodyMismatchCandidate,
   dayMemoNormalBodyMismatchLocalPreparation,
+  dayMemoBodyMismatchRecoveryPreflight,
   dayMemoSyncBaseline,
   dayMemoBaselineRebase,
   dayMemoUpdatePreview,
@@ -1235,6 +1238,44 @@ export function ThemeSettings({
                           <p>{dayMemoNormalBodyMismatchLocalPreparation.result.nextAction}</p>
                           <button type="button" className="health-secondary-button cloud-sync-button" disabled={dayMemoNormalBodyMismatchLocalPreparation.preparing}
                             onClick={dayMemoNormalBodyMismatchLocalPreparation.discard}>local準備結果を破棄</button>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {dayMemoBodyMismatchRecoveryPreflight.eligible || dayMemoBodyMismatchRecoveryPreflight.result ? (
+                    <div className="cloud-day-memo-baseline-panel" role="region" aria-labelledby="day-memo-recovery-preflight-heading">
+                      <h4 id="day-memo-recovery-preflight-heading">prepared recoveryの送信前確認</h4>
+                      <p>prepared recovery pendingと同期先remoteを読み取り専用で再確認します。この段階では送信も永続状態の変更も行いません。</p>
+                      {dayMemoBodyMismatchRecoveryPreflight.eligible ? (
+                        <button type="button" className="health-secondary-button cloud-sync-button"
+                          disabled={dayMemoBodyMismatchRecoveryPreflight.checking}
+                          onClick={() => { void dayMemoBodyMismatchRecoveryPreflight.check() }}>
+                          {dayMemoBodyMismatchRecoveryPreflight.checking ? 'remoteを再確認中…' : '送信前にremoteを再確認'}
+                        </button>
+                      ) : null}
+                      {dayMemoBodyMismatchRecoveryPreflight.result ? (
+                        <div role="status">
+                          <p><strong>safety：{dayMemoBodyMismatchRecoveryPreflight.result.safety}</strong></p>
+                          <ul className="cloud-day-memo-preview-summary">
+                            <li>対象日：{dayMemoBodyMismatchRecoveryPreflight.result.date ?? '確認不能'}</li>
+                            <li>operation mode：{dayMemoBodyMismatchRecoveryPreflight.result.operationMode ?? '確認不能'}</li>
+                            <li>pending確認：{dayMemoBodyMismatchRecoveryPreflight.result.pendingVerified ? '確認済み' : '未確認'}</li>
+                            <li>local鮮度：{dayMemoBodyMismatchRecoveryPreflight.result.localFresh ? '確認済み' : '未確認'}</li>
+                            <li>remote active：{dayMemoBodyMismatchRecoveryPreflight.result.remoteActive ? '確認済み' : '未確認'}</li>
+                            <li>revision：{dayMemoBodyMismatchRecoveryPreflight.result.revisionVerified ? '一致' : '未確認／不一致'}</li>
+                            <li>change sequence：{dayMemoBodyMismatchRecoveryPreflight.result.changeSequenceVerified ? '一致' : '未確認／不一致'}</li>
+                            <li>remote updatedAt：{dayMemoBodyMismatchRecoveryPreflight.result.remoteUpdatedAtVerified ? '一致' : '未確認／不一致'}</li>
+                            <li>payload：{dayMemoBodyMismatchRecoveryPreflight.result.payloadVerified ? '確認済み' : '未確認／不一致'}</li>
+                            <li>checkpoint：{dayMemoBodyMismatchRecoveryPreflight.result.checkpointVerified ? '確認済み' : '未確認'}</li>
+                            <li>workspace：{dayMemoBodyMismatchRecoveryPreflight.result.workspaceVerified ? '一致' : '未確認／不一致'}</li>
+                            <li>verification snapshot：{dayMemoBodyMismatchRecoveryPreflight.result.snapshotCreated ? '作成済み' : 'なし'}</li>
+                            <li>永続変更：なし</li><li>RPC送信：なし</li>
+                            <li>確認日時：{new Date(dayMemoBodyMismatchRecoveryPreflight.result.checkedAt).toLocaleString('ja-JP')}</li>
+                          </ul>
+                          <p>{dayMemoBodyMismatchRecoveryPreflight.result.nextAction}</p>
+                          <button type="button" className="health-secondary-button cloud-sync-button"
+                            disabled={dayMemoBodyMismatchRecoveryPreflight.checking}
+                            onClick={dayMemoBodyMismatchRecoveryPreflight.discard}>送信前確認結果を破棄</button>
                         </div>
                       ) : null}
                     </div>

@@ -1672,3 +1672,8 @@ Minimal future files are a focused `useDayMemoRemoteAdoptionPreflight.ts`, the e
 B-3f5e4aのlocal candidate snapshotを正本とし、明示確認後の完全full pullで対象remote active recordと対象外を含む差異分類が不変の場合だけ準備する。operation IDはremote再確認後に1回生成し、metadata v5の`body_mismatch_recovery` pendingへ、remoteのrevision・change sequence・payload updatedAt・active stateと現在local updatedAtを保存する。metadata cursorをbase change sequenceの代用にしない。
 
 永続変更はpendingOperation 1件だけとし、対象日のbaselineは作らず、既存baseline、cursor、`recovery_required`、`baselineConfirmedAt=null`、未解決差異を維持する。verified保存・read-backに失敗した場合は元metadataへverified rollbackし、証明不能ならfail-closedとする。通常upsert preflight/sendはrecovery modeを拒否し、後続専用Phaseだけが扱う。自動処理、Supabase書き込み、DayMemo再保存は行わない。
+## B-3f5e4b2 prepared recovery upsertの送信前remote確認
+
+`body_mismatch_recovery`かつ`prepared`のpending 1件だけを専用経路で扱う。明示ボタン1回につき完全full pullは最大1回で、pull前後にmetadata raw、local storage、workspace、pending、checkpointを再確認する。対象localのcanonical payloadと`preparedLocalUpdatedAt`、remote active recordのrevision・change sequence・payload updatedAt・payload、現在の`body_mismatch`分類が不変の場合だけ`normal_body_mismatch_recovery_preflight_ready`とする。
+
+verification snapshotは次Phaseの再検証用にReact stateだけへ保持し、永続化しない。metadata、pending status、baseline、cursor、DayMemo、intent、pushBlock、remoteを変更せず、新しいoperation IDも生成しない。通常upsert preflight/sendへrecovery modeを通さず、B-3f5e4b3の明示送信までRPCを行わない。

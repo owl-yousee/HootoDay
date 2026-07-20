@@ -2486,3 +2486,10 @@ cleanup後VERIFY結果：
 - 変更対象はpendingOperationだけ。DayMemo、baseline、cursor、baselineStatus、intent、pushBlock、remoteは変更せず、Supabase送信も行わない。
 - 保存はmetadata v5 validator、verified read-back、失敗時のverified rollbackを必須とする。成功後も`recovery_required`かつ通常同期ready=falseを維持する。
 - 自動pull、自動送信、自動retry、merge、修復、競合解決は行わない。実機確認と後続の送信前remote確認・明示送信は未実装。
+## Phase B-3f5e4b2: prepared recovery upsert preflight
+
+- metadata v5の`body_mismatch_recovery` prepared pending 1件を対象に、ユーザーの明示操作時だけ既存の完全full pullを1回実行する読み取り専用preflightを追加した。
+- workspace、metadata validator、pending、pushBlock、delete intent、recovery checkpoint、local canonical payloadの鮮度をpull前後で検証する。
+- remote active、revision、change sequence、payload updatedAt、payload、対象日、body_mismatch分類を準備時点と照合する。変化・不完全取得・判定不能はfail-closedとする。
+- 成功snapshotはoperation ID照合値とcanonical比較情報をReact stateだけに保持し、再読み込み後は再確認を必要とする。UI・console・文書へoperation ID実値や本文全文を出さない。
+- metadata、pending、DayMemo、baseline、cursor、checkpoint、intent、pushBlock、remoteは変更せず、Supabase送信、operation ID再生成、自動pull・retry・merge・修復は行わない。明示送信はB-3f5e4b3へ分離する。

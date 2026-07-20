@@ -42,6 +42,7 @@ import { useDayMemoNormalDifferenceRecoveryCheckpointCheck } from './hooks/useDa
 import { useDayMemoNormalDifferenceRecoveryCheckpointSave } from './hooks/useDayMemoNormalDifferenceRecoveryCheckpointSave'
 import { useDayMemoNormalBodyMismatchCandidate } from './hooks/useDayMemoNormalBodyMismatchCandidate'
 import { useDayMemoNormalBodyMismatchLocalPreparation } from './hooks/useDayMemoNormalBodyMismatchLocalPreparation'
+import { useDayMemoBodyMismatchRecoveryPreflight } from './hooks/useDayMemoBodyMismatchRecoveryPreflight'
 import { useDayMemoMetadataV4Migration } from './hooks/useDayMemoMetadataV4Migration'
 import { useDayMemoMetadataV5Migration } from './hooks/useDayMemoMetadataV5Migration'
 import { useDayMemoSyncMetadataMigration } from './hooks/useDayMemoSyncMetadataMigration'
@@ -217,6 +218,13 @@ function App() {
     getCandidateSnapshot: dayMemoNormalBodyMismatchCandidate.getCandidateSnapshot,
     consumeCandidateSnapshot: dayMemoNormalBodyMismatchCandidate.consumeCandidateSnapshot,
     adoptVerifiedMetadata: dayMemoSyncBaseline.adoptVerifiedMetadata,
+  })
+  const dayMemoBodyMismatchRecoveryPreflight = useDayMemoBodyMismatchRecoveryPreflight({
+    dayMemos,
+    isConfigured: supabaseAuth.isConfigured,
+    isSignedIn: supabaseAuth.isSignedIn,
+    connection: supabaseWorkspace.connection,
+    checkpointResult: dayMemoNormalDifferenceRecoveryCheckpointCheck.result,
   })
   const dayMemoBaselineRebase = useDayMemoBaselineRebase({
     dayMemos,
@@ -679,6 +687,7 @@ function App() {
           dayMemoNormalDifferenceRecoveryCheckpointSave={dayMemoNormalDifferenceRecoveryCheckpointSave}
           dayMemoNormalBodyMismatchCandidate={dayMemoNormalBodyMismatchCandidate}
           dayMemoNormalBodyMismatchLocalPreparation={dayMemoNormalBodyMismatchLocalPreparation}
+          dayMemoBodyMismatchRecoveryPreflight={dayMemoBodyMismatchRecoveryPreflight}
           dayMemoSyncBaseline={dayMemoSyncBaseline}
           dayMemoBaselineRebase={dayMemoBaselineRebase}
           dayMemoUpdatePreview={dayMemoUpdatePreview}
