@@ -35,6 +35,7 @@ import { useDayMemoRemoteTombstoneAdoption } from './hooks/useDayMemoRemoteTombs
 import { useDayMemoRemoteAdoptionVerification } from './hooks/useDayMemoRemoteAdoptionVerification'
 import { useDayMemoLocalOperationPreparationCheck } from './hooks/useDayMemoLocalOperationPreparationCheck'
 import { useDayMemoLocalOperationPreparation } from './hooks/useDayMemoLocalOperationPreparation'
+import { useDayMemoMetadataV4Migration } from './hooks/useDayMemoMetadataV4Migration'
 import { useDayMemoSyncMetadataMigration } from './hooks/useDayMemoSyncMetadataMigration'
 import { useDayMemoDeleteIntent } from './hooks/useDayMemoDeleteIntent'
 import { useDayMemoDeletePreview } from './hooks/useDayMemoDeletePreview'
@@ -274,6 +275,7 @@ function App() {
     getReadySnapshot: dayMemoLocalOperationPreparationCheck.getReadySnapshot,
     adoptVerifiedStoredDayMemos,
   })
+  const dayMemoMetadataV4Migration = useDayMemoMetadataV4Migration(supabaseWorkspace.connection)
   const dayMemoSyncRecoveryApply = useDayMemoSyncRecoveryApply({
     dayMemos,
     isConfigured: supabaseAuth.isConfigured,
@@ -621,6 +623,7 @@ function App() {
           dayMemoRemoteAdoptionVerification={dayMemoRemoteAdoptionVerification}
           dayMemoLocalOperationPreparationCheck={dayMemoLocalOperationPreparationCheck}
           dayMemoLocalOperationPreparation={dayMemoLocalOperationPreparation}
+          dayMemoMetadataV4Migration={dayMemoMetadataV4Migration}
           onOpenPreparedDayMemo={(dateKey) => {
             const date = fromDateKey(dateKey)
             if (!date) return

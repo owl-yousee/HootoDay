@@ -1,9 +1,9 @@
 import { useCallback, useMemo, useState } from 'react'
 import type { DayMemo } from '../types/dayMemo'
-import type { DayMemoSyncMetadataV3 } from '../types/dayMemoSync'
+import type { DayMemoSyncMetadataV4 } from '../types/dayMemoSync'
 import type { SyncConnection } from '../types/sync'
 import { readDayMemoStorageSnapshot, replaceStoredDayMemosVerified } from '../utils/dayMemoStorage'
-import { isDayMemoSyncMetadataV3, loadDayMemoSyncMetadataAny, replaceDayMemoSyncMetadataV2 } from '../utils/dayMemoSyncStorage'
+import { isDayMemoSyncMetadataV4, loadDayMemoSyncMetadataAny, replaceDayMemoSyncMetadataV2 } from '../utils/dayMemoSyncStorage'
 import { isUuid } from '../utils/syncConnectionStorage'
 import type { DayMemoTombstoneApplySnapshot } from './useDayMemoTombstonePreview'
 
@@ -73,7 +73,7 @@ export function useDayMemoTombstoneApply({
     if (!snapshot
       || snapshot.workspaceId !== connection.workspaceId
       || loaded.status !== 'ready'
-      || loaded.metadata.version !== 3
+      || loaded.metadata.version !== 4
       || loaded.raw !== snapshot.metadataRaw
       || loaded.metadata.workspaceId !== connection.workspaceId
       || loaded.metadata.baselineStatus !== 'confirmed'
@@ -128,7 +128,7 @@ export function useDayMemoTombstoneApply({
     }
 
     const completedAt = new Date().toISOString()
-    const nextMetadata: DayMemoSyncMetadataV3 = {
+    const nextMetadata: DayMemoSyncMetadataV4 = {
       ...loaded.metadata,
       baselines: {
         ...loaded.metadata.baselines,
@@ -145,7 +145,7 @@ export function useDayMemoTombstoneApply({
       baselineConfirmedAt: completedAt,
       lastSuccessfulSyncAt: completedAt,
     }
-    if (!isDayMemoSyncMetadataV3(nextMetadata)) {
+    if (!isDayMemoSyncMetadataV4(nextMetadata)) {
       const rollback = replaceStoredDayMemosVerified(window.localStorage, stored.memos, savedMemos.serialized)
       setState(rollback === 'saved' ? 'metadata_failed' : 'recovery_required')
       setSafeErrorMessage(rollback === 'saved'

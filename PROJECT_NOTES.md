@@ -2421,3 +2421,13 @@ cleanup後VERIFY結果：
 - operation IDはsave/deleteの明示確定後、全事前条件を確認してから1回だけ生成する。UI、console、文書へ実値を出さない。prepared後も自動送信、自動pull、自動retry、自動merge、自動修復、自動競合解決を行わない。
 - 結果は日付、操作種類、分類、operation ID生成・pending・intent・DayMemo変更の有無、remote未送信、確認日時、次の操作だけをReact stateへ保持する。表示結果の破棄は永続準備を取り消さない。
 - B-3f5d2b2のupload/delete送信、成功後のpending/intent解消、remote/baseline/cursor更新、永続準備取消、古いpending/intentの手動解消、複数・一括処理は未実装である。Supabase操作、stage、commit、pushは行っていない。
+# Phase B-3f5d2b1m — metadata v4 migration
+
+- B-3f5d2b2 implementation was stopped because version 3 delete intents cannot be persistently tied to their pending operation after reload.
+- Added metadata version 4. A delete intent now carries the same validated operation ID as its delete pending; date and active baseline revision/change-sequence lineage must also match.
+- Version 3 remains readable. Migration is explicit-only: first a read-only eligibility check, then a separate migrate action. No ID is guessed or generated during migration.
+- Intent without pending, delete pending without intent, multiple intents, mismatched operation/date/baseline, invalid workspace, and invalid metadata are blocked fail-closed.
+- Migration uses validation, verified save/read-back, and verified rollback. Result discard changes React display state only.
+- B-3f5d2a/B-3f5d2b1 and related operational paths use version 4 as the normal metadata version. B-3f5d2b1 delete preparation writes matching pending and intent IDs together.
+- The old intent-only delete path stays version 3-compatible and is blocked after migration; version 4 uses the atomic pending-plus-intent preparation path.
+- No Supabase operation, RPC, SQL, automatic migration, retry, merge, repair, conflict resolution, commit, or push was performed. B-3f5d2b2 and device migration/send verification remain pending.

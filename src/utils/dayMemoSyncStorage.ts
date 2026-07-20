@@ -6,6 +6,7 @@ import type {
   DayMemoSyncMetadataV1,
   DayMemoSyncMetadataV2,
   DayMemoSyncMetadataV3,
+  DayMemoSyncMetadataV4,
   DayMemoPendingOperationV3,
 } from '../types/dayMemoSync'
 import type { DayMemo } from '../types/dayMemo'
@@ -39,7 +40,7 @@ export type DayMemoSyncV2SaveResult =
   | 'rollback_failed'
 
 export type DayMemoSyncMigrationResult =
-  | { status: 'ready'; metadata: DayMemoSyncMetadataV3; raw: string; migrated: boolean }
+  | { status: 'ready'; metadata: DayMemoSyncMetadataV3 | DayMemoSyncMetadataV4; raw: string; migrated: boolean }
   | {
     status:
       | 'workspace_mismatch'
@@ -52,6 +53,51 @@ export type DayMemoSyncMigrationResult =
     raw: null
     migrated: false
   }
+
+export type DayMemoSyncV4MigrationAnalysis =
+  | { status: 'ready'; source: DayMemoSyncMetadataV3; next: DayMemoSyncMetadataV4 }
+  | { status: 'already_current'; source: DayMemoSyncMetadataV4; next: DayMemoSyncMetadataV4 }
+  | { status: 'pending_ambiguous' | 'intent_without_pending' | 'pending_without_intent' | 'operation_unresolvable' | 'baseline_mismatch' | 'unsupported'; source: DayMemoSyncMetadataV3 | null; next: null }
+
+export function analyzeDayMemoSyncMetadataV4Migration(metadata: DayMemoSyncMetadata): DayMemoSyncV4MigrationAnalysis {
+  if (metadata.version === 4) return { status: 'already_current', source: metadata, next: metadata }
+  if (metadata.version !== 3) return { status: 'unsupported', source: null, next: null }
+  const entries = Object.entries(metadata.localDeleteIntents)
+  const pending = metadata.pendingOperation
+  if (entries.length === 0) {
+    if (pending?.kind === 'delete') return { status: 'pending_without_intent', source: metadata, next: null }
+    const next: DayMemoSyncMetadataV4 = {
+      ...metadata,
+      version: 4,
+      localDeleteIntents: {},
+      migration: { sourceVersion: 3, status: 'completed', migratedAt: new Date().toISOString() },
+    }
+    return isDayMemoSyncMetadataV4(next)
+      ? { status: 'ready', source: metadata, next }
+      : { status: 'operation_unresolvable', source: metadata, next: null }
+  }
+  if (entries.length !== 1) return { status: 'pending_ambiguous', source: metadata, next: null }
+  if (!pending) return { status: 'intent_without_pending', source: metadata, next: null }
+  if (pending.kind !== 'delete') return { status: 'operation_unresolvable', source: metadata, next: null }
+  const [date, intent] = entries[0]
+  if (pending.date !== date || pending.baseRevision !== intent.baselineRevision) {
+    return { status: 'operation_unresolvable', source: metadata, next: null }
+  }
+  const baseline = metadata.baselines[date]
+  if (!baseline || baseline.deletedAt !== null || baseline.remoteRevision !== intent.baselineRevision
+    || baseline.remoteChangeSequence !== intent.baselineChangeSequence) {
+    return { status: 'baseline_mismatch', source: metadata, next: null }
+  }
+  const next: DayMemoSyncMetadataV4 = {
+    ...metadata,
+    version: 4,
+    localDeleteIntents: { [date]: { ...intent, operationId: pending.operationId } },
+    migration: { sourceVersion: 3, status: 'completed', migratedAt: new Date().toISOString() },
+  }
+  return isDayMemoSyncMetadataV4(next)
+    ? { status: 'ready', source: metadata, next }
+    : { status: 'operation_unresolvable', source: metadata, next: null }
+}
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
 const ISO_DATE_TIME_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?(Z|[+-]\d{2}:\d{2})$/
@@ -327,7 +373,47 @@ export function isDayMemoSyncMetadataV3(value: unknown): value is DayMemoSyncMet
   return value.initialUpload.preparedAt !== null && value.initialUpload.completedAt === null && value.initialUpload.targetDates.length > 0
 }
 
-function projectCurrentToV1(metadata: DayMemoSyncMetadataV2 | DayMemoSyncMetadataV3): DayMemoSyncMetadataV1 {
+export function isDayMemoSyncMetadataV4(value: unknown): value is DayMemoSyncMetadataV4 {
+  if (!isRecord(value) || value.version !== 4) return false
+  if (JSON.stringify(Object.keys(value).sort()) !== JSON.stringify([
+    'baselineConfirmedAt', 'baselineStatus', 'baselines', 'initialUpload', 'lastPulledChangeSequence',
+    'lastSuccessfulSyncAt', 'localDeleteIntents', 'migration', 'pendingOperation', 'pushBlock', 'version', 'workspaceId',
+  ])) return false
+  if (!isRecord(value.migration)) return false
+  const v3Shape = { ...value, version: 3, migration: { ...value.migration, sourceVersion: 3 } }
+  if (!isDayMemoSyncMetadataV3(v3Shape)) return false
+  if (!isRecord(value.migration)
+    || JSON.stringify(Object.keys(value.migration).sort()) !== JSON.stringify(['migratedAt', 'sourceVersion', 'status'])
+    || ![1, 2, 3, 4].includes(Number(value.migration.sourceVersion))) return false
+  const candidate = value as unknown as DayMemoSyncMetadataV4
+  if (candidate.pendingOperation) {
+    const pendingKeys = candidate.pendingOperation.kind === 'upsert'
+      ? ['baseRevision', 'date', 'kind', 'operationId', 'preparedAt', 'preparedLocalUpdatedAt', 'status']
+      : ['baseRevision', 'clientDeletedAt', 'date', 'kind', 'operationId', 'preparedAt', 'status']
+    if (JSON.stringify(Object.keys(candidate.pendingOperation).sort()) !== JSON.stringify(pendingKeys)) return false
+  }
+  const intents = candidate.localDeleteIntents as Record<string, unknown>
+  for (const [date, intent] of Object.entries(intents)) {
+    if (!isRecord(intent) || JSON.stringify(Object.keys(intent).sort()) !== JSON.stringify([
+      'baselineChangeSequence', 'baselineRevision', 'createdAt', 'date', 'deletedLocalUpdatedAt', 'operationId', 'status',
+    ]) || !isUuidV4(intent.operationId)) return false
+    const pending = candidate.pendingOperation
+    if (!isRecord(pending) || pending.kind !== 'delete' || pending.date !== date
+      || pending.operationId !== intent.operationId
+      || pending.baseRevision !== intent.baselineRevision) return false
+    const baseline = candidate.baselines[date]
+    if (!baseline || baseline.remoteRevision !== intent.baselineRevision
+      || baseline.remoteChangeSequence !== intent.baselineChangeSequence) return false
+  }
+  if (candidate.pendingOperation?.kind === 'delete') {
+    const intent = candidate.localDeleteIntents[candidate.pendingOperation.date]
+    if (!intent || intent.operationId !== candidate.pendingOperation.operationId) return false
+  }
+  if (candidate.pendingOperation?.kind === 'upsert' && candidate.localDeleteIntents[candidate.pendingOperation.date]) return false
+  return true
+}
+
+function projectCurrentToV1(metadata: DayMemoSyncMetadataV2 | DayMemoSyncMetadataV3 | DayMemoSyncMetadataV4): DayMemoSyncMetadataV1 {
   const status = metadata.initialUpload.status === 'partially_completed'
     ? 'partial'
     : metadata.initialUpload.status === 'recovery_required' ? 'blocked' : metadata.initialUpload.status
@@ -355,7 +441,7 @@ export function loadDayMemoSyncMetadataAny(storage: Storage): DayMemoSyncAnyLoad
   if (raw === null) return { status: 'absent', metadata: null, raw: null }
   try {
     const value: unknown = JSON.parse(raw)
-    return isDayMemoSyncMetadata(value) || isDayMemoSyncMetadataV2(value) || isDayMemoSyncMetadataV3(value)
+    return isDayMemoSyncMetadata(value) || isDayMemoSyncMetadataV2(value) || isDayMemoSyncMetadataV3(value) || isDayMemoSyncMetadataV4(value)
       ? { status: 'ready', metadata: value, raw }
       : { status: 'metadata_invalid', metadata: null, raw: null }
   } catch {
@@ -390,10 +476,10 @@ export function loadDayMemoSyncMetadata(storage: Storage): DayMemoSyncLoadResult
 
 export function replaceDayMemoSyncMetadataV2(
   storage: Storage,
-  metadata: DayMemoSyncMetadataV2 | DayMemoSyncMetadataV3,
+  metadata: DayMemoSyncMetadataV2 | DayMemoSyncMetadataV3 | DayMemoSyncMetadataV4,
   expectedCurrentRaw: string | null,
 ): DayMemoSyncV2SaveResult {
-  if (!(isDayMemoSyncMetadataV2(metadata) || isDayMemoSyncMetadataV3(metadata))) return 'metadata_invalid'
+  if (!(isDayMemoSyncMetadataV2(metadata) || isDayMemoSyncMetadataV3(metadata) || isDayMemoSyncMetadataV4(metadata))) return 'metadata_invalid'
   const serialized = JSON.stringify(metadata)
   let current: string | null
   try {
@@ -422,7 +508,7 @@ export function replaceDayMemoSyncMetadataV2(
     const readBack = storage.getItem(DAY_MEMO_SYNC_STORAGE_KEY)
     if (readBack === serialized) {
       const parsed: unknown = JSON.parse(readBack)
-      if (isDayMemoSyncMetadataV2(parsed) || isDayMemoSyncMetadataV3(parsed)) return 'saved'
+      if (isDayMemoSyncMetadataV2(parsed) || isDayMemoSyncMetadataV3(parsed) || isDayMemoSyncMetadataV4(parsed)) return 'saved'
     }
   } catch {
     return rollback('readback_failed')
@@ -528,6 +614,7 @@ export function migrateDayMemoSyncMetadataToV3(
   if (loaded.status === 'storage_unavailable') return { status: 'migration_save_failed', metadata: null, raw: null, migrated: false }
   if (loaded.status === 'metadata_invalid') return { status: 'metadata_v1_invalid', metadata: null, raw: null, migrated: false }
   if (loaded.status === 'ready' && loaded.metadata.workspaceId !== workspaceId) return { status: 'workspace_mismatch', metadata: null, raw: null, migrated: false }
+  if (loaded.status === 'ready' && loaded.metadata.version === 4) return { status: 'ready', metadata: loaded.metadata, raw: loaded.raw, migrated: false }
   if (loaded.status === 'ready' && loaded.metadata.version === 3) return { status: 'ready', metadata: loaded.metadata, raw: loaded.raw, migrated: false }
 
   const now = new Date().toISOString()
@@ -550,9 +637,9 @@ export function migrateDayMemoSyncMetadataToV3(
 export function saveDayMemoSyncMetadata(storage: Storage, metadata: DayMemoSyncMetadataV1): DayMemoSyncSaveResult {
   if (!isDayMemoSyncMetadata(metadata)) return 'metadata_invalid'
   const existing = loadDayMemoSyncMetadataAny(storage)
-  if (existing.status === 'ready' && (existing.metadata.version === 2 || existing.metadata.version === 3)) {
+  if (existing.status === 'ready' && (existing.metadata.version === 2 || existing.metadata.version === 3 || existing.metadata.version === 4)) {
     if (existing.metadata.workspaceId !== metadata.workspaceId) return 'metadata_invalid'
-    const next: DayMemoSyncMetadataV2 | DayMemoSyncMetadataV3 = {
+    const next: DayMemoSyncMetadataV2 | DayMemoSyncMetadataV3 | DayMemoSyncMetadataV4 = {
       ...existing.metadata,
       initialUpload: {
         status: statusV1ToV2(metadata.initialUploadStatus),
@@ -597,10 +684,10 @@ export function setDayMemoPushBlock(
   reason: DayMemoPushBlockReason,
 ): { result: DayMemoSyncSaveResult | 'not_required'; metadata: DayMemoSyncMetadataV1 | null } {
   const anyLoaded = loadDayMemoSyncMetadataAny(storage)
-  if (anyLoaded.status === 'ready' && (anyLoaded.metadata.version === 2 || anyLoaded.metadata.version === 3)) {
+  if (anyLoaded.status === 'ready' && (anyLoaded.metadata.version === 2 || anyLoaded.metadata.version === 3 || anyLoaded.metadata.version === 4)) {
     const binding = workspaceId ?? anyLoaded.metadata.workspaceId
     if (binding !== anyLoaded.metadata.workspaceId) return { result: 'metadata_invalid', metadata: null }
-    const next: DayMemoSyncMetadataV2 | DayMemoSyncMetadataV3 = {
+    const next: DayMemoSyncMetadataV2 | DayMemoSyncMetadataV3 | DayMemoSyncMetadataV4 = {
       ...anyLoaded.metadata,
       pushBlock: { reason, blockedAt: new Date().toISOString() },
     }

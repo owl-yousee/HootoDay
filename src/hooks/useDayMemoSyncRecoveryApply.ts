@@ -1,9 +1,9 @@
 import { useCallback, useState } from 'react'
 import type { DayMemo } from '../types/dayMemo'
-import type { DayMemoSyncMetadataV3 } from '../types/dayMemoSync'
+import type { DayMemoSyncMetadataV4 } from '../types/dayMemoSync'
 import type { SyncConnection } from '../types/sync'
 import { readDayMemoStorageSnapshot } from '../utils/dayMemoStorage'
-import { isDayMemoSyncMetadataV3, loadDayMemoSyncMetadataAny, replaceDayMemoSyncMetadataV2 } from '../utils/dayMemoSyncStorage'
+import { isDayMemoSyncMetadataV4, loadDayMemoSyncMetadataAny, replaceDayMemoSyncMetadataV2 } from '../utils/dayMemoSyncStorage'
 import { isUuid } from '../utils/syncConnectionStorage'
 import type { DayMemoRemoteAppliedRecoverySnapshot, DayMemoSyncRecoveryCheckResult } from './useDayMemoSyncRecoveryCheck'
 
@@ -86,7 +86,7 @@ export function useDayMemoSyncRecoveryApply({
       || snapshot.workspaceId !== connection.workspaceId
       || !snapshotIsConsistent(snapshot)
       || loaded.status !== 'ready'
-      || loaded.metadata.version !== 3
+      || loaded.metadata.version !== 4
       || loaded.raw !== snapshot.metadataRaw
       || loaded.metadata.workspaceId !== connection.workspaceId
       || loaded.metadata.pushBlock !== null
@@ -103,7 +103,7 @@ export function useDayMemoSyncRecoveryApply({
       return
     }
     const confirmedAt = new Date().toISOString()
-    const next: DayMemoSyncMetadataV3 = {
+    const next: DayMemoSyncMetadataV4 = {
       ...loaded.metadata,
       baselines: {
         ...loaded.metadata.baselines,
@@ -122,7 +122,7 @@ export function useDayMemoSyncRecoveryApply({
       pendingOperation: null,
       lastSuccessfulSyncAt: confirmedAt,
     }
-    if (!isDayMemoSyncMetadataV3(next)) {
+    if (!isDayMemoSyncMetadataV4(next)) {
       setState('error')
       setSafeErrorMessage('復旧後の同期情報を安全に検証できませんでした。metadataは変更していません。')
       return

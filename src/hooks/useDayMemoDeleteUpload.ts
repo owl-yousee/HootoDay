@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabaseClient } from '../lib/supabaseClient'
 import type { SyncConnection } from '../types/sync'
-import type { DayMemoPendingOperationV3, DayMemoSyncMetadataV3 } from '../types/dayMemoSync'
+import type { DayMemoPendingOperationV3, DayMemoSyncMetadataV4 } from '../types/dayMemoSync'
 import { readDayMemoStorageSnapshot } from '../utils/dayMemoStorage'
 import {
   isAppliedDayMemoDeleteSyncResult,
@@ -71,7 +71,7 @@ function safeMessage(state: DayMemoDeleteUploadState): string | null {
 function snapshotStillMatches(snapshot: DayMemoDeleteUploadCandidateSnapshot, workspaceId: string): boolean {
   const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
   const stored = readDayMemoStorageSnapshot(window.localStorage)
-  if (loaded.status !== 'ready' || loaded.metadata.version !== 3 || loaded.raw !== snapshot.metadataRaw
+  if (loaded.status !== 'ready' || loaded.metadata.version !== 4 || loaded.raw !== snapshot.metadataRaw
     || loaded.metadata.workspaceId !== workspaceId || snapshot.workspaceId !== workspaceId
     || loaded.metadata.baselineStatus !== 'confirmed' || loaded.metadata.pendingOperation !== null
     || loaded.metadata.pushBlock !== null || Object.keys(loaded.metadata.localDeleteIntents).length !== 1
@@ -113,7 +113,7 @@ export function useDayMemoDeleteUpload({
       return
     }
     const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
-    const ready = loaded.status === 'ready' && loaded.metadata.version === 3
+    const ready = loaded.status === 'ready' && loaded.metadata.version === 4
       && loaded.metadata.workspaceId === connection.workspaceId
       && loaded.metadata.baselineStatus === 'confirmed' && loaded.metadata.pushBlock === null
       && loaded.metadata.pendingOperation === null
@@ -140,7 +140,7 @@ export function useDayMemoDeleteUpload({
       return
     }
     const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
-    if (loaded.status !== 'ready' || loaded.metadata.version !== 3 || loaded.raw !== preview.metadataRaw) {
+    if (loaded.status !== 'ready' || loaded.metadata.version !== 4 || loaded.raw !== preview.metadataRaw) {
       setState('metadata_changed')
       setSafeErrorMessage(safeMessage('metadata_changed'))
       return
@@ -155,7 +155,7 @@ export function useDayMemoDeleteUpload({
       clientDeletedAt,
       status: 'prepared',
     }
-    const next: DayMemoSyncMetadataV3 = { ...loaded.metadata, pendingOperation }
+    const next: DayMemoSyncMetadataV4 = { ...loaded.metadata, pendingOperation }
     const saved = replaceDayMemoSyncMetadataV2(window.localStorage, next, loaded.raw)
     if (saved !== 'saved') {
       setState(saved === 'rollback_failed' ? 'recovery_required' : 'storage_failed')
@@ -172,9 +172,9 @@ export function useDayMemoDeleteUpload({
       || state !== 'prepared' || !prepared) return
     const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
     const stored = readDayMemoStorageSnapshot(window.localStorage)
-    const pending = loaded.status === 'ready' && loaded.metadata.version === 3
+    const pending = loaded.status === 'ready' && loaded.metadata.version === 4
       && loaded.metadata.pendingOperation?.kind === 'delete' ? loaded.metadata.pendingOperation : null
-    if (loaded.status !== 'ready' || loaded.metadata.version !== 3 || loaded.raw !== prepared.preparedMetadataRaw
+    if (loaded.status !== 'ready' || loaded.metadata.version !== 4 || loaded.raw !== prepared.preparedMetadataRaw
       || loaded.metadata.workspaceId !== connection.workspaceId || loaded.metadata.baselineStatus !== 'confirmed'
       || loaded.metadata.pushBlock !== null || Object.keys(loaded.metadata.localDeleteIntents).length !== 1
       || stored.status !== 'ready' || stored.serialized !== prepared.preview.localStorageSerialized
@@ -186,7 +186,7 @@ export function useDayMemoDeleteUpload({
       setSafeErrorMessage(safeMessage('metadata_changed'))
       return
     }
-    const sending: DayMemoSyncMetadataV3 = { ...loaded.metadata, pendingOperation: { ...pending, status: 'sending' } }
+    const sending: DayMemoSyncMetadataV4 = { ...loaded.metadata, pendingOperation: { ...pending, status: 'sending' } }
     const sendingSave = replaceDayMemoSyncMetadataV2(window.localStorage, sending, loaded.raw)
     if (sendingSave !== 'saved') {
       setState(sendingSave === 'rollback_failed' ? 'recovery_required' : 'storage_failed')
@@ -210,7 +210,7 @@ export function useDayMemoDeleteUpload({
       if (response.error) throw new Error('rpc_result_unknown')
       data = response.data
     } catch {
-      const unknown: DayMemoSyncMetadataV3 = { ...sending, pendingOperation: { ...sending.pendingOperation!, status: 'response_unknown' } }
+      const unknown: DayMemoSyncMetadataV4 = { ...sending, pendingOperation: { ...sending.pendingOperation!, status: 'response_unknown' } }
       const saved = replaceDayMemoSyncMetadataV2(window.localStorage, unknown, sendingRaw)
       preparedRef.current = null
       setState(saved === 'saved' ? 'response_unknown' : 'recovery_required')
@@ -219,7 +219,7 @@ export function useDayMemoDeleteUpload({
     }
     const normalized = normalizeDayMemoSyncResult(data)
     if (isConflictDayMemoSyncResult(normalized, connection.workspaceId, prepared.preview.date)) {
-      const conflict: DayMemoSyncMetadataV3 = { ...sending, pendingOperation: { ...sending.pendingOperation!, status: 'conflict' } }
+      const conflict: DayMemoSyncMetadataV4 = { ...sending, pendingOperation: { ...sending.pendingOperation!, status: 'conflict' } }
       const saved = replaceDayMemoSyncMetadataV2(window.localStorage, conflict, sendingRaw)
       preparedRef.current = null
       setState(saved === 'saved' ? 'conflict' : 'recovery_required')
@@ -233,7 +233,7 @@ export function useDayMemoDeleteUpload({
       prepared.preview.intent.baselineRevision,
       prepared.preview.previousChangeSequence,
     )) {
-      const unknown: DayMemoSyncMetadataV3 = { ...sending, pendingOperation: { ...sending.pendingOperation!, status: 'response_unknown' } }
+      const unknown: DayMemoSyncMetadataV4 = { ...sending, pendingOperation: { ...sending.pendingOperation!, status: 'response_unknown' } }
       const saved = replaceDayMemoSyncMetadataV2(window.localStorage, unknown, sendingRaw)
       preparedRef.current = null
       setState(saved === 'saved' ? 'response_unknown' : 'recovery_required')
@@ -243,7 +243,7 @@ export function useDayMemoDeleteUpload({
     const now = new Date().toISOString()
     const { [prepared.preview.date]: _removedIntent, ...remainingIntents } = sending.localDeleteIntents
     void _removedIntent
-    const completed: DayMemoSyncMetadataV3 = {
+    const completed: DayMemoSyncMetadataV4 = {
       ...sending,
       baselines: {
         ...sending.baselines,
@@ -266,7 +266,7 @@ export function useDayMemoDeleteUpload({
     const completedSave = replaceDayMemoSyncMetadataV2(window.localStorage, completed, sendingRaw)
     preparedRef.current = null
     if (completedSave !== 'saved') {
-      const recovery: DayMemoSyncMetadataV3 = { ...sending, pendingOperation: { ...sending.pendingOperation!, status: 'recovery_required' } }
+      const recovery: DayMemoSyncMetadataV4 = { ...sending, pendingOperation: { ...sending.pendingOperation!, status: 'recovery_required' } }
       replaceDayMemoSyncMetadataV2(window.localStorage, recovery, sendingRaw)
       setState('post_rpc_metadata_failed')
       setSafeErrorMessage(safeMessage('post_rpc_metadata_failed'))

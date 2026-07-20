@@ -19,6 +19,7 @@ import type { useDayMemoRemoteTombstoneAdoption } from '../hooks/useDayMemoRemot
 import type { useDayMemoRemoteAdoptionVerification } from '../hooks/useDayMemoRemoteAdoptionVerification'
 import type { useDayMemoLocalOperationPreparationCheck } from '../hooks/useDayMemoLocalOperationPreparationCheck'
 import type { useDayMemoLocalOperationPreparation } from '../hooks/useDayMemoLocalOperationPreparation'
+import type { useDayMemoMetadataV4Migration } from '../hooks/useDayMemoMetadataV4Migration'
 import type { useDayMemoSyncMetadataMigration } from '../hooks/useDayMemoSyncMetadataMigration'
 import type { useDayMemoDeleteIntent } from '../hooks/useDayMemoDeleteIntent'
 import type { useDayMemoDeletePreview } from '../hooks/useDayMemoDeletePreview'
@@ -77,6 +78,7 @@ interface ThemeSettingsProps {
   dayMemoRemoteAdoptionVerification: ReturnType<typeof useDayMemoRemoteAdoptionVerification>
   dayMemoLocalOperationPreparationCheck: ReturnType<typeof useDayMemoLocalOperationPreparationCheck>
   dayMemoLocalOperationPreparation: ReturnType<typeof useDayMemoLocalOperationPreparation>
+  dayMemoMetadataV4Migration: ReturnType<typeof useDayMemoMetadataV4Migration>
   onOpenPreparedDayMemo: (date: string) => void
   dayMemoSyncRecoveryApply: ReturnType<typeof useDayMemoSyncRecoveryApply>
   dayMemoSyncMetadataMigration: ReturnType<typeof useDayMemoSyncMetadataMigration>
@@ -257,6 +259,7 @@ export function ThemeSettings({
   dayMemoRemoteAdoptionVerification,
   dayMemoLocalOperationPreparationCheck,
   dayMemoLocalOperationPreparation,
+  dayMemoMetadataV4Migration,
   onOpenPreparedDayMemo,
   dayMemoSyncRecoveryApply,
   dayMemoSyncMetadataMigration,
@@ -672,6 +675,44 @@ export function ThemeSettings({
                       {dayMemoRemoteAdoptionVerification.safeErrorMessage ? <p className="cloud-pairing-error" role="alert">{dayMemoRemoteAdoptionVerification.safeErrorMessage}</p> : null}
                     </div>
                   ) : null}
+                  {dayMemoMetadataV4Migration.eligible ? (
+                    <div className="cloud-day-memo-recovery-check-panel" role="region" aria-labelledby="day-memo-v4-migration-heading">
+                      <h4 id="day-memo-v4-migration-heading">DayMemo同期metadata v4</h4>
+                      <p>自動では移行しません。現在状態を読み取り専用で確認してから、明示操作で移行します。</p>
+                      <button type="button" className="health-secondary-button cloud-sync-button" onClick={dayMemoMetadataV4Migration.check}>
+                        metadata v4への移行条件を確認
+                      </button>
+                      {dayMemoMetadataV4Migration.result ? (
+                        <div role="status">
+                          <ul className="cloud-day-memo-preview-summary">
+                            <li>現在version：{dayMemoMetadataV4Migration.result.sourceVersion ?? '確認不能'}</li>
+                            <li>移行先version：4</li>
+                            <li>migration：{dayMemoMetadataV4Migration.result.ready ? 'ready' : dayMemoMetadataV4Migration.result.classification}</li>
+                            <li>pending：{dayMemoMetadataV4Migration.result.pendingCount}件</li>
+                            <li>delete pending：{dayMemoMetadataV4Migration.result.deletePendingCount}件</li>
+                            <li>localDeleteIntent：{dayMemoMetadataV4Migration.result.hasDeleteIntent ? 'あり' : 'なし'}</li>
+                            <li>operation対応：{dayMemoMetadataV4Migration.result.operationResolvable ? '一意' : '確認不能'}</li>
+                            <li>対象日：{dayMemoMetadataV4Migration.result.targetMatches ? '一致' : '確認不能'}</li>
+                            <li>baseline系譜：{dayMemoMetadataV4Migration.result.baselineMatches ? '一致' : '確認不能'}</li>
+                            <li>workspace binding：{dayMemoMetadataV4Migration.result.workspaceValid ? '一致' : '確認不能'}</li>
+                            <li>validator：{dayMemoMetadataV4Migration.result.metadataValid ? '正常' : '確認不能'}</li>
+                            <li>永続変更：{dayMemoMetadataV4Migration.result.persistentChanged ? 'あり' : 'なし'}</li>
+                            <li>rollback：{dayMemoMetadataV4Migration.result.rollbackAttempted ? '実施' : 'なし'}</li>
+                            <li>確認日時：{new Date(dayMemoMetadataV4Migration.result.checkedAt).toLocaleString('ja-JP')}</li>
+                          </ul>
+                          <p>{dayMemoMetadataV4Migration.result.nextAction}</p>
+                          {dayMemoMetadataV4Migration.result.ready ? (
+                            <button type="button" className="health-primary-button cloud-sync-button" onClick={dayMemoMetadataV4Migration.migrate}>
+                              metadata v4へ移行
+                            </button>
+                          ) : null}
+                          <button type="button" className="health-secondary-button cloud-sync-button" onClick={dayMemoMetadataV4Migration.discard}>
+                            migration結果を破棄
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
                   {dayMemoLocalOperationPreparationCheck.eligible ? (
                     <div className="cloud-day-memo-recovery-check-panel" role="region" aria-labelledby="day-memo-local-operation-preparation-heading">
                       <h4 id="day-memo-local-operation-preparation-heading">新しいlocal操作の準備条件</h4>
@@ -852,14 +893,14 @@ export function ThemeSettings({
                     <div className="cloud-day-memo-baseline-panel">
                       <h4>DayMemo同期metadata</h4>
                       <p>metadata version：{dayMemoSyncMetadataMigration.metadataVersion ?? '旧version'}</p>
-                      <p>version 3はactive／tombstone baselineと将来のdelete同期を安全に区別する土台です。</p>
+                      <p>version 3は互換読み取り、version 4はpendingと削除意図のoperation対応を永続検証する正規形式です。</p>
                       {dayMemoSyncMetadataMigration.state === 'needs_migration' ? (
                         <button type="button" className="health-secondary-button cloud-sync-button" onClick={dayMemoSyncMetadataMigration.migrate}>
                           同期metadataをversion 3へ更新
                         </button>
                       ) : null}
                       {dayMemoSyncMetadataMigration.state === 'migrating' ? <button type="button" className="health-secondary-button cloud-sync-button" disabled>metadataを更新中…</button> : null}
-                      {dayMemoSyncMetadataMigration.state === 'completed' ? <p className="cloud-day-memo-success" role="status">version 3へ移行済みです。</p> : null}
+                      {dayMemoSyncMetadataMigration.state === 'completed' ? <p className="cloud-day-memo-success" role="status">metadataを読み取り可能です。</p> : null}
                       {dayMemoSyncMetadataMigration.safeErrorMessage ? <p className="cloud-pairing-error" role="alert">{dayMemoSyncMetadataMigration.safeErrorMessage}</p> : null}
                       <p className="cloud-sync-note">DayMemo本文とSupabaseデータは変更しません。delete送信とtombstone反映は未実装です。</p>
                     </div>

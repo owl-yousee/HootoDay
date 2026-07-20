@@ -19,17 +19,20 @@ interface Input {
 
 export function useDayMemoSyncMetadataMigration({ dayMemos, connection }: Input) {
   const [state, setState] = useState<DayMemoSyncMetadataMigrationState>('unavailable')
+  const [metadataVersion, setMetadataVersion] = useState<number | null>(null)
   const [safeErrorMessage, setSafeErrorMessage] = useState<string | null>(null)
   const eligible = Boolean(connection?.workspaceId && isUuid(connection.workspaceId) && connection.pairingStatus !== 'unpaired')
 
   useEffect(() => {
     if (!eligible || !connection?.workspaceId) {
       setState('unavailable')
+      setMetadataVersion(null)
       return
     }
     const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
     if (loaded.status === 'ready' && loaded.metadata.workspaceId === connection.workspaceId) {
-      setState(loaded.metadata.version === 3 ? 'completed' : 'needs_migration')
+      setMetadataVersion(loaded.metadata.version)
+      setState(loaded.metadata.version === 3 || loaded.metadata.version === 4 ? 'completed' : 'needs_migration')
       return
     }
     setState(loaded.status === 'absent' ? 'needs_migration' : 'error')
@@ -41,6 +44,7 @@ export function useDayMemoSyncMetadataMigration({ dayMemos, connection }: Input)
     setSafeErrorMessage(null)
     const result = migrateDayMemoSyncMetadataToV3(window.localStorage, connection.workspaceId, dayMemos)
     if (result.status === 'ready') {
+      setMetadataVersion(3)
       setState('completed')
       return
     }
@@ -53,5 +57,5 @@ export function useDayMemoSyncMetadataMigration({ dayMemos, connection }: Input)
     setSafeErrorMessage('同期metadataを安全にversion 3へ移行できませんでした。旧versionを維持しています。')
   }, [connection?.workspaceId, dayMemos, eligible, state])
 
-  return { eligible, state, metadataVersion: state === 'completed' ? 3 : null, safeErrorMessage, migrate }
+  return { eligible, state, metadataVersion, safeErrorMessage, migrate }
 }

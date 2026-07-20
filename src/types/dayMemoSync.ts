@@ -91,6 +91,10 @@ export interface DayMemoLocalDeleteIntentV3 {
   status: 'intent_recorded' | 'preview_ready' | 'prepared' | 'sending' | 'conflict' | 'response_unknown' | 'recovery_required'
 }
 
+export interface DayMemoLocalDeleteIntentV4 extends DayMemoLocalDeleteIntentV3 {
+  operationId: string
+}
+
 export type DayMemoPendingOperationV3 =
   | DayMemoPendingOperationV2
   | {
@@ -154,7 +158,26 @@ export interface DayMemoSyncMetadataV3 {
   }
 }
 
-export type DayMemoSyncMetadata = DayMemoSyncMetadataV1 | DayMemoSyncMetadataV2 | DayMemoSyncMetadataV3
+export interface DayMemoSyncMetadataV4 {
+  version: 4
+  workspaceId: string
+  initialUpload: DayMemoSyncMetadataV2['initialUpload']
+  baselines: Record<string, DayMemoRemoteBaselineV3>
+  localDeleteIntents: Record<string, DayMemoLocalDeleteIntentV4>
+  lastPulledChangeSequence: number
+  baselineStatus: DayMemoBaselineStatusV2
+  baselineConfirmedAt: string | null
+  pendingOperation: DayMemoPendingOperationV3 | null
+  pushBlock: DayMemoSyncMetadataV2['pushBlock']
+  lastSuccessfulSyncAt: string | null
+  migration: {
+    sourceVersion: 1 | 2 | 3 | 4
+    status: 'completed'
+    migratedAt: string
+  }
+}
+
+export type DayMemoSyncMetadata = DayMemoSyncMetadataV1 | DayMemoSyncMetadataV2 | DayMemoSyncMetadataV3 | DayMemoSyncMetadataV4
 
 export type DayMemoPullPreviewState =
   | 'unavailable'

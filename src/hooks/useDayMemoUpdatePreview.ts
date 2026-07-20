@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { DayMemo } from '../types/dayMemo'
-import type { DayMemoRemoteBaselineV3, DayMemoSyncMetadataV3 } from '../types/dayMemoSync'
+import type { DayMemoRemoteBaselineV3, DayMemoSyncMetadataV4 } from '../types/dayMemoSync'
 import type { SyncConnection } from '../types/sync'
 import { readDayMemoStorageSnapshot } from '../utils/dayMemoStorage'
 import { loadDayMemoSyncMetadataAny } from '../utils/dayMemoSyncStorage'
@@ -100,7 +100,7 @@ function connectionIsEligible(connection: SyncConnection | null): boolean {
 }
 
 function classify(
-  metadata: DayMemoSyncMetadataV3,
+  metadata: DayMemoSyncMetadataV4,
   localMemos: DayMemo[],
 ): { items: DayMemoUpdatePreviewItem[]; summary: Omit<DayMemoUpdatePreviewSummary, 'baselineConfirmedAt' | 'lastPulledChangeSequence'> } {
   const localByDate = new Map(localMemos.map((memo) => [memo.date, memo]))
@@ -201,7 +201,7 @@ export function useDayMemoUpdatePreview({ dayMemos, isConfigured, isSignedIn, co
       return
     }
     const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
-    if (loaded.status !== 'ready' || loaded.metadata.version !== 3) {
+    if (loaded.status !== 'ready' || loaded.metadata.version !== 4) {
       const state = loaded.status === 'metadata_invalid' || loaded.status === 'storage_unavailable' ? 'metadata_invalid' : 'baseline_not_confirmed'
       setPreviewState(state)
       setSafeErrorMessage(messageForState(state))
@@ -239,7 +239,7 @@ export function useDayMemoUpdatePreview({ dayMemos, isConfigured, isSignedIn, co
     setSafeErrorMessage(null)
     try {
       const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
-      if (loaded.status !== 'ready' || loaded.metadata.version !== 3) {
+      if (loaded.status !== 'ready' || loaded.metadata.version !== 4) {
         const state = loaded.status === 'metadata_invalid' || loaded.status === 'storage_unavailable' ? 'metadata_invalid' : 'baseline_not_confirmed'
         setPreviewState(state)
         setSafeErrorMessage(messageForState(state))

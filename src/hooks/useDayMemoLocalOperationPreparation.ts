@@ -1,9 +1,9 @@
 import { useCallback, useState } from 'react'
 import type { DayMemo } from '../types/dayMemo'
-import type { DayMemoPendingOperationV3, DayMemoSyncMetadataV3 } from '../types/dayMemoSync'
+import type { DayMemoPendingOperationV3, DayMemoSyncMetadataV4 } from '../types/dayMemoSync'
 import type { SyncConnection } from '../types/sync'
 import { isStoredDayMemo, readDayMemoStorageSnapshot, replaceStoredDayMemosVerified } from '../utils/dayMemoStorage'
-import { isDayMemoSyncMetadataV3, loadDayMemoSyncMetadataAny, replaceDayMemoSyncMetadataV2 } from '../utils/dayMemoSyncStorage'
+import { isDayMemoSyncMetadataV4, loadDayMemoSyncMetadataAny, replaceDayMemoSyncMetadataV2 } from '../utils/dayMemoSyncStorage'
 import { isUuid } from '../utils/syncConnectionStorage'
 import { createUuidV4 } from '../utils/uuid'
 import type {
@@ -128,7 +128,7 @@ export function useDayMemoLocalOperationPreparation({
     if (!eligible || !connection?.workspaceId) return { error: 'local_operation_prepare_state_unknown' as const }
     const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
     const stored = readDayMemoStorageSnapshot(window.localStorage)
-    if (loaded.status !== 'ready' || loaded.metadata.version !== 3 || stored.status !== 'ready') {
+    if (loaded.status !== 'ready' || loaded.metadata.version !== 4 || stored.status !== 'ready') {
       return { error: 'local_operation_prepare_state_unknown' as const }
     }
     if (loaded.metadata.workspaceId !== connection.workspaceId) return { error: 'local_operation_prepare_state_unknown' as const }
@@ -185,8 +185,8 @@ export function useDayMemoLocalOperationPreparation({
       preparedAt: new Date().toISOString(),
       status: 'prepared',
     }
-    const nextMetadata: DayMemoSyncMetadataV3 = { ...checked.metadata, pendingOperation }
-    const metadataSave = isDayMemoSyncMetadataV3(nextMetadata)
+    const nextMetadata: DayMemoSyncMetadataV4 = { ...checked.metadata, pendingOperation }
+    const metadataSave = isDayMemoSyncMetadataV4(nextMetadata)
       ? replaceDayMemoSyncMetadataV2(window.localStorage, nextMetadata, checked.loaded.raw)
       : 'metadata_invalid'
     if (metadataSave !== 'saved') {
@@ -232,12 +232,13 @@ export function useDayMemoLocalOperationPreparation({
       clientDeletedAt: preparedAt,
       status: 'prepared',
     }
-    const nextMetadata: DayMemoSyncMetadataV3 = {
+    const nextMetadata: DayMemoSyncMetadataV4 = {
       ...checked.metadata,
       localDeleteIntents: {
         ...checked.metadata.localDeleteIntents,
         [date]: {
           date,
+          operationId,
           baselineRevision: baseline.remoteRevision,
           baselineChangeSequence: baseline.remoteChangeSequence,
           deletedLocalUpdatedAt: memo.updatedAt,
@@ -247,7 +248,7 @@ export function useDayMemoLocalOperationPreparation({
       },
       pendingOperation,
     }
-    if (!isDayMemoSyncMetadataV3(nextMetadata)) return finish(operationKind, 'local_operation_prepare_state_unknown')
+    if (!isDayMemoSyncMetadataV4(nextMetadata)) return finish(operationKind, 'local_operation_prepare_state_unknown')
     const metadataSave = replaceDayMemoSyncMetadataV2(window.localStorage, nextMetadata, checked.loaded.raw)
     if (metadataSave !== 'saved') {
       return finish(operationKind, 'local_operation_prepare_persistence_failed', { operationIdGenerated: true })
