@@ -2197,3 +2197,12 @@ cleanup後VERIFY結果：
 - 既存のcursor 0・100件・最大20ページの共通full pullを再利用し、対象recordを`remote_applied`／`remote_not_applied`／`conflict_detected`／`unknown`へ分類する。
 - request本文はmetadataへ保存せず、準備時updatedAtと現在の正式DayMemo storageが一致する場合だけ比較に使用する。一致しなければ推測せず`unknown`とする。
 - 確認結果はReactメモリ内だけに保持し、pending operation、baseline、cursor、DayMemoを変更しない。upsert／delete、operation ID生成、自動再送、自動復旧は行わない。
+
+### Phase B-3e5c: remote_applied確認後のmetadata-only復旧
+
+- B-3e5bで`remote_applied`を確認し、pendingがsending／response_unknown／recovery_requiredの場合だけ、明示ボタンで端末内metadataを復旧できるようにした。conflict、remote_not_applied、unknownは対象外である。
+- 確認時はremote revision・change sequence・payload、pending、metadata raw、local DayMemo snapshotをReactメモリだけに保持する。本文、UUID、operation IDはUIや永続領域へ追加保存しない。
+- 復旧時に認証・workspace・metadata raw・pending全項目・operation ID・localStorage・React state・remote payload・revision・change sequence・pushBlockを再検証し、新しいpullやupsertを行わない。
+- 成功時は対象baseline、cursor、baseline確認日時、最終成功日時だけを更新してpendingをnullにする。local DayMemo、他baseline、initialUpload、migration、pushBlockは維持する。
+- 保存は既存validatorとcompare-and-write／read-back／rollback utilityを再利用する。保存失敗では元のpending付きmetadataを維持し、rollback失敗は独立して安全停止する。
+- 静的検査と通常状態の回帰確認は完了した。通常時に復旧ボタンが表示されず、既存の更新候補・local-only候補確認を利用できることを確認済み。未完了pendingを用いたremote_applied判定、metadata-only復旧、pending解消、復旧後normal復帰の危険状態実機テストは未実施であり、完了扱いにしない。

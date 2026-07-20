@@ -11,6 +11,7 @@ import type { useDayMemoPullPreview } from '../hooks/useDayMemoPullPreview'
 import type { useDayMemoBaselineRebase } from '../hooks/useDayMemoBaselineRebase'
 import type { useDayMemoSyncBaseline } from '../hooks/useDayMemoSyncBaseline'
 import type { useDayMemoSyncRecoveryCheck } from '../hooks/useDayMemoSyncRecoveryCheck'
+import type { useDayMemoSyncRecoveryApply } from '../hooks/useDayMemoSyncRecoveryApply'
 import type { useDayMemoUpdatePreview } from '../hooks/useDayMemoUpdatePreview'
 import type { useDayMemoUpdateUpload } from '../hooks/useDayMemoUpdateUpload'
 import { useSupabasePairing, useSupabasePairingJoin } from '../hooks/useSupabasePairing'
@@ -54,6 +55,7 @@ interface ThemeSettingsProps {
   dayMemoLocalOnlyUpload: ReturnType<typeof useDayMemoLocalOnlyUpload>
   dayMemoSyncSafety: DayMemoSyncSafety
   dayMemoSyncRecoveryCheck: ReturnType<typeof useDayMemoSyncRecoveryCheck>
+  dayMemoSyncRecoveryApply: ReturnType<typeof useDayMemoSyncRecoveryApply>
   onClose: () => void
 }
 
@@ -183,6 +185,7 @@ export function ThemeSettings({
   dayMemoLocalOnlyUpload,
   dayMemoSyncSafety,
   dayMemoSyncRecoveryCheck,
+  dayMemoSyncRecoveryApply,
   onClose,
 }: ThemeSettingsProps) {
   const dialogRef = useRef<HTMLDialogElement>(null)
@@ -371,6 +374,28 @@ export function ThemeSettings({
                               : dayMemoSyncRecoveryCheck.result.classification === 'conflict_detected'
                                 ? '同期先に別の変更があり、競合を確認しました。'
                                 : '同期先の状態を安全に判定できませんでした。'}</p>
+                          {dayMemoSyncRecoveryCheck.result.classification === 'remote_applied' ? (
+                            <>
+                              <ul className="cloud-day-memo-preview-summary">
+                                <li>revision：{dayMemoSyncRecoveryCheck.result.remoteRevision}</li>
+                                <li>change sequence：{dayMemoSyncRecoveryCheck.result.remoteChangeSequence}</li>
+                              </ul>
+                              <p>同期先への反映は完了していると確認できました。再送せず、この端末の同期情報だけを復旧できます。</p>
+                              <p className="cloud-sync-note">local DayMemo本文とSupabaseは変更しません。</p>
+                              {dayMemoSyncRecoveryApply.canRecover ? (
+                                <button type="button" className="health-secondary-button cloud-sync-button" onClick={dayMemoSyncRecoveryApply.recoverMetadata}>
+                                  この端末の同期情報を復旧
+                                </button>
+                              ) : null}
+                            </>
+                          ) : dayMemoSyncRecoveryCheck.result.classification === 'remote_not_applied' ? (
+                            <p className="cloud-sync-note">未反映の可能性がありますが、今回は再送しません。</p>
+                          ) : dayMemoSyncRecoveryCheck.result.classification === 'conflict_detected' ? (
+                            <p className="cloud-sync-note">競合解決は行わず、pending operationを保持します。</p>
+                          ) : (
+                            <p className="cloud-sync-note">推測で復旧せず、再確認または後続Phaseを待ちます。</p>
+                          )}
+                          {dayMemoSyncRecoveryApply.state === 'recovering' ? <button type="button" className="health-secondary-button cloud-sync-button" disabled>復旧中…</button> : null}
                           <p className="cloud-sync-note">pending operationは保持しています。自動再送・自動復旧は行いません。</p>
                           <button type="button" className="health-secondary-button cloud-sync-button" onClick={dayMemoSyncRecoveryCheck.discardResult}>
                             確認結果を破棄
@@ -378,6 +403,14 @@ export function ThemeSettings({
                         </div>
                       ) : null}
                       {dayMemoSyncRecoveryCheck.safeErrorMessage ? <p className="cloud-pairing-error" role="alert">{dayMemoSyncRecoveryCheck.safeErrorMessage}</p> : null}
+                      {dayMemoSyncRecoveryApply.state === 'completed' ? (
+                        <div className="cloud-day-memo-success" role="status">
+                          <p>この端末の同期情報を復旧しました。</p>
+                          <p>対象日付：{dayMemoSyncRecoveryApply.completedDate}</p>
+                          <p>再送とlocal DayMemoの変更は行っていません。</p>
+                        </div>
+                      ) : null}
+                      {dayMemoSyncRecoveryApply.safeErrorMessage ? <p className="cloud-pairing-error" role="alert">{dayMemoSyncRecoveryApply.safeErrorMessage}</p> : null}
                     </div>
                   ) : null}
                   {dayMemoSyncBaseline.eligible ? (

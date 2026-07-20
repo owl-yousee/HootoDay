@@ -27,6 +27,7 @@ import { useDayMemoPullPreview } from './hooks/useDayMemoPullPreview'
 import { useDayMemoBaselineRebase } from './hooks/useDayMemoBaselineRebase'
 import { useDayMemoSyncBaseline } from './hooks/useDayMemoSyncBaseline'
 import { useDayMemoSyncRecoveryCheck } from './hooks/useDayMemoSyncRecoveryCheck'
+import { useDayMemoSyncRecoveryApply } from './hooks/useDayMemoSyncRecoveryApply'
 import { useDayMemoUpdatePreview } from './hooks/useDayMemoUpdatePreview'
 import { useDayMemoUpdateUpload } from './hooks/useDayMemoUpdateUpload'
 import { useDailyAchievements } from './hooks/useDailyAchievements'
@@ -148,6 +149,15 @@ function App() {
     isConfigured: supabaseAuth.isConfigured,
     isSignedIn: supabaseAuth.isSignedIn,
     connection: supabaseWorkspace.connection,
+  })
+  const dayMemoSyncRecoveryApply = useDayMemoSyncRecoveryApply({
+    dayMemos,
+    isConfigured: supabaseAuth.isConfigured,
+    isSignedIn: supabaseAuth.isSignedIn,
+    connection: supabaseWorkspace.connection,
+    recoveryResult: dayMemoSyncRecoveryCheck.result,
+    getRemoteAppliedSnapshot: dayMemoSyncRecoveryCheck.getRemoteAppliedSnapshot,
+    discardRecoveryResult: dayMemoSyncRecoveryCheck.discardResult,
   })
   const { weightRecords, saveWeightRecord, deleteWeightRecord, replaceWeightRecords } = useWeightRecords()
   const { healthProfile, saveHealthProfile, deleteHealthProfile, replaceHealthProfile } = useHealthProfile()
@@ -480,6 +490,7 @@ function App() {
           dayMemoLocalOnlyUpload={dayMemoLocalOnlyUpload}
           dayMemoSyncSafety={dayMemoSyncSafety}
           dayMemoSyncRecoveryCheck={dayMemoSyncRecoveryCheck}
+          dayMemoSyncRecoveryApply={dayMemoSyncRecoveryApply}
           onClose={() => setIsThemeSettingsOpen(false)}
         />
       )}

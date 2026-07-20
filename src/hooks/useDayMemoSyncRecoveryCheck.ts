@@ -16,9 +16,24 @@ export type DayMemoSyncRecoveryClassification =
 
 export type DayMemoSyncRecoveryCheckState = 'unavailable' | 'idle' | 'checking' | 'checked' | 'error'
 
-export interface DayMemoSyncRecoveryCheckResult {
+export type DayMemoSyncRecoveryCheckResult =
+  | { date: string; classification: 'remote_applied'; remoteRevision: number; remoteChangeSequence: number }
+  | { date: string; classification: Exclude<DayMemoSyncRecoveryClassification, 'remote_applied'> }
+
+export interface DayMemoRemoteAppliedRecoverySnapshot {
+  workspaceId: string
   date: string
-  classification: DayMemoSyncRecoveryClassification
+  remoteRevision: number
+  remoteChangeSequence: number
+  remotePayload: DayMemo
+  deletedAt: null
+  conflict: false
+  pendingOperation: DayMemoPendingOperationV2
+  metadataRaw: string
+  localMemo: DayMemo
+  localStorageSerialized: string
+  previousChangeSequence: number
+  checkedAt: string
 }
 
 interface UseDayMemoSyncRecoveryCheckInput {
@@ -102,6 +117,7 @@ export function useDayMemoSyncRecoveryCheck({
   const [state, setState] = useState<DayMemoSyncRecoveryCheckState>('unavailable')
   const [result, setResult] = useState<DayMemoSyncRecoveryCheckResult | null>(null)
   const [safeErrorMessage, setSafeErrorMessage] = useState<string | null>(null)
+  const appliedSnapshotRef = useRef<DayMemoRemoteAppliedRecoverySnapshot | null>(null)
   const generation = useRef(0)
   const currentLocalSignature = useMemo(() => localSignature(dayMemos), [dayMemos])
   const latestLocalSignature = useRef(currentLocalSignature)
@@ -110,6 +126,7 @@ export function useDayMemoSyncRecoveryCheck({
 
   const reset = useCallback(() => {
     generation.current += 1
+    appliedSnapshotRef.current = null
     setResult(null)
     setSafeErrorMessage(null)
     if (!eligible || !connection?.workspaceId) {
@@ -132,6 +149,7 @@ export function useDayMemoSyncRecoveryCheck({
   const checkRemote = useCallback(async () => {
     if (!eligible || !connection?.workspaceId || !supabaseClient || state !== 'idle') return
     setState('checking')
+    appliedSnapshotRef.current = null
     setResult(null)
     setSafeErrorMessage(null)
     const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
@@ -174,12 +192,53 @@ export function useDayMemoSyncRecoveryCheck({
       setResult({ date: pending.date, classification: 'unknown' })
       return
     }
-    setResult({
-      date: pending.date,
-      classification: classifyRemote(afterPull.metadata, pending, targetMemos[0], pulled.records),
-    })
+    const classification = classifyRemote(afterPull.metadata, pending, targetMemos[0], pulled.records)
+    const remote = targetRemote(pulled.records, pending.date)
+    if (classification === 'remote_applied') {
+      if (!remote?.payload || remote.deletedAt !== null) {
+        setResult({ date: pending.date, classification: 'unknown' })
+        setState('checked')
+        return
+      }
+      const previousChangeSequence = afterPull.metadata.baselines[pending.date]?.remoteChangeSequence
+        ?? afterPull.metadata.lastPulledChangeSequence
+      appliedSnapshotRef.current = {
+        workspaceId: connection.workspaceId,
+        date: pending.date,
+        remoteRevision: remote.revision,
+        remoteChangeSequence: remote.changeSequence,
+        remotePayload: { ...remote.payload },
+        deletedAt: null,
+        conflict: false,
+        pendingOperation: { ...pending },
+        metadataRaw: afterPull.raw,
+        localMemo: { ...targetMemos[0] },
+        localStorageSerialized: afterStored.serialized,
+        previousChangeSequence,
+        checkedAt: new Date().toISOString(),
+      }
+      setResult({
+        date: pending.date,
+        classification,
+        remoteRevision: remote.revision,
+        remoteChangeSequence: remote.changeSequence,
+      })
+      setState('checked')
+      return
+    }
+    setResult({ date: pending.date, classification })
     setState('checked')
   }, [connection?.workspaceId, currentLocalSignature, eligible, state])
 
-  return { eligible, state, result, safeErrorMessage, checkRemote, discardResult: reset }
+  const getRemoteAppliedSnapshot = useCallback((): DayMemoRemoteAppliedRecoverySnapshot | null => {
+    const snapshot = appliedSnapshotRef.current
+    return snapshot ? {
+      ...snapshot,
+      remotePayload: { ...snapshot.remotePayload },
+      pendingOperation: { ...snapshot.pendingOperation },
+      localMemo: { ...snapshot.localMemo },
+    } : null
+  }, [])
+
+  return { eligible, state, result, safeErrorMessage, checkRemote, discardResult: reset, getRemoteAppliedSnapshot }
 }
