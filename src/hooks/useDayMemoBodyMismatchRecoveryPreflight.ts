@@ -249,6 +249,11 @@ export function useDayMemoBodyMismatchRecoveryPreflight({ dayMemos, isConfigured
   }, [checking, connection, dayMemos, finish, isConfigured, isSignedIn])
 
   const discard = useCallback(() => { runIdRef.current += 1; snapshotRef.current = null; setResult(null); setChecking(false) }, [])
+  const consumeReadySnapshot = useCallback(() => {
+    runIdRef.current += 1
+    snapshotRef.current = null
+    setResult((current) => current ? { ...current, snapshotCreated: false } : null)
+  }, [])
   const getReadySnapshot = useCallback(() => {
     const current = snapshotRef.current
     if (!current || !isConfigured || !isSignedIn || !connectionIsEligible(connection) || current.workspaceId !== connection.workspaceId) return null
@@ -262,5 +267,5 @@ export function useDayMemoBodyMismatchRecoveryPreflight({ dayMemos, isConfigured
       localMemo: { ...current.localMemo }, remoteRecord: { ...current.remoteRecord, payload: current.remoteRecord.payload ? { ...current.remoteRecord.payload } : null } }
   }, [connection, dayMemos, isConfigured, isSignedIn])
 
-  return { eligible, checking, result, check, discard, getReadySnapshot }
+  return { eligible, checking, result, check, discard, getReadySnapshot, consumeReadySnapshot }
 }

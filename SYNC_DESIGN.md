@@ -1679,3 +1679,9 @@ B-3f5e4aのlocal candidate snapshotを正本とし、明示確認後の完全ful
 verification snapshotは次Phaseの再検証用にReact stateだけへ保持し、永続化しない。metadata、pending status、baseline、cursor、DayMemo、intent、pushBlock、remoteを変更せず、新しいoperation IDも生成しない。通常upsert preflight/sendへrecovery modeを通さず、B-3f5e4b3の明示送信までRPCを行わない。
 
 実機で判明した循環を避けるため、B-3f5e4b2は通常checkpoint確認HookのReact resultを前提にしない。通常checkpoint経路のpending拒否は緩めず、専用preflightが永続metadata v5の`recovery_required`、nullのconfirmedAt、cursor、baseline群と、完全full pull 1回から再構築した対象`body_mismatch`を照合する。例外的に許可するpendingは確認対象と完全一致するprepared `body_mismatch_recovery` upsert 1件だけであり、他のpendingはfail-closedとする。
+
+## B-3f5e4b3 prepared recovery upsertの明示送信
+
+B-3f5e4b2の未消費verification snapshotと完全一致するprepared recovery pendingだけを、確認ダイアログ承認後に専用Hookで1回送信する。RPC直前は追加pullを行わず、metadata raw、pending全項目、workspace、recovery checkpoint、local fingerprint、remote snapshot、pushBlock・intent不在を再検証する。snapshotはRPC直前に消費し、成功・失敗・unknown・conflictのいずれでも再利用しない。
+
+正式なupsert RPCへ保存済みoperation ID、対象canonical payload、base revisionを渡し、serverのrevision compare-and-setとidempotencyを利用する。戻り値は既存validatorでworkspace、entity、payload、revision=base+1、change sequence進行、active状態を検証する。成功後はpendingを`recovery_required`で保持してverified保存・read-backし、baseline、cursor、checkpoint、DayMemo、`recovery_required`のbaselineStatusを維持する。remote成功後にmetadata確定を証明できない場合は再送せず、B-3f5e4dのremote確認へ送る。

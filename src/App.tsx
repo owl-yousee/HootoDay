@@ -43,6 +43,7 @@ import { useDayMemoNormalDifferenceRecoveryCheckpointSave } from './hooks/useDay
 import { useDayMemoNormalBodyMismatchCandidate } from './hooks/useDayMemoNormalBodyMismatchCandidate'
 import { useDayMemoNormalBodyMismatchLocalPreparation } from './hooks/useDayMemoNormalBodyMismatchLocalPreparation'
 import { useDayMemoBodyMismatchRecoveryPreflight } from './hooks/useDayMemoBodyMismatchRecoveryPreflight'
+import { useDayMemoBodyMismatchRecoverySend } from './hooks/useDayMemoBodyMismatchRecoverySend'
 import { useDayMemoMetadataV4Migration } from './hooks/useDayMemoMetadataV4Migration'
 import { useDayMemoMetadataV5Migration } from './hooks/useDayMemoMetadataV5Migration'
 import { useDayMemoSyncMetadataMigration } from './hooks/useDayMemoSyncMetadataMigration'
@@ -224,6 +225,15 @@ function App() {
     isConfigured: supabaseAuth.isConfigured,
     isSignedIn: supabaseAuth.isSignedIn,
     connection: supabaseWorkspace.connection,
+  })
+  const dayMemoBodyMismatchRecoverySend = useDayMemoBodyMismatchRecoverySend({
+    dayMemos,
+    isConfigured: supabaseAuth.isConfigured,
+    isSignedIn: supabaseAuth.isSignedIn,
+    connection: supabaseWorkspace.connection,
+    getReadySnapshot: dayMemoBodyMismatchRecoveryPreflight.getReadySnapshot,
+    consumeReadySnapshot: dayMemoBodyMismatchRecoveryPreflight.consumeReadySnapshot,
+    adoptVerifiedMetadata: dayMemoSyncBaseline.adoptVerifiedMetadata,
   })
   const dayMemoBaselineRebase = useDayMemoBaselineRebase({
     dayMemos,
@@ -687,6 +697,7 @@ function App() {
           dayMemoNormalBodyMismatchCandidate={dayMemoNormalBodyMismatchCandidate}
           dayMemoNormalBodyMismatchLocalPreparation={dayMemoNormalBodyMismatchLocalPreparation}
           dayMemoBodyMismatchRecoveryPreflight={dayMemoBodyMismatchRecoveryPreflight}
+          dayMemoBodyMismatchRecoverySend={dayMemoBodyMismatchRecoverySend}
           dayMemoSyncBaseline={dayMemoSyncBaseline}
           dayMemoBaselineRebase={dayMemoBaselineRebase}
           dayMemoUpdatePreview={dayMemoUpdatePreview}

@@ -2500,3 +2500,12 @@ cleanup後VERIFY結果：
 - 通常checkpoint確認のpending拒否は維持し、専用preflightが永続metadata内のrecovery checkpointを読み直し、同じ1回のfull pull結果で対象`body_mismatch`と未解決分類を再構築する。
 - 許可するpendingは対象と完全一致する1件のprepared `body_mismatch_recovery` upsertだけであり、normal upsert、delete、mode・status・日付・operation不一致、不正pendingは拒否する。
 - React上の過去のcheckpoint resultへ依存せず、read-only、永続変更なし、RPCなし、operation ID再生成なしを維持する。明示送信はB-3f5e4b3だけで扱う。
+
+## Phase B-3f5e4b3: prepared recovery upsertの明示送信
+
+- B-3f5e4b2の有効なReact verification snapshotを必須とし、確認ダイアログ承認後だけ専用経路から1件の`hooto_day_upsert_sync_record`を呼ぶ。
+- snapshot、metadata v5、prepared `body_mismatch_recovery` pending、workspace、checkpoint、local canonical payload、pushBlock・intent不在を直前に再検証する。追加full pullは行わない。
+- 保存済みoperation IDとbase revisionをRPCのidempotency／compare-and-setに使用し、新IDは生成しない。戻り値は既存の単一行normalizer、conflict validator、applied payload・revision・sequence validatorでfail-closedに検証する。
+- snapshotはRPC直前に消費し、1snapshotにつき最大1回だけ送信する。失敗・結果不明・競合でも再利用せず、再preflightを必須とする。
+- RPC成功後はpendingを`recovery_required`で保持し、verified metadata保存・read-backを行う。DayMemo、baseline、cursor、checkpoint、baselineStatus、intent、pushBlockは変更せず、B-3f5e4dのread-only確認へ渡す。
+- RPC成功後のmetadata保存失敗は送信失敗へ戻さず、再送禁止の確認必要状態とする。自動retry、pull、merge、修復、競合解決は行わない。
