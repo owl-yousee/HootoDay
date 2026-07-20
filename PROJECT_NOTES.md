@@ -2328,3 +2328,16 @@ cleanup後VERIFY結果：
 - metadataはpendingを1件だけ保持するため現行pending競合は最大1件だが、将来の複数intent・複数候補を考慮してread-only一覧型とする。解決は後続Phaseで1件ずつ行い、一括解決しない。
 - 後続はB-3f5c（read-only分類UI）、B-3f5d1（remote状態を1件明示採用）、B-3f5d2a（local操作を再準備できる条件のread-only確認）、B-3f5d2b（新operation IDによる1件の明示再準備・送信）、B-3f5d3（baseline・pending・intentの復旧確認）へ分割する。単純retryは採用しない。
 - 今回は`PROJECT_NOTES.md`と`SYNC_DESIGN.md`だけを更新し、src、package、SQL、RPC、localStorage、DayMemo、metadataを変更していない。Supabase操作、stage、commit、pushも行っていない。
+
+## Phase B-3f5c：delete-aware read-only競合確認UI（2026-07-20）
+
+- conflict pendingまたは競合状態のlocalDeleteIntentがある場合だけ、設定画面から明示的に「競合状態を確認」できるread-only previewを追加した。
+- 既存full pull utilityを再利用し、cursor 0、100件/page、最大20ページ、直列取得、重複・cursor停止・不完全取得・validation失敗拒否、自動retryなしを維持する。
+- update/delete/resurrection/local createとremote active/tombstoneを、revision系譜、baseline、pending、intent、local snapshotから安全に分類する。不整合や取得中の状態変化は`pending_metadata_mismatch`または`remote_state_unknown`へ倒す。
+- UIへ表示するのは日付、分類、local操作、base/remote revision、base/remote change sequence、remote状態、pending status、確認日時だけで、本文、payload、UUID、operation ID、認証情報、metadata JSON、内部例外は表示しない。
+- previewはReact stateだけに保持し、破棄・再読み込みで消える。pending、operation ID、intent、baseline、cursor、local/remote DayMemo、safety stateは変更しない。
+- 競合中のfail-closedを維持し、解決、remote/local採用、merge、retry、operation ID生成、Supabase書き込みは実装していない。実機確認、commit、pushは未実施である。
+- 表示条件調査で、hook生成、Appからのprops接続、ThemeSettingsの`eligible`分岐が正常であることを確認した。UIは`pendingOperation.status = conflict`または`localDeleteIntent.status = conflict`の場合だけ表示する。
+- iPhoneの通常状態と、PCのbaseline mismatch／pending conflictなしの復旧必要状態で非表示になることを確認した。baseline mismatchだけでは対象日付・操作種別・base revisionを特定できないため、競合と推測せず非表示を維持する。
+- response unknown／recovery requiredは既存read-only recovery check、明示的なconflictは本previewが担当し、責務を分離する。表示条件の変更は行っていない。
+- 通常／mismatch時の非表示、自動pull・自動解決・自動retryがないこと、previewが永続状態を変更しないことは確認済みである。実pending conflict、conflict intent、full pull実行、各分類表示、複数競合一覧の実機確認は未実施であり、人工的な競合は生成していない。

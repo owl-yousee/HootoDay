@@ -12,6 +12,7 @@ import type { useDayMemoBaselineRebase } from '../hooks/useDayMemoBaselineRebase
 import type { useDayMemoSyncBaseline } from '../hooks/useDayMemoSyncBaseline'
 import type { useDayMemoSyncRecoveryCheck } from '../hooks/useDayMemoSyncRecoveryCheck'
 import type { useDayMemoSyncRecoveryApply } from '../hooks/useDayMemoSyncRecoveryApply'
+import type { useDayMemoConflictPreview } from '../hooks/useDayMemoConflictPreview'
 import type { useDayMemoSyncMetadataMigration } from '../hooks/useDayMemoSyncMetadataMigration'
 import type { useDayMemoDeleteIntent } from '../hooks/useDayMemoDeleteIntent'
 import type { useDayMemoDeletePreview } from '../hooks/useDayMemoDeletePreview'
@@ -63,6 +64,7 @@ interface ThemeSettingsProps {
   dayMemoLocalOnlyUpload: ReturnType<typeof useDayMemoLocalOnlyUpload>
   dayMemoSyncSafety: DayMemoSyncSafety
   dayMemoSyncRecoveryCheck: ReturnType<typeof useDayMemoSyncRecoveryCheck>
+  dayMemoConflictPreview: ReturnType<typeof useDayMemoConflictPreview>
   dayMemoSyncRecoveryApply: ReturnType<typeof useDayMemoSyncRecoveryApply>
   dayMemoSyncMetadataMigration: ReturnType<typeof useDayMemoSyncMetadataMigration>
   dayMemoDeleteIntent: ReturnType<typeof useDayMemoDeleteIntent>
@@ -90,6 +92,30 @@ const BASELINE_STATE_LABELS: Record<ReturnType<typeof useDayMemoSyncBaseline>['b
   remote_empty: '同期先が空',
   recovery_required: '確認が必要',
   error: '確認失敗',
+}
+
+const CONFLICT_CLASSIFICATION_LABELS: Record<ReturnType<typeof useDayMemoConflictPreview>['items'][number]['classification'], string> = {
+  local_update_remote_deleted: '端末で更新中・同期先で削除済み',
+  local_delete_remote_updated: '端末で削除準備中・同期先で更新済み',
+  resurrection_remote_updated: '端末で復活準備中・同期先で更新済み',
+  resurrection_newer_tombstone: '端末で復活準備中・同期先に新しい削除状態',
+  local_create_remote_changed: '端末で新規作成準備中・同期先に同じ日付あり',
+  remote_state_unknown: '同期先状態を確認不能',
+  pending_metadata_mismatch: '未完了処理と同期設定が不整合',
+}
+
+const CONFLICT_OPERATION_LABELS: Record<ReturnType<typeof useDayMemoConflictPreview>['items'][number]['localOperation'], string> = {
+  update: '更新',
+  delete: '削除',
+  resurrection: '復活',
+  create: '新規作成',
+  unknown: '確認不能',
+}
+
+const CONFLICT_REMOTE_STATE_LABELS: Record<ReturnType<typeof useDayMemoConflictPreview>['items'][number]['remoteState'], string> = {
+  active: '通常レコード',
+  deleted: '削除済み',
+  unknown: '確認不能',
 }
 
 function getCloudSyncPresentation(
@@ -201,6 +227,7 @@ export function ThemeSettings({
   dayMemoLocalOnlyUpload,
   dayMemoSyncSafety,
   dayMemoSyncRecoveryCheck,
+  dayMemoConflictPreview,
   dayMemoSyncRecoveryApply,
   dayMemoSyncMetadataMigration,
   dayMemoDeleteIntent,
@@ -391,6 +418,46 @@ export function ThemeSettings({
                       </ul>
                       <p className="cloud-sync-note">pending operationとoperation IDを保持します。自動マージ、上書き、再送、取消しは行いません。</p>
                       <p className="cloud-sync-note">同期先を再確認する場合は、下の読み取り専用「同期先の状態を確認」を使用してください。</p>
+                    </div>
+                  ) : null}
+                  {dayMemoConflictPreview.eligible ? (
+                    <div className="cloud-day-memo-conflict-summary" role="region" aria-labelledby="day-memo-conflict-preview-heading">
+                      <h4 id="day-memo-conflict-preview-heading">DayMemo競合状態の確認</h4>
+                      <p>競合内容を読み取り専用で確認します。確認しても解決、再送、metadata更新は行いません。</p>
+                      {dayMemoConflictPreview.state === 'idle' ? (
+                        <button type="button" className="health-secondary-button cloud-sync-button" onClick={() => { void dayMemoConflictPreview.checkConflicts() }}>
+                          競合状態を確認
+                        </button>
+                      ) : null}
+                      {dayMemoConflictPreview.state === 'checking' ? (
+                        <button type="button" className="health-secondary-button cloud-sync-button" disabled>競合状態を確認中…</button>
+                      ) : null}
+                      {dayMemoConflictPreview.state === 'checked' ? (
+                        <div role="status">
+                          <p><strong>競合確認結果：{dayMemoConflictPreview.conflictCount}件</strong></p>
+                          <ul className="cloud-day-memo-preview-items">
+                            {dayMemoConflictPreview.items.map((item) => (
+                              <li key={`${item.date}-${item.classification}`}>
+                                <strong>{item.date}</strong>
+                                <span>分類：{CONFLICT_CLASSIFICATION_LABELS[item.classification]}</span>
+                                <span>この端末の操作：{CONFLICT_OPERATION_LABELS[item.localOperation]}</span>
+                                <span>base revision：{item.baseRevision}</span>
+                                <span>同期先revision：{item.remoteRevision ?? '確認不能'}</span>
+                                <span>base change sequence：{item.baseChangeSequence}</span>
+                                <span>同期先change sequence：{item.remoteChangeSequence ?? '確認不能'}</span>
+                                <span>同期先状態：{CONFLICT_REMOTE_STATE_LABELS[item.remoteState]}</span>
+                                <span>未完了処理状態：{item.pendingStatus === 'intent_recorded' ? '削除意図あり' : item.pendingStatus}</span>
+                                <small>確認日時：{new Date(item.checkedAt).toLocaleString('ja-JP')}</small>
+                              </li>
+                            ))}
+                          </ul>
+                          <p className="cloud-sync-note">競合を保持したまま安全停止します。後続Phaseまで解決、採用、merge、retryは行いません。</p>
+                          <button type="button" className="health-secondary-button cloud-sync-button" onClick={dayMemoConflictPreview.discardPreview}>
+                            確認結果を破棄
+                          </button>
+                        </div>
+                      ) : null}
+                      {dayMemoConflictPreview.safeErrorMessage ? <p className="cloud-pairing-error" role="alert">{dayMemoConflictPreview.safeErrorMessage}</p> : null}
                     </div>
                   ) : null}
                   {dayMemoSyncRecoveryCheck.eligible ? (

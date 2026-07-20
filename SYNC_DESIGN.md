@@ -1448,3 +1448,21 @@ Preview results live only in React memory and disappear on discard/reload. Disca
 5. **B-3f5d3:** verify baseline, pending, intent, cursor, and normal safety restoration after resolution.
 
 The minimal B-3f5c implementation candidates are `src/hooks/useDayMemoSyncRecoveryCheck.ts` or a new focused `src/hooks/useDayMemoConflictPreview.ts`, `src/components/ThemeSettings.tsx`, `src/App.tsx` only if a new hook is introduced, and the two design documents. Reuse `src/utils/dayMemoSyncPull.ts`; avoid changing metadata types/storage, SQL, RPCs, upload hooks, or DayMemo storage.
+
+## Phase B-3f5c implementation: delete-aware read-only conflict preview
+
+- `useDayMemoConflictPreview` is enabled only for a validated version 3 workspace containing a conflict pending operation or a conflict-marked local delete intent. It never runs automatically.
+- The hook reuses `pullAllDayMemoSyncRecords` and compares one immutable pre-pull metadata/local snapshot with the post-pull snapshot. A changed raw metadata value, changed DayMemo storage, cancelled/incomplete pull, or invalid lineage produces a safe unknown/mismatch result.
+- Upsert intent is derived without changing metadata: active baseline means update, tombstone baseline means resurrection, and base revision zero without a baseline means local creation. Delete requires an active matching baseline, matching delete intent, and an already absent local memo.
+- A newer tombstone during update becomes `local_update_remote_deleted`; a newer active row during delete becomes `local_delete_remote_updated`; resurrection distinguishes newer active and newer tombstone; local create with any current remote row becomes `local_create_remote_changed`.
+- The rendered result contains only safe scalar facts. Remote payload is used transiently by the shared pull validator and is not copied into preview state or rendered.
+- Discard invalidates the active generation and clears React state only. Pending operation, operation ID, localDeleteIntent, baseline, cursor, local DayMemo, remote records, and safety state remain unchanged.
+- This phase adds no resolution, selection, retry, merge, metadata save, operation ID generation, mutation RPC, SQL change, or automatic action. Device testing remains pending; commit and push are not performed in the implementation phase.
+
+### Display-condition verification
+
+- Wiring from the hook through `App.tsx` to `ThemeSettings.tsx` is complete. The panel is intentionally eligible only for `pendingOperation.status = conflict` or a `localDeleteIntent.status = conflict`.
+- A normal device does not show the conflict action. A baseline mismatch or recovery-required safety state without a conflict pending/intent also does not show it, because date, local operation, and base revision cannot be proven safely from mismatch alone.
+- Response-unknown and recovery-required handling remains the responsibility of the existing read-only recovery check. The conflict preview remains narrowly responsible for explicit conflict evidence; its eligibility condition is unchanged.
+- Verified on PC/iPhone: normal and mismatch-only states remain hidden, there is no automatic pull, retry, or resolution, and no pending, intent, baseline, or metadata mutation occurs from rendering.
+- Not yet device-tested: actual conflict-pending visibility, conflict-intent visibility, execution of the read-only full pull, each classification presentation, and multiple-conflict listing. No artificial conflict was created; these cases remain for a dedicated safe test phase or a naturally occurring conflict.
