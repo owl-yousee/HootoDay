@@ -43,6 +43,17 @@ const savedStateMessages: Record<string, string> = {
   normal_difference_checkpoint_saved_state_unknown: '保存状態を安全に判定できませんでした。',
 }
 
+const remoteAdoptionMessages: Record<string, string> = {
+  body_mismatch_remote_source_changed: '確認後に同期情報または端末データが変わりました。',
+  body_mismatch_remote_target_changed: '対象日の状態が確認時点から変わりました。',
+  body_mismatch_remote_backup_failed: '反映前バックアップを安全に保存できませんでした。',
+  body_mismatch_remote_backup_rollback_failed: '反映前バックアップの復元を確認できませんでした。',
+  body_mismatch_remote_local_save_failed: 'iPhoneへの保存に失敗しました。元の内容は維持されています。',
+  body_mismatch_remote_readback_failed: '保存結果を確認できなかったため、元の内容へ戻しました。',
+  body_mismatch_remote_rollback_failed: '保存またはrollbackの結果を確認できません。自動で再実行しないでください。',
+  body_mismatch_remote_unexpected_failure: '反映処理を完了できませんでした。保存状態から再確認してください。',
+}
+
 export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, bodyLocalPreparation,
   bodyRemoteAdoption, localOnly, remoteOnly }: Props) {
   const [selectedDate, setSelectedDate] = useState('')
@@ -58,6 +69,7 @@ export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, b
   const candidateCurrent = bodyCandidate.result?.date === activeDate
     && ['normal_body_mismatch_candidate_local', 'normal_body_mismatch_candidate_remote'].includes(bodyCandidate.result.safety)
   const remoteCurrent = bodyRemoteAdoption.result?.date === activeDate
+  const remoteBlocked = remoteCurrent && bodyRemoteAdoption.stage === 'blocked'
   const remaining = bodyRemoteAdoption.result?.remainingCount ?? saved.result?.unresolvedCount ?? items.length
 
   const savedReady = saved.result?.safety === 'normal_difference_checkpoint_saved_state_ready'
@@ -66,12 +78,17 @@ export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, b
       : !activeDate || !activeClassification ? '差異なし'
         : activeClassification !== 'body_mismatch' ? '差異1件の確認'
           : !checkpointReady ? '本文比較の準備確認'
-            : !comparisonCurrent ? '本文比較の対象選択'
-              : !candidateCurrent ? 'local／remote比較と候補選択'
-                : bodyRemoteAdoption.stage === 'completed' ? '反映完了'
-                  : bodyCandidate.result?.candidate === 'local' ? 'local候補の送信準備'
-                    : 'remote候補の明示反映'
-  const currentProblem = activeClassification
+            : remoteBlocked ? 'remote候補の安全停止'
+              : remoteCurrent && bodyRemoteAdoption.stage === 'local_saved' ? 'iPhoneへの反映完了'
+                : remoteCurrent && bodyRemoteAdoption.stage === 'metadata_ready' ? '同期情報の保存待ち'
+                  : remoteCurrent && bodyRemoteAdoption.stage === 'completed' ? '反映完了'
+                    : !comparisonCurrent ? '本文比較の対象選択'
+                      : !candidateCurrent ? 'local／remote比較と候補選択'
+                        : bodyCandidate.result?.candidate === 'local' ? 'local候補の送信準備'
+                          : 'remote候補の明示反映'
+  const currentProblem = remoteBlocked && bodyRemoteAdoption.result
+    ? remoteAdoptionMessages[bodyRemoteAdoption.result.safety] ?? 'iPhoneへの反映を安全に完了できませんでした。'
+    : activeClassification
     ? labels[activeClassification] ?? '安全な確認が必要です'
     : saved.result && !savedReady
       ? savedStateMessages[saved.result.safety] ?? '保存状態を安全に確認できませんでした。'
@@ -79,8 +96,10 @@ export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, b
   const nextOperation = !savedReady ? '保存状態を読み取り専用で確認'
     : !activeDate ? '最終同期確認'
       : activeClassification === 'body_mismatch' && !checkpointReady ? '本文比較の準備を確認'
-        : activeClassification === 'body_mismatch' && !comparisonCurrent ? '内容を比較'
-          : bodyCandidate.result?.candidate === 'remote' ? '同期先の内容を使う候補を確認'
+        : remoteBlocked ? '保存状態からやり直す'
+          : remoteCurrent && bodyRemoteAdoption.stage === 'local_saved' ? '反映後の状態を確認'
+            : activeClassification === 'body_mismatch' && !comparisonCurrent ? '内容を比較'
+              : bodyCandidate.result?.candidate === 'remote' ? '同期先の内容を使う候補を確認'
             : bodyCandidate.result?.candidate === 'local' ? 'iPhoneの内容を残す候補を確認'
               : '選択中の差異を確認'
 
@@ -95,6 +114,7 @@ export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, b
     setSelectedDate('')
     setCopyState('idle')
     setCopyText('')
+    bodyRemoteAdoption.discard()
     bodyCandidate.discard()
     checkpoint.discard()
     void saved.check()
@@ -172,6 +192,37 @@ export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, b
                 disabled={!checkpoint.eligible || checkpoint.checking} onClick={() => { void checkpoint.check() }}>
                 {checkpoint.checking ? '比較の準備を確認中…' : '本文比較の準備を確認'}
               </button>
+            </> : remoteBlocked && bodyRemoteAdoption.result ? <>
+              <h5>iPhoneへ反映できませんでした</h5>
+              <p>{remoteAdoptionMessages[bodyRemoteAdoption.result.safety] ?? '安全条件を確認できなかったため停止しました。'}</p>
+              <ul className="cloud-day-memo-preview-summary">
+                <li>対象：{bodyRemoteAdoption.result.date ?? '未確認'}</li>
+                <li>iPhoneデータ：{bodyRemoteAdoption.result.localState === 'unchanged' ? '変更なし'
+                  : bodyRemoteAdoption.result.localState === 'rolled_back' ? 'rollback済み'
+                    : bodyRemoteAdoption.result.localState === 'saved' ? '保存済み' : '確認が必要'}</li>
+                <li>同期先への書き込み：なし</li><li>metadata変更：なし</li><li>自動retry：なし</li>
+              </ul>
+              <button type="button" className="health-primary-button cloud-sync-button" onClick={() => {
+                bodyRemoteAdoption.discard(); bodyCandidate.discard(); checkpoint.discard(); saved.discard()
+              }}>保存状態からやり直す</button>
+            </> : remoteCurrent && bodyRemoteAdoption.stage === 'local_saved' ? <>
+              <h5>iPhoneへの反映が完了しました</h5>
+              <ul className="cloud-day-memo-preview-summary">
+                <li>対象：{bodyRemoteAdoption.result?.date ?? activeDate}</li><li>採用：同期先</li>
+                <li>iPhoneデータ変更：あり</li><li>同期先への書き込み：なし</li>
+                <li>metadata変更：まだなし</li><li>自動retry：なし</li>
+              </ul>
+              <button type="button" className="health-primary-button cloud-sync-button" disabled={!bodyRemoteAdoption.canVerify || bodyRemoteAdoption.running}
+                onClick={() => { void bodyRemoteAdoption.verifyAfterApply() }}>反映後の状態を確認</button>
+            </> : remoteCurrent && bodyRemoteAdoption.stage === 'metadata_ready' ? <>
+              <h5>同期情報を保存します</h5><p>対象日のbaselineだけを追加し、ほかの差異は残します。</p>
+              <button type="button" className="health-primary-button cloud-sync-button" disabled={!bodyRemoteAdoption.canSave || bodyRemoteAdoption.running}
+                onClick={bodyRemoteAdoption.saveMetadata}>同期情報を保存</button>
+            </> : remoteCurrent && bodyRemoteAdoption.stage === 'completed' ? <>
+              <h5>完了しました</h5><p>{activeDate}へ同期先の内容を反映しました。残り：{remaining}件</p>
+              <button type="button" className="health-primary-button cloud-sync-button" onClick={() => {
+                bodyRemoteAdoption.discard(); bodyCandidate.discard(); checkpoint.discard(); saved.discard()
+              }}>次の差異へ</button>
             </> : !comparisonCurrent ? <>
               <h5>内容を比較します</h5>
               <p>このiPhoneと同期先の内容を読み取り専用で表示します。</p>
@@ -199,25 +250,12 @@ export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, b
                 <p>この操作ではpendingを準備します。同期先への送信は次の明示操作です。</p>
                 <button type="button" className="health-primary-button cloud-sync-button" disabled={!bodyLocalPreparation.eligible || bodyLocalPreparation.preparing}
                   onClick={() => { void bodyLocalPreparation.prepare() }}>この内容を残す準備をする</button>
-              </> : remoteCurrent && bodyRemoteAdoption.stage === 'local_saved' ? <>
-                <h5>反映後の状態を確認します</h5><p>同期先は変更せず、iPhoneへ反映した内容を再確認します。</p>
-                <button type="button" className="health-primary-button cloud-sync-button" disabled={!bodyRemoteAdoption.canVerify || bodyRemoteAdoption.running}
-                  onClick={() => { void bodyRemoteAdoption.verifyAfterApply() }}>反映後の状態を確認</button>
-              </> : remoteCurrent && bodyRemoteAdoption.stage === 'metadata_ready' ? <>
-                <h5>同期情報を保存します</h5><p>対象日のbaselineだけを追加し、ほかの差異は残します。</p>
-                <button type="button" className="health-primary-button cloud-sync-button" disabled={!bodyRemoteAdoption.canSave || bodyRemoteAdoption.running}
-                  onClick={bodyRemoteAdoption.saveMetadata}>同期情報を保存</button>
-              </> : remoteCurrent && bodyRemoteAdoption.stage === 'completed' ? <>
-                <h5>完了しました</h5><p>{activeDate}へ同期先の内容を反映しました。残り：{remaining}件</p>
-                <button type="button" className="health-primary-button cloud-sync-button" onClick={() => {
-                  bodyRemoteAdoption.discard(); bodyCandidate.discard(); checkpoint.discard(); saved.discard()
-                }}>次の差異へ</button>
               </> : <>
                 <h5>選択内容を確認してください</h5>
                 <p>この操作ではiPhoneの内容だけを変更します。同期先は変更しません。</p>
                 <p className="cloud-sync-note">iPhoneのデータ変更：あり／同期先への書き込み：なし／metadata変更：反映後確認であり／自動retry：なし</p>
                 <button type="button" className="health-primary-button cloud-sync-button" disabled={!bodyRemoteAdoption.canApply || bodyRemoteAdoption.running}
-                  onClick={bodyRemoteAdoption.applyRemote}>この内容を反映する</button>
+                  onClick={() => { void bodyRemoteAdoption.applyRemote() }}>{bodyRemoteAdoption.running ? '反映しています…' : 'この内容を反映する'}</button>
                 <button type="button" className="health-secondary-button cloud-sync-button" onClick={bodyCandidate.clearChoice}>選び直す</button>
               </>}
             </>

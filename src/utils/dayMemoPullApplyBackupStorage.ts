@@ -20,6 +20,11 @@ export type DayMemoPullApplyBackupResult =
   | 'data_invalid'
   | 'storage_unavailable'
   | 'readback_invalid'
+  | 'rollback_failed'
+
+interface SaveBackupOptions {
+  replaceExistingForSameWorkspace?: boolean
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -45,6 +50,7 @@ export function saveDayMemoPullApplyBackup(
   storage: Storage,
   workspaceId: string,
   memos: DayMemo[],
+  options: SaveBackupOptions = {},
 ): DayMemoPullApplyBackupResult {
   if (!isUuid(workspaceId)
     || !memos.every(isStoredDayMemo)
@@ -55,9 +61,9 @@ export function saveDayMemoPullApplyBackup(
     if (existingRaw !== null) {
       const existing: unknown = JSON.parse(existingRaw)
       if (!isBackup(existing)) return 'existing_backup'
-      return existing.workspaceId === workspaceId && sameMemos(existing.memos, memos)
-        ? 'reused'
-        : 'existing_backup'
+      if (existing.workspaceId !== workspaceId) return 'existing_backup'
+      if (sameMemos(existing.memos, memos)) return 'reused'
+      if (!options.replaceExistingForSameWorkspace) return 'existing_backup'
     }
 
     const backup: DayMemoPullApplyBackupV1 = {
@@ -70,9 +76,17 @@ export function saveDayMemoPullApplyBackup(
     const serialized = JSON.stringify(backup)
     storage.setItem(DAY_MEMO_PULL_APPLY_BACKUP_KEY, serialized)
     const readBack = storage.getItem(DAY_MEMO_PULL_APPLY_BACKUP_KEY)
-    if (readBack === null) return 'readback_invalid'
-    const parsed: unknown = JSON.parse(readBack)
-    return readBack === serialized && isBackup(parsed) ? 'saved' : 'readback_invalid'
+    if (readBack === null) {
+      if (existingRaw === null) return 'readback_invalid'
+      storage.setItem(DAY_MEMO_PULL_APPLY_BACKUP_KEY, existingRaw)
+      return storage.getItem(DAY_MEMO_PULL_APPLY_BACKUP_KEY) === existingRaw ? 'readback_invalid' : 'rollback_failed'
+    }
+    let parsed: unknown = null
+    try { parsed = JSON.parse(readBack) } catch { parsed = null }
+    if (readBack === serialized && isBackup(parsed)) return 'saved'
+    if (existingRaw === null) return 'readback_invalid'
+    storage.setItem(DAY_MEMO_PULL_APPLY_BACKUP_KEY, existingRaw)
+    return storage.getItem(DAY_MEMO_PULL_APPLY_BACKUP_KEY) === existingRaw ? 'readback_invalid' : 'rollback_failed'
   } catch {
     return 'storage_unavailable'
   }

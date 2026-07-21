@@ -19,6 +19,7 @@ export interface BodyMismatchRemoteAdoptionResult {
   remainingCount: number | null
   localChanged: boolean
   metadataChanged: boolean
+  localState: 'unchanged' | 'saved' | 'rolled_back' | 'uncertain'
   remoteWritten: false
   checkedAt: string
 }
@@ -63,18 +64,22 @@ export function useDayMemoBodyMismatchRemoteAdoption(input: Input) {
   const finish = useCallback((next: BodyMismatchRemoteAdoptionStage, safety: string, values: Partial<BodyMismatchRemoteAdoptionResult> = {}) => {
     setStage(next)
     setResult({ stage: next, date: null, safety, remainingCount: null, localChanged: false,
-      metadataChanged: false, remoteWritten: false, checkedAt: new Date().toISOString(), ...values })
+      metadataChanged: false, localState: 'unchanged', remoteWritten: false, checkedAt: new Date().toISOString(), ...values })
   }, [])
-  const block = useCallback((safety: string, date: string | null) => {
-    finish('blocked', safety, { date })
-  }, [finish])
+  const block = useCallback((safety: string, date: string | null,
+    localState: BodyMismatchRemoteAdoptionResult['localState'] = 'unchanged') => {
+    input.consumeCandidateSnapshot()
+    finish('blocked', safety, { date, localState, localChanged: localState === 'saved' })
+  }, [finish, input])
 
-  const applyRemote = useCallback(() => {
+  const applyRemote = useCallback(async () => {
     const snapshot = input.getCandidateSnapshot()
     if (!canApply || !snapshot || snapshot.candidate !== 'remote' || inFlight.current) return
     if (!window.confirm(`${snapshot.date} の同期先の内容をこのiPhoneへ反映します。このiPhoneの同日内容は置き換わりますが、同期先へは書き込みません。反映しますか？`)) return
     inFlight.current = true; setRunning(true)
+    let localWriteCompleted = false
     try {
+      await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()))
       const metadata = loadDayMemoSyncMetadataAny(window.localStorage)
       const local = readDayMemoStorageSnapshot(window.localStorage)
       if (metadata.status !== 'ready' || !isDayMemoSyncMetadataV5(metadata.metadata) || local.status !== 'ready'
@@ -93,18 +98,32 @@ export function useDayMemoBodyMismatchRemoteAdoption(input: Input) {
         block('body_mismatch_remote_target_changed', snapshot.date); return
       }
       const next = local.memos.map((memo) => memo.date === snapshot.date ? { ...snapshot.remoteRecord.payload! } : memo)
-      const backup = saveDayMemoPullApplyBackup(window.localStorage, snapshot.workspaceId, local.memos)
-      if (backup !== 'saved' && backup !== 'reused') { block('body_mismatch_remote_backup_failed', snapshot.date); return }
+      const backup = saveDayMemoPullApplyBackup(window.localStorage, snapshot.workspaceId, local.memos,
+        { replaceExistingForSameWorkspace: true })
+      if (backup !== 'saved' && backup !== 'reused') {
+        block(backup === 'rollback_failed' ? 'body_mismatch_remote_backup_rollback_failed' : 'body_mismatch_remote_backup_failed', snapshot.date)
+        return
+      }
       const saved = replaceStoredDayMemosVerified(window.localStorage, next, local.serialized)
-      if (saved !== 'saved') { block(saved === 'rollback_failed' ? 'body_mismatch_remote_rollback_failed' : 'body_mismatch_remote_local_save_failed', snapshot.date); return }
+      if (saved !== 'saved') {
+        block(saved === 'rollback_failed' ? 'body_mismatch_remote_rollback_failed' : 'body_mismatch_remote_local_save_failed',
+          snapshot.date, saved === 'rollback_failed' ? 'uncertain' : saved === 'readback_invalid' ? 'rolled_back' : 'unchanged')
+        return
+      }
       const readBack = readDayMemoStorageSnapshot(window.localStorage)
       if (readBack.status !== 'ready' || !same(readBack.memos, next)) {
         const rollback = readBack.status === 'ready' ? replaceStoredDayMemosVerified(window.localStorage, local.memos, readBack.serialized) : 'rollback_failed'
-        block(rollback === 'saved' ? 'body_mismatch_remote_readback_failed' : 'body_mismatch_remote_rollback_failed', snapshot.date); return
+        block(rollback === 'saved' ? 'body_mismatch_remote_readback_failed' : 'body_mismatch_remote_rollback_failed',
+          snapshot.date, rollback === 'saved' ? 'rolled_back' : 'uncertain')
+        return
       }
+      localWriteCompleted = true
       applied.current = { source: snapshot, localAfter: next, localRawAfter: readBack.serialized, candidateMetadata: null }
       input.adoptVerifiedStoredDayMemos(next.map((memo) => ({ ...memo })))
-      finish('local_saved', 'body_mismatch_remote_local_saved', { date: snapshot.date, localChanged: true })
+      input.consumeCandidateSnapshot()
+      finish('local_saved', 'body_mismatch_remote_local_saved', { date: snapshot.date, localChanged: true, localState: 'saved' })
+    } catch {
+      block('body_mismatch_remote_unexpected_failure', snapshot.date, localWriteCompleted ? 'uncertain' : 'unchanged')
     } finally { inFlight.current = false; setRunning(false) }
   }, [block, canApply, finish, input])
 

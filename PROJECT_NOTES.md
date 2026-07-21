@@ -2702,3 +2702,13 @@ cleanup後VERIFY結果：
 - body mismatchが推奨対象なら、最新checkpoint resultがない間は「本文比較の準備を確認」、ready後は「内容を比較」を表示する。自動比較・自動採用・自動送信は行わない。
 - LAN HTTP上のiPhone Safariではsecure-context制約によりClipboard APIを利用できない場合がある。Clipboard API、legacy copyの順に試し、両方失敗時は安全な要約だけを選択可能textareaへ表示する。コピー失敗は同期safetyへ影響させない。
 - metadata/checkpoint validator、full pull上限、confirm、read-back、rollback、pending lifecycle、operation ID、SQL/RPC/RLS、保存形式は変更していない。
+
+## 2026-07-21 B-3f5eUI2c remote候補local反映接続修正
+
+- iPhone同期チェックでremote候補を確定し、confirmを承認してもlocal内容が変わらず候補画面へ戻った。実機では永続変更、metadata変更、Supabase write、pending、operation ID、自動retryは発生しなかった。
+- confirm後のHook自体は開始されていたが、local保存前のfail-closed resultが`blocked`になっても同期チェックがblocked stageを描画せず、候補snapshotが残る反映前画面を再表示していた。
+- さらに、remote採用が使用する反映前バックアップは単一キーで、同一workspaceの有効な過去バックアップと現在DayMemoが異なる場合に`existing_backup`で停止していた。形式を変えず、このremote採用経路だけは同一workspaceの有効な既存バックアップを現在の反映前snapshotへverified更新し、失敗時は旧rawへrollbackする。
+- confirm承認後はin-flight guardを設定し、処理中表示を描画してから保存を1回だけ開始する。canonical remote payloadで対象日だけを置換し、他日付を維持してverified storage保存と完全read-backを行う。
+- 成功後はReact DayMemoをverified read-backへ合わせ、候補snapshotを消費し、同期チェックを「反映後の状態を確認」へ進める。この時点ではmetadataを変更しない。
+- 保存・read-back失敗は変更なし、rollback済み、確認必要を区別してblocked resultへ残し、同期チェックで停止理由と永続状態を表示する。無言で反映前画面へ戻さず、stale候補を再利用しない。
+- 反映後のread-only確認、metadata保存、validator、pending lifecycle、SQL/RPC/RLS、保存形式、自動retry禁止は変更していない。本文・payload・識別子は文書や結果表示へ含めない。

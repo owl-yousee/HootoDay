@@ -1924,3 +1924,13 @@ Only a successful current result may produce `nextRecommendedDate`. The guide ma
 Clipboard support is progressive: use the secure Clipboard API when available, try a user-gesture legacy copy fallback, and otherwise display the already-safe summary in a selectable textarea. The fallback contains no memo content, payload, raw metadata, identifier, fingerprint, or credential, and clipboard failure never changes sync safety or persistent state.
 
 This phase changes no metadata/checkpoint validator contract, persistence format, pending/operation lifecycle, full-pull limit, confirmation, read-back, rollback, RPC/SQL/RLS, automatic retry, adoption, or send behavior.
+
+## B-3f5eUI2c — explicit remote choice local apply
+
+After explicit confirmation, the remote-choice apply handler enters an in-flight state, yields once so the processing state can render, and executes the existing local apply exactly once. It revalidates the current candidate snapshot, metadata raw, local raw, workspace, recovery status, pending, intent, push block, baseline absence, local target, and canonical remote payload before any DayMemo write.
+
+The pre-apply backup keeps its existing version and key. For this path only, an existing valid backup for the same workspace may be replaced with the current pre-apply snapshot using write/read-back verification; a failed replacement restores and verifies the prior raw backup. Invalid or other-workspace backups remain fail-closed.
+
+The local write replaces only the target date with the canonical remote DayMemo and preserves every other date. Verified storage replacement and complete read-back are mandatory. Success updates React state from the verified value, consumes the candidate snapshot, records `local_saved`, and exposes only the explicit post-adoption read-only check. Metadata is not changed until that later verification and separate explicit metadata save.
+
+Every blocked result is rendered ahead of the candidate UI. The result distinguishes unchanged, rolled-back, saved, and uncertain local state; it never silently returns to the apply button. A stale or blocked candidate is consumed and must be rebuilt from the saved-state/checkpoint flow. There is no automatic retry, remote write, operation ID, pending creation, SQL/RPC/RLS change, or persistence-format change.
