@@ -2041,3 +2041,14 @@ Candidate checking now catches unexpected failures into a `failed` result and co
 - status-only checkpointも自動保存しない。confirmedからの自動`recovery_required`化、candidateの手動生成、saved recovery state確認の省略、通常差異表示からの直接adoption、自動同期、自動採用、自動retryは禁止する。
 - candidateはcheckpoint保存済みかつsaved recovery state確認成功後に再構築された`unresolvedClassifications`からのみ生成する。通常差異の`remote_only_active`、`local_only`、`body_mismatch`等は、Bridge完了前には処理候補として扱わない。
 - 実装は`useDayMemoNormalDifferenceRecoveryPlan`、`useDayMemoNormalDifferenceRecoveryCheckpointCheck`、`useDayMemoNormalDifferenceRecoveryCheckpointSave`、`useDayMemoSavedRecoveryStateCheck`と既存recovery/adoption Hookを再利用する。新規checkpoint分類ロジックや別の永続形式は作成しない。
+
+## Phase3-5後半 実機検証結果と安全境界
+
+- 実機検証では、checkpoint確認・明示保存、`recovery_required`への遷移、Saved Recovery State確認が成功し、保存済みmetadataを正本として未解決差異を再構築できた。
+- remote-onlyは、candidate生成、明示adoption、反映後確認、metadata保存を分離した既存経路で成功した。candidate生成だけではlocal・remote・metadataを変更せず、adoption後も別の確認と保存を必要とした。
+- local-onlyは、candidate準備、preflight、明示送信、operation結果確認、metadata保存を分離した既存経路で成功した。準備だけでは送信せず、保存済みoperation情報を後続確認に使用した。
+- 全個別復旧後に未解決差異0件を確認し、明示的な最終確認とconfirmed保存を経た後、別の通常同期確認で`normal_sync_ready`へ到達した。
+- 自動同期、自動candidate生成、自動採用、自動削除、自動送信、自動retryは禁止したままであり、全工程をユーザーの明示操作で進めた。
+- 各境界でfail-closed、snapshot鮮度確認、完全full pull再確認、verified read-back、rollbackを維持した。
+- candidate確認、local反映、反映後確認、metadata保存は独立したstageであり、前段成功から後段処理を自動実行しない。
+- recovery完了またはconfirmed保存だけで通常同期readyを推測せず、別の明示的な通常同期確認成功を`normal_sync_ready`の条件として維持する。

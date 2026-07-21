@@ -2821,3 +2821,14 @@ cleanup後VERIFY結果：
 - status-only checkpointを含め、自動遷移、自動保存、candidate手動生成、saved-state確認省略、通常差異からの直接adoption、自動retryは禁止する。
 - candidateはcheckpoint保存後のsaved recovery state確認が成功し、`unresolvedClassifications`が再構築された場合だけ生成する。
 - 実装時は既存normal difference plan、checkpoint check/save、saved recovery state check、recovery/adoption Hookを再利用し、新しいcheckpointロジック、metadata形式、SQL、RPCを追加しない。
+
+## 2026-07-22 Phase3-5後半 同期復旧フロー実機確認完了
+
+- confirmed通常差異から明示的に復旧準備を開始し、checkpoint確認・保存、`recovery_required`への遷移、Saved Recovery State確認に成功した。
+- remote-only復旧は、candidate生成、明示adoption、反映後確認、metadata保存を1件ずつ実行して成功した。
+- local-only復旧は、candidate準備、preflight、明示送信、operation結果確認、metadata保存を1件ずつ実行して成功した。
+- 復旧後に未解決差異0件を確認し、明示的な最終確認とconfirmed復帰を経て、別の通常同期確認で`normal_sync_ready`へ到達した。
+- candidate確認、local反映、反映後確認、metadata保存は分離され、各工程をユーザーの明示操作で実行した。
+- 自動同期、自動candidate生成、自動採用、自動削除、自動送信、自動retryは行われていない。
+- fail-closed、snapshot鮮度確認、完全full pullによる再確認、verified read-back、rollback経路を維持した。
+- recovery完了だけでは通常同期readyとせず、confirmed復帰後も別の明示的な通常同期確認を必要とする設計どおりに動作した。
