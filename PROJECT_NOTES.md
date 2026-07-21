@@ -2627,3 +2627,13 @@ cleanup後VERIFY結果：
 - The recovery plan now reports the metadata version actually validated and is eligible only for metadata v5 in `recovery_required`. Confirmed v5 no longer offers that checkpoint/baseline-rebuild route.
 - The integrated current-operation UI now connects confirmed normal state to the existing local-only preview and upload lifecycle. The existing preview reads the actual v5 baselines, so already synchronized dates remain confirmed and only a baseline-free local date can become `local_new_candidate`.
 - The normal path retains `operationMode: normal`, the existing explicit preflight/prepare/send sequence, revision-zero new-record contract, operation ID lifecycle, result validation, active baseline/cursor save, and confirmed status. It does not enter recovery mode or automatically pull, retry, or send.
+## 2026-07-21 Phase B-3f5e8b normal mismatch routing fix
+
+- B-3f5e8実機確認後、confirmed metadata由来の通常差異が、統合UIでrecovery専用`checkpoint_check`へ誤配置される問題を確認した。
+- 最上位の経路選択は、validatorを通過した永続metadata v5の`baselineStatus`を正本とする。`confirmed`は通常同期、`recovery_required`だけがrecovery専用経路である。
+- `confirmed`では既存`useDayMemoPullPreview`による明示read-only確認を先行し、保存済みbaselineと一致する通常レコード以外がlocal-only 1件だけの場合に、既存の通常local-only previewへ進む。
+- 通常local-onlyの後続は既存`operationMode = normal`のpreflight・準備・明示送信を再利用し、recovery checkpoint、saved recovery state check、`local_only_recovery`は使用しない。
+- confirmed状態のbaseline確認は、現在差異をReact stateに表示するだけとし、永続metadataを`confirming`や`mismatch`へ書き換えたりbaselineを空にしたりしない。
+- UIは「metadata baselineStatus」と「現在のbaseline比較」を分離し、confirmed中は「同期作業」、recovery_required中だけ「復旧作業」と表示する。
+- 古いrecovery resultはconfirmed経路のstage選択に使用せず、recovery専用saved-state UIもformal `recovery_required`のときだけ表示する。
+- 新しいHookやsafety分類、SQL・RPC・保存形式は追加しない。自動pull、自動送信、自動retryはない。

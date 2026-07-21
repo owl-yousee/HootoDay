@@ -187,20 +187,25 @@ export function useDayMemoSyncBaseline({ dayMemos, isConfigured, isSignedIn, con
       setSafeErrorMessage(safeMessage('pending_operation_present'))
       return
     }
-    const confirming: DayMemoSyncMetadataV3 | DayMemoSyncMetadataV4 | DayMemoSyncMetadataV5 = {
-      ...migration.metadata,
-      baselineStatus: 'confirming',
-      baselineConfirmedAt: null,
+    const preserveConfirmedMetadata = migration.metadata.version === 5
+      && migration.metadata.baselineStatus === 'confirmed'
+      && migration.metadata.baselineConfirmedAt !== null
+      && migration.metadata.pushBlock === null
+      && Object.keys(migration.metadata.localDeleteIntents).length === 0
+    const confirming: DayMemoSyncMetadataV3 | DayMemoSyncMetadataV4 | DayMemoSyncMetadataV5 = preserveConfirmedMetadata
+      ? migration.metadata
+      : { ...migration.metadata, baselineStatus: 'confirming', baselineConfirmedAt: null }
+    const confirmingRaw = preserveConfirmedMetadata ? migration.raw : JSON.stringify(confirming)
+    if (!preserveConfirmedMetadata) {
+      const confirmingSaveResult = replaceDayMemoSyncMetadataV2(window.localStorage, confirming, migration.raw)
+      if (confirmingSaveResult !== 'saved') {
+        setBaselineState('recovery_required')
+        setFailureReason('confirming_save_failed')
+        setSafeErrorMessage(safeMessage('confirming_save_failed'))
+        return
+      }
+      setMetadata(confirming)
     }
-    const confirmingSaveResult = replaceDayMemoSyncMetadataV2(window.localStorage, confirming, migration.raw)
-    if (confirmingSaveResult !== 'saved') {
-      setBaselineState('recovery_required')
-      setFailureReason('confirming_save_failed')
-      setSafeErrorMessage(safeMessage('confirming_save_failed'))
-      return
-    }
-    setMetadata(confirming)
-    const confirmingRaw = JSON.stringify(confirming)
 
     let pullResult
     try {
@@ -258,6 +263,17 @@ export function useDayMemoSyncBaseline({ dayMemos, isConfigured, isSignedIn, con
       differentCount,
       tombstoneCount,
       lastPulledChangeSequence: pullResult.maxChangeSequence,
+    }
+    if (preserveConfirmedMetadata) {
+      const hasDifference = tombstoneCount > 0 || remoteOnlyCount > 0 || localOnlyCount > 0
+        || differentCount > 0 || matchingCount !== dayMemos.length
+      setMetadata(migration.metadata)
+      setSummary({ ...counts, baselineConfirmedAt: migration.metadata.baselineConfirmedAt })
+      setBaselineState(hasDifference ? 'mismatch' : 'confirmed')
+      const resultReason = hasDifference ? 'remote_local_mismatch' : null
+      setFailureReason(resultReason)
+      setSafeErrorMessage(safeMessage(resultReason, hasDifference ? 'mismatch' : 'confirmed'))
+      return
     }
     const now = new Date().toISOString()
     let next: DayMemoSyncMetadataV3 | DayMemoSyncMetadataV4 | DayMemoSyncMetadataV5
