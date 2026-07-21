@@ -2775,3 +2775,9 @@ cleanup後VERIFY結果：
 - 共通copy utilityはClipboard API成功確認、body上の可視性を失わない画面外textareaによるexecCommand成功確認、全文選択可能な手動copy UIの順にfallbackする。成功結果を確認できた場合だけ「コピーしました」と表示する。
 - コピー内容はstage ID、実際の主ボタンlabel、安全状態、対象・分類・差異件数、baseline status/count、cursor、pending・intent、write／永続変更予定、停止理由、表示時刻に限定する。UUID、operation ID、fingerprint、credential、raw storage、本文、payloadは含めない。
 - コピーはボタン押下時のReact表示snapshotだけを使い、full pull、localStorage書き込み、metadata・DayMemo変更、stage進行、remote write、自動retryを行わない。SQL、RPC、RLS、保存形式に変更はない。
+
+## B-3f5eUI2k-1 short share and manual share
+
+- iPhoneからLINEへの共有は、ブラウザがclipboard成功を返しても貼り付け経路まで保証できない。通常用の短縮「共有用にコピー」と、成否に関係なく開ける「共有用テキストを表示」を追加した。
+- 短縮文面は共通のpure builderがstage ID、表示中の主操作、対象・分類・差異数、baseline、cursor、ready、停止理由だけから作る。従来の詳細は「詳細コピー」として維持する。
+- 手動表示はreadonly textarea、長押し選択、全文選択、閉じる操作を備える。本文・payload・UUID・operation ID・credentialは含めず、共有操作は同期状態や永続データを変更しない。

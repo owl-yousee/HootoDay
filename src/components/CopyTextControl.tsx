@@ -5,9 +5,10 @@ interface Props {
   buttonLabel: string
   text: string | (() => string)
   successMessage: string
+  manualButtonLabel?: string
 }
 
-export function CopyTextControl({ buttonLabel, text, successMessage }: Props) {
+export function CopyTextControl({ buttonLabel, text, successMessage, manualButtonLabel }: Props) {
   const [result, setResult] = useState<CopyTextResult | 'idle'>('idle')
   const [snapshot, setSnapshot] = useState('')
   const [copying, setCopying] = useState(false)
@@ -46,17 +47,23 @@ export function CopyTextControl({ buttonLabel, text, successMessage }: Props) {
     setSnapshot('')
     requestAnimationFrame(() => buttonRef.current?.focus({ preventScroll: true }))
   }
+  const showManual = () => {
+    setSnapshot(typeof text === 'function' ? text() : text)
+    setResult('manual_copy_required')
+  }
   const succeeded = result === 'clipboard_api_success' || result === 'exec_command_success'
   const manual = result === 'manual_copy_required' || result === 'failed'
 
   return <div className="sync-copy-control">
     <button ref={buttonRef} type="button" className="health-secondary-button cloud-sync-button"
       aria-label={buttonLabel} disabled={copying} onClick={() => { void copy() }}>{copying ? 'コピーしています…' : buttonLabel}</button>
+    {manualButtonLabel ? <button type="button" className="health-secondary-button cloud-sync-button"
+      onClick={showManual}>{manualButtonLabel}</button> : null}
     <div aria-live="polite" aria-atomic="true">
       {succeeded ? <p className="cloud-day-memo-success">{successMessage}</p> : null}
       {manual ? <div className="sync-copy-manual" onKeyDown={(event) => { if (event.key === 'Escape') close() }}>
-        <p>{result === 'failed' ? '文章を選択できませんでした。下の文章を長押ししてコピーしてください。'
-          : '自動コピーできなかったため、下の文章を長押ししてコピーしてください。'}</p>
+        <p>{result === 'failed' ? '自動コピーできませんでした。下の文章を長押ししてコピーしてください。'
+          : '自動コピーできない場合は、下の文章を長押ししてコピーしてください。'}</p>
         <label>コピーする同期状態
           <textarea ref={textareaRef} readOnly rows={14} value={snapshot}
             onFocus={(event) => { event.currentTarget.select(); event.currentTarget.setSelectionRange(0, event.currentTarget.value.length) }} />

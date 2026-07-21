@@ -6173,6 +6173,19 @@ body,
   margin-top: 10px;
 }
 
+.sync-copy-control > button + button {
+  margin-left: 8px;
+}
+
+.sync-copy-section {
+  margin-top: 14px;
+}
+
+.sync-copy-section h5,
+.iphone-sync-guide-copy h5 {
+  margin: 10px 0 4px;
+}
+
 .sync-copy-manual {
   margin-top: 10px;
   padding: 12px;

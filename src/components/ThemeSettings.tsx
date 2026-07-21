@@ -6,6 +6,7 @@ import { useEffect, useRef, useState, type MouseEvent, type SyntheticEvent } fro
 import { DayMemoBodyMismatchComparison } from './DayMemoBodyMismatchComparison'
 import { DayMemoSyncGuide } from './DayMemoSyncGuide'
 import { CopyTextControl } from './CopyTextControl'
+import { buildSyncShareText } from '../utils/syncShareText'
 import type { SupabaseAuthState, SupabaseConfigurationState } from '../hooks/useSupabaseAuth'
 import type { useDayMemoInitialUpload } from '../hooks/useDayMemoInitialUpload'
 import type { useDayMemoLocalOnlyPreview } from '../hooks/useDayMemoLocalOnlyPreview'
@@ -837,6 +838,19 @@ export function ThemeSettings({
     `最終確認：${dayMemoRecoveryFinalization.result?.checkedAt ? '実施済み' : '未確認'}`,
     `表示時刻：${new Date().toLocaleString('ja-JP')}`,
   ].join('\n')
+  const syncShareText = () => buildSyncShareText({
+    stageId: syncStageId,
+    state: syncStopped ? '安全停止' : recoveryNavigation.stage === 'complete' ? '完了' : dayMemoSyncSafety.state,
+    target: recoveryNavigation.targetDate,
+    classification: recoveryNavigation.classification,
+    differenceCount: visibleDifferenceCount,
+    baselineStatus: syncMetadata?.baselineStatus ?? '不明',
+    cursor: syncMetadata?.lastPulledChangeSequence ?? null,
+    ready: normalSyncReady,
+    primaryAction: navigationCanExecute ? recoveryNavigation.title : null,
+    disabledReason: navigationCanExecute ? null : navigationDisabledReason,
+    stopReason: syncStopped ? syncStopReason : null,
+  })
   const syncStopCopyText = () => [
     'HootoDay同期停止情報', `stageId：${syncStageId}`,
     `対象：${recoveryNavigation.targetDate ?? '同期状態全体'}`,
@@ -1022,8 +1036,14 @@ export function ThemeSettings({
                         {!navigationCanExecute && navigationDisabledReason ? <p className="cloud-sync-note">{navigationDisabledReason}</p> : null}
                       </>}
                       <p className="sync-stage-id">stageId：<code>{syncStageId}</code></p>
-                      <CopyTextControl buttonLabel="同期状態をコピー" text={syncStatusCopyText}
-                        successMessage="同期状態をコピーしました" />
+                      <div className="sync-copy-section"><h5>共有</h5>
+                        <CopyTextControl buttonLabel="共有用にコピー" manualButtonLabel="共有用テキストを表示"
+                          text={syncShareText} successMessage="共有用テキストをコピーしました" />
+                      </div>
+                      <div className="sync-copy-section"><h5>詳細</h5>
+                        <CopyTextControl buttonLabel="詳細コピー" text={syncStatusCopyText}
+                          successMessage="詳細をコピーしました" />
+                      </div>
                       {syncStopped ? <CopyTextControl buttonLabel="停止理由をコピー" text={syncStopCopyText}
                         successMessage="停止理由をコピーしました" /> : null}
                       {dayMemoRecoveryFinalization.safeErrorMessage ? <p className="cloud-pairing-error" role="alert">{dayMemoRecoveryFinalization.safeErrorMessage}</p> : null}

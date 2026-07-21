@@ -1994,3 +1994,10 @@ Candidate checking now catches unexpected failures into a `failed` result and co
 - The shared clipboard utility first uses Clipboard API only in a secure context and accepts success only after the promise resolves. It then uses a focused, selected, off-screen 16px textarea attached to document.body and accepts success only when execCommand returns true. Selection and prior focus are restored.
 - If neither automatic route proves success, the UI shows the complete snapshot in a selectable textarea with explicit select-all and close controls. It never reports success speculatively. The manual surface supports long-press selection, text user-select, focus restoration, and Escape close on keyboard browsers.
 - Blocked and failed states additionally expose a safe stop report. No report includes UUIDs, operation IDs, fingerprints, credentials, raw localStorage, payloads, DayMemo content, stack traces, or Supabase configuration. Copying performs no pull, retry, save, stage transition, RPC, SQL, or persisted-format change.
+
+## B-3f5eUI2k-1 short and manual sharing
+
+- Clipboard success inside Safari does not prove that a downstream LINE paste will work. The primary sharing surface therefore separates a short fixed report, an always-available manual text surface, and the existing detailed diagnostic copy.
+- `buildSyncShareText` is a pure presentation function. It receives only the currently displayed stage ID, state, target, classification, difference count, baseline status, cursor, ready flag, primary action, disabled reason, and safe stop reason. It performs no pull, storage access, mutation, or stage transition.
+- The manual sharing control opens the same click-time short report in a readonly, selectable textarea with select-all and close actions. Automatic copy failure opens the same fallback and never claims success without a proven Clipboard API or execCommand result.
+- Short and detailed reports exclude content, payloads, UUIDs, operation IDs, fingerprints, credentials, user identifiers, and Supabase configuration. Sync, recovery, metadata v5, baseline, cursor, pending, SQL, RPC, and RLS behavior remain unchanged.

@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { CopyTextControl } from './CopyTextControl'
+import { buildSyncShareText } from '../utils/syncShareText'
 import type { DayMemoSyncMetadataV5 } from '../types/dayMemoSync'
 import type { useDayMemoSavedRecoveryStateCheck } from '../hooks/useDayMemoSavedRecoveryStateCheck'
 import type { useDayMemoNormalDifferenceRecoveryCheckpointCheck } from '../hooks/useDayMemoNormalDifferenceRecoveryCheckpointCheck'
@@ -124,7 +125,7 @@ export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, b
           : remoteOnly.stage === 'metadata_saved' ? '次の差異を確認'
             : remoteOnly.stage === 'blocked' || remoteOnly.stage === 'failed' ? '保存状態から再確認' : '対象データだけ確認'
     : localDiscardCurrent ? '保存状態を再確認'
-    : !savedReady ? '保存状態を読み取り専用で確認'
+    : !savedReady ? (saved.result ? '保存状態を再確認' : '保存状態を確認')
     : !activeDate ? '最終同期確認'
       : activeClassification === 'body_mismatch' && !checkpointReady ? '本文比較の準備を確認'
         : remoteBlocked ? '保存状態からやり直す'
@@ -169,6 +170,23 @@ export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, b
       '', '補足', `現在stage：${currentStage}`, `問題：${currentProblem}`, `次の操作：${nextOperation}`,
       `残り：${savedReady ? `${remaining}件` : '未確認'}`].join('\n')
   }
+  const guideState = !savedReady && saved.result ? '安全停止'
+    : bodyRemoteAdoption.stage === 'completed' || remoteOnly.stage === 'metadata_saved' ? '完了'
+      : bodyRemoteAdoption.stage === 'blocked' || remoteOnly.stage === 'blocked' || remoteOnly.stage === 'failed' ? '安全停止' : '確認中'
+  const guideStageId = remoteOnlyCurrent ? `remote_only_${remoteOnly.stage}`
+    : !savedReady ? 'recovery_difference_check' : !activeDate ? 'recovery_final_check' : 'recovery_difference_check'
+  const shareText = () => buildSyncShareText({
+    stageId: guideStageId,
+    state: guideState,
+    target: activeDate || null,
+    classification: activeClassification ?? null,
+    differenceCount: savedReady ? remaining : null,
+    baselineStatus: metadata.baselineStatus,
+    cursor: metadata.lastPulledChangeSequence,
+    ready: saved.result?.normalSyncReady ?? false,
+    primaryAction: nextOperation || null,
+    stopReason: guideState === '安全停止' ? currentProblem : null,
+  })
 
   return (
     <section className="iphone-sync-guide" aria-labelledby="iphone-sync-guide-heading">
@@ -178,6 +196,7 @@ export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, b
       </div>
 
       <p className="cloud-sync-note">現在の工程：{currentStage}</p>
+      <p className="sync-stage-id">stageId：<code>{guideStageId}</code></p>
 
       {!savedReady ? (
         <div className="iphone-sync-guide-step">
@@ -365,7 +384,11 @@ export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, b
         </div>
       )}
       <div className="iphone-sync-guide-copy">
-        <CopyTextControl buttonLabel="同期状態をコピー" text={copyResultText} successMessage="同期状態をコピーしました" />
+        <h5>共有</h5>
+        <CopyTextControl buttonLabel="共有用にコピー" manualButtonLabel="共有用テキストを表示"
+          text={shareText} successMessage="共有用テキストをコピーしました" />
+        <h5>詳細</h5>
+        <CopyTextControl buttonLabel="詳細コピー" text={copyResultText} successMessage="詳細をコピーしました" />
       </div>
     </section>
   )
