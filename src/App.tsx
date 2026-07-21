@@ -253,6 +253,7 @@ function App() {
     getOperationResultSnapshot: dayMemoSavedOperationResultRead.getReadySnapshot,
     consumeOperationResultSnapshot: dayMemoSavedOperationResultRead.consumeReadySnapshot,
     getOperationResultSnapshotToken: dayMemoSavedOperationResultRead.getCurrentSnapshotToken,
+    inspectOperationResultSnapshotAvailability: dayMemoSavedOperationResultRead.inspectSnapshotAvailability,
   })
   const dayMemoBaselineRebase = useDayMemoBaselineRebase({
     dayMemos,

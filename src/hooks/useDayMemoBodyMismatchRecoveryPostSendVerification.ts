@@ -12,13 +12,19 @@ import {
   classifyDayMemoNormalDifference,
   type DayMemoNormalDifferenceClassification,
 } from './useDayMemoNormalDifferenceRecoveryPlan'
-import type { DayMemoSavedOperationResultSnapshot } from './useDayMemoSavedOperationResultRead'
+import {
+  fingerprintDayMemoBaselines,
+  fingerprintDayMemoRecoveryCheckpoint,
+  fingerprintDayMemoRecoveryPending,
+  type DayMemoSavedOperationResultSnapshot,
+} from './useDayMemoSavedOperationResultRead'
 
 export type DayMemoBodyMismatchRecoveryPostSendSafety =
   | 'normal_body_mismatch_recovery_post_send_ready'
   | 'normal_body_mismatch_recovery_post_send_no_operation_result_snapshot'
   | 'normal_body_mismatch_recovery_post_send_snapshot_stale'
   | 'normal_body_mismatch_recovery_post_send_snapshot_consumed'
+  | 'normal_body_mismatch_recovery_post_send_snapshot_token_mismatch'
   | 'normal_body_mismatch_recovery_post_send_configuration_unavailable'
   | 'normal_body_mismatch_recovery_post_send_authentication_unavailable'
   | 'normal_body_mismatch_recovery_post_send_workspace_mismatch'
@@ -27,7 +33,9 @@ export type DayMemoBodyMismatchRecoveryPostSendSafety =
   | 'normal_body_mismatch_recovery_post_send_wrong_operation_mode'
   | 'normal_body_mismatch_recovery_post_send_wrong_pending_status'
   | 'normal_body_mismatch_recovery_post_send_pending_invalid'
-  | 'normal_body_mismatch_recovery_post_send_checkpoint_unavailable'
+  | 'normal_body_mismatch_recovery_post_send_checkpoint_missing'
+  | 'normal_body_mismatch_recovery_post_send_checkpoint_invalid'
+  | 'normal_body_mismatch_recovery_post_send_checkpoint_fingerprint_mismatch'
   | 'normal_body_mismatch_recovery_post_send_baseline_unavailable'
   | 'normal_body_mismatch_recovery_post_send_local_missing'
   | 'normal_body_mismatch_recovery_post_send_local_changed'
@@ -62,6 +70,10 @@ export interface DayMemoBodyMismatchRecoveryPostSendResult {
   operationMode: 'body_mismatch_recovery' | null
   pendingStatus: 'recovery_required' | null
   operationResultSnapshotVerified: boolean
+  operationResultSnapshotState: 'missing' | 'stale' | 'consumed' | 'verified'
+  metadataState: 'unconfirmed' | 'changed' | 'verified'
+  pendingState: 'unconfirmed' | 'changed' | 'verified'
+  checkpointState: 'unconfirmed' | 'missing' | 'invalid' | 'changed' | 'verified'
   localFresh: boolean
   remoteActive: boolean
   revisionMatched: boolean
@@ -137,6 +149,7 @@ interface Input {
   getOperationResultSnapshot: () => DayMemoSavedOperationResultSnapshot | null
   consumeOperationResultSnapshot: (snapshotToken: string) => boolean
   getOperationResultSnapshotToken: () => string | null
+  inspectOperationResultSnapshotAvailability: () => 'missing' | 'consumed' | 'stale' | 'ready'
 }
 
 function same(left: unknown, right: unknown): boolean { return JSON.stringify(left) === JSON.stringify(right) }
@@ -156,23 +169,32 @@ function validPending(value: unknown): value is DayMemoBodyMismatchRecoveryPendi
     && typeof pending.baseRemoteUpdatedAt === 'string' && !Number.isNaN(Date.parse(pending.baseRemoteUpdatedAt))
     && typeof pending.preparedLocalUpdatedAt === 'string' && !Number.isNaN(Date.parse(pending.preparedLocalUpdatedAt))
 }
-function checkpointFingerprint(metadata: DayMemoSyncMetadataV5): string {
-  return JSON.stringify({ baselines: metadata.baselines, cursor: metadata.lastPulledChangeSequence,
-    baselineStatus: metadata.baselineStatus, baselineConfirmedAt: metadata.baselineConfirmedAt })
-}
 function remoteFingerprint(record: RemoteDayMemoRecord): string {
   return JSON.stringify({ entityId: record.entityId, revision: record.revision, changeSequence: record.changeSequence,
     serverUpdatedAt: record.serverUpdatedAt, deletedAt: record.deletedAt, payload: record.payload })
 }
 function nextAction(safety: DayMemoBodyMismatchRecoveryPostSendSafety): string {
-  return safety === 'normal_body_mismatch_recovery_post_send_ready'
-    ? '保存済みoperation結果とcurrent remoteの一致、未解決差異、baseline・cursor候補を確認しました。永続保存は次Phaseで行います。'
-    : '永続状態を変更せず停止しました。B-3f5e4d0aの保存済みoperation結果取得から再確認してください。'
+  if (safety === 'normal_body_mismatch_recovery_post_send_ready') {
+    return '保存済みoperation結果とcurrent remoteの一致、未解決差異、baseline・cursor候補を確認しました。永続保存は次Phaseで行います。'
+  }
+  if (['normal_body_mismatch_recovery_post_send_no_operation_result_snapshot',
+    'normal_body_mismatch_recovery_post_send_snapshot_stale',
+    'normal_body_mismatch_recovery_post_send_snapshot_consumed',
+    'normal_body_mismatch_recovery_post_send_snapshot_token_mismatch'].includes(safety)) {
+    return 'operation結果snapshotが利用できません。永続状態を確認後、B-3f5e4d0aのread-only取得を明示的にやり直してください。'
+  }
+  if (['normal_body_mismatch_recovery_post_send_checkpoint_missing',
+    'normal_body_mismatch_recovery_post_send_checkpoint_invalid',
+    'normal_body_mismatch_recovery_post_send_checkpoint_fingerprint_mismatch'].includes(safety)) {
+    return '永続metadataのrecovery checkpointを一致確認できません。再取得を繰り返さず、checkpoint状態を確認してください。'
+  }
+  return '永続状態を変更せず停止しました。表示された前提状態を安全に確認してください。'
 }
 
 export function useDayMemoBodyMismatchRecoveryPostSendVerification(input: Input) {
   const { dayMemos, isConfigured, isSignedIn, authUserId, connection,
-    getOperationResultSnapshot, consumeOperationResultSnapshot, getOperationResultSnapshotToken } = input
+    getOperationResultSnapshot, consumeOperationResultSnapshot, getOperationResultSnapshotToken,
+    inspectOperationResultSnapshotAvailability } = input
   const [checking, setChecking] = useState(false)
   const [result, setResult] = useState<DayMemoBodyMismatchRecoveryPostSendResult | null>(null)
   const snapshotRef = useRef<DayMemoBodyMismatchRecoveryPostSendSnapshot | null>(null)
@@ -187,6 +209,8 @@ export function useDayMemoBodyMismatchRecoveryPostSendVerification(input: Input)
     values: Partial<DayMemoBodyMismatchRecoveryPostSendResult> = {}) => {
     const next: DayMemoBodyMismatchRecoveryPostSendResult = {
       safety, date: null, operationMode: null, pendingStatus: null, operationResultSnapshotVerified: false,
+      operationResultSnapshotState: 'missing', metadataState: 'unconfirmed', pendingState: 'unconfirmed',
+      checkpointState: 'unconfirmed',
       localFresh: false, remoteActive: false, revisionMatched: false, changeSequenceMatched: false,
       remoteUpdatedAtMatched: false, payloadMatched: false, targetResolved: false,
       fullPullMaxSequence: null, currentCursor: null, candidateCursor: null, currentBaselineCount: 0,
@@ -204,7 +228,15 @@ export function useDayMemoBodyMismatchRecoveryPostSendVerification(input: Input)
   const check = useCallback(async () => {
     if (inFlightRef.current || checking) { finish('normal_body_mismatch_recovery_post_send_pull_already_running'); return }
     const operationSnapshot = getOperationResultSnapshot()
-    if (!operationSnapshot) { finish('normal_body_mismatch_recovery_post_send_no_operation_result_snapshot'); return }
+    if (!operationSnapshot) {
+      const availability = inspectOperationResultSnapshotAvailability()
+      if (availability === 'consumed') {
+        finish('normal_body_mismatch_recovery_post_send_snapshot_consumed', { operationResultSnapshotState: 'consumed' })
+      } else if (availability === 'stale') {
+        finish('normal_body_mismatch_recovery_post_send_snapshot_stale', { operationResultSnapshotState: 'stale' })
+      } else finish('normal_body_mismatch_recovery_post_send_no_operation_result_snapshot')
+      return
+    }
     if (operationSnapshot.operationMode !== 'body_mismatch_recovery'
       || operationSnapshot.resultStatus !== 'applied' || operationSnapshot.conflict
       || operationSnapshot.postSendState !== 'active' || operationSnapshot.resultDeletedAt !== null
@@ -215,7 +247,7 @@ export function useDayMemoBodyMismatchRecoveryPostSendVerification(input: Input)
       || Number.isNaN(Date.parse(operationSnapshot.operationCreatedAt))
       || !operationSnapshot.requestFingerprint || !operationSnapshot.resultPayloadFingerprint
       || !operationSnapshot.snapshotToken || operationSnapshot.runId < 1) {
-      finish('normal_body_mismatch_recovery_post_send_snapshot_stale'); return
+      finish('normal_body_mismatch_recovery_post_send_snapshot_stale', { operationResultSnapshotState: 'stale' }); return
     }
     if (!isConfigured || !supabaseClient) {
       finish('normal_body_mismatch_recovery_post_send_configuration_unavailable'); return
@@ -230,35 +262,42 @@ export function useDayMemoBodyMismatchRecoveryPostSendVerification(input: Input)
     const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
     const stored = readDayMemoStorageSnapshot(window.localStorage)
     if (loaded.status !== 'ready' || !isDayMemoSyncMetadataV5(loaded.metadata)) {
-      finish('normal_body_mismatch_recovery_post_send_metadata_invalid'); return
+      finish('normal_body_mismatch_recovery_post_send_metadata_invalid', { metadataState: 'changed' }); return
     }
     const metadata = loaded.metadata
     const pending = metadata.pendingOperation
-    if (!pending) { finish('normal_body_mismatch_recovery_post_send_pending_missing'); return }
+    if (!pending) { finish('normal_body_mismatch_recovery_post_send_pending_missing', { pendingState: 'changed' }); return }
     if (pending.kind !== 'upsert' || pending.operationMode !== 'body_mismatch_recovery') {
-      finish('normal_body_mismatch_recovery_post_send_wrong_operation_mode'); return
+      finish('normal_body_mismatch_recovery_post_send_wrong_operation_mode', { pendingState: 'changed' }); return
     }
     if (pending.status !== 'recovery_required') {
-      finish('normal_body_mismatch_recovery_post_send_wrong_pending_status'); return
+      finish('normal_body_mismatch_recovery_post_send_wrong_pending_status', { pendingState: 'changed' }); return
     }
-    if (!validPending(pending) || JSON.stringify(pending) !== operationSnapshot.pendingFingerprint
+    if (!validPending(pending) || fingerprintDayMemoRecoveryPending(pending) !== operationSnapshot.pendingFingerprint
       || pending.operationId !== operationSnapshot.operationId || pending.date !== operationSnapshot.date) {
-      finish('normal_body_mismatch_recovery_post_send_pending_invalid'); return
+      finish('normal_body_mismatch_recovery_post_send_pending_invalid', { pendingState: 'changed' }); return
     }
     const common = { date: pending.date, operationMode: 'body_mismatch_recovery' as const,
       pendingStatus: 'recovery_required' as const, currentCursor: metadata.lastPulledChangeSequence,
       currentBaselineCount: Object.keys(metadata.baselines).length }
     if (loaded.raw !== operationSnapshot.metadataRaw || metadata.workspaceId !== connection.workspaceId) {
-      finish('normal_body_mismatch_recovery_post_send_snapshot_stale', common); return
+      finish('normal_body_mismatch_recovery_post_send_snapshot_stale', { ...common,
+        operationResultSnapshotState: 'stale', metadataState: 'changed', pendingState: 'verified' }); return
     }
     if (metadata.pushBlock) { finish('normal_body_mismatch_recovery_post_send_push_blocked', common); return }
     if (Object.keys(metadata.localDeleteIntents).length) { finish('normal_body_mismatch_recovery_post_send_intent_exists', common); return }
     if (metadata.baselineStatus !== 'recovery_required' || metadata.baselineConfirmedAt !== null
-      || checkpointFingerprint(metadata) !== operationSnapshot.checkpointFingerprint) {
-      finish('normal_body_mismatch_recovery_post_send_checkpoint_unavailable', common); return
+      || !Number.isSafeInteger(metadata.lastPulledChangeSequence) || metadata.lastPulledChangeSequence < 0) {
+      finish('normal_body_mismatch_recovery_post_send_checkpoint_invalid', { ...common,
+        operationResultSnapshotState: 'verified', metadataState: 'verified', pendingState: 'verified', checkpointState: 'invalid' }); return
     }
     if (!Object.keys(metadata.baselines).length) {
-      finish('normal_body_mismatch_recovery_post_send_baseline_unavailable', common); return
+      finish('normal_body_mismatch_recovery_post_send_checkpoint_missing', { ...common,
+        operationResultSnapshotState: 'verified', metadataState: 'verified', pendingState: 'verified', checkpointState: 'missing' }); return
+    }
+    if (fingerprintDayMemoRecoveryCheckpoint(metadata) !== operationSnapshot.checkpointFingerprint) {
+      finish('normal_body_mismatch_recovery_post_send_checkpoint_fingerprint_mismatch', { ...common,
+        operationResultSnapshotState: 'verified', metadataState: 'verified', pendingState: 'verified', checkpointState: 'changed' }); return
     }
     if (stored.status !== 'ready' || stored.serialized !== operationSnapshot.localStorageSerialized
       || !same(stored.memos, dayMemos) || !stored.memos.every(isStoredDayMemo)) {
@@ -281,7 +320,12 @@ export function useDayMemoBodyMismatchRecoveryPostSendVerification(input: Input)
     ].join('\n'))
     if (!confirmed) { finish('normal_body_mismatch_recovery_post_send_cancelled', common); return }
     if (!consumeOperationResultSnapshot(operationSnapshot.snapshotToken)) {
-      finish('normal_body_mismatch_recovery_post_send_snapshot_consumed', common); return
+      const currentToken = getOperationResultSnapshotToken()
+      finish(currentToken && currentToken !== operationSnapshot.snapshotToken
+        ? 'normal_body_mismatch_recovery_post_send_snapshot_token_mismatch'
+        : 'normal_body_mismatch_recovery_post_send_snapshot_consumed', { ...common,
+        operationResultSnapshotState: currentToken ? 'stale' : 'consumed', metadataState: 'verified',
+        pendingState: 'verified', checkpointState: 'verified' }); return
     }
     const runId = ++runIdRef.current
     inFlightRef.current = true; setChecking(true); setResult(null); snapshotRef.current = null
@@ -309,16 +353,17 @@ export function useDayMemoBodyMismatchRecoveryPostSendVerification(input: Input)
         || !isDayMemoSyncMetadataV5(afterLoaded.metadata) || afterStored.status !== 'ready') {
         finish('normal_body_mismatch_recovery_post_send_state_changed', { ...common, fullPullCount: 1 }); return
       }
-      if (JSON.stringify(afterLoaded.metadata.pendingOperation) !== JSON.stringify(pending)) {
+      if (!validPending(afterLoaded.metadata.pendingOperation)
+        || fingerprintDayMemoRecoveryPending(afterLoaded.metadata.pendingOperation) !== fingerprintDayMemoRecoveryPending(pending)) {
         finish('normal_body_mismatch_recovery_post_send_pending_changed_during_pull', { ...common, fullPullCount: 1 }); return
       }
-      if (JSON.stringify(afterLoaded.metadata.baselines) !== JSON.stringify(metadata.baselines)) {
+      if (fingerprintDayMemoBaselines(afterLoaded.metadata) !== fingerprintDayMemoBaselines(metadata)) {
         finish('normal_body_mismatch_recovery_post_send_baseline_changed_during_pull', { ...common, fullPullCount: 1 }); return
       }
       if (afterLoaded.metadata.lastPulledChangeSequence !== metadata.lastPulledChangeSequence) {
         finish('normal_body_mismatch_recovery_post_send_cursor_changed_during_pull', { ...common, fullPullCount: 1 }); return
       }
-      if (checkpointFingerprint(afterLoaded.metadata) !== checkpointFingerprint(metadata)) {
+      if (fingerprintDayMemoRecoveryCheckpoint(afterLoaded.metadata) !== fingerprintDayMemoRecoveryCheckpoint(metadata)) {
         finish('normal_body_mismatch_recovery_post_send_checkpoint_changed_during_pull', { ...common, fullPullCount: 1 }); return
       }
       if (afterLoaded.raw !== loaded.raw) {
@@ -383,6 +428,8 @@ export function useDayMemoBodyMismatchRecoveryPostSendVerification(input: Input)
       }
       const checkedAt = new Date().toISOString()
       const values = { ...common, operationResultSnapshotVerified: true, localFresh: true, remoteActive: true,
+        operationResultSnapshotState: 'verified' as const, metadataState: 'verified' as const,
+        pendingState: 'verified' as const, checkpointState: 'verified' as const,
         revisionMatched: true, changeSequenceMatched: true, remoteUpdatedAtMatched: true, payloadMatched: true,
         targetResolved: true, fullPullMaxSequence: pulled.maxChangeSequence, candidateCursor: pulled.maxChangeSequence,
         candidateBaselineCount: Object.keys(baselines).length,
@@ -395,8 +442,8 @@ export function useDayMemoBodyMismatchRecoveryPostSendVerification(input: Input)
       snapshotRef.current = { date: pending.date, operationMode: 'body_mismatch_recovery',
         operationId: pending.operationId, pendingFingerprint: JSON.stringify(pending), pendingStatus: 'recovery_required',
         metadataRaw: loaded.raw, workspaceId: connection.workspaceId, authUserId,
-        sourceCheckpointFingerprint: checkpointFingerprint(metadata),
-        sourceBaselineFingerprint: JSON.stringify(metadata.baselines), sourceBaselineCount: Object.keys(metadata.baselines).length,
+        sourceCheckpointFingerprint: fingerprintDayMemoRecoveryCheckpoint(metadata),
+        sourceBaselineFingerprint: fingerprintDayMemoBaselines(metadata), sourceBaselineCount: Object.keys(metadata.baselines).length,
         sourceCursor: metadata.lastPulledChangeSequence, localStorageSerialized: stored.serialized,
         localFingerprint, operationResultSnapshotToken: operationSnapshot.snapshotToken,
         operationResultRequestFingerprint: operationSnapshot.requestFingerprint,
@@ -408,7 +455,7 @@ export function useDayMemoBodyMismatchRecoveryPostSendVerification(input: Input)
         currentRemoteChangeSequence: remote.changeSequence, currentRemoteUpdatedAt: remote.serverUpdatedAt,
         fullPullFingerprint: JSON.stringify(pulled.records), fullPullMaxSequence: pulled.maxChangeSequence,
         unresolvedClassifications, candidateMetadata,
-        candidateBaselineFingerprint: JSON.stringify(baselines), candidateCursor: pulled.maxChangeSequence,
+        candidateBaselineFingerprint: fingerprintDayMemoBaselines(candidateMetadata), candidateCursor: pulled.maxChangeSequence,
         candidateBaselineStatus: 'recovery_required', candidateBaselineConfirmedAt: null,
         candidateNormalSyncReady: false, pendingLifecycleCandidate: 'clear_after_atomic_save',
         checkedAt: ready.checkedAt, runId, snapshotToken }
@@ -419,7 +466,8 @@ export function useDayMemoBodyMismatchRecoveryPostSendVerification(input: Input)
       inFlightRef.current = false
     }
   }, [authUserId, checking, connection, consumeOperationResultSnapshot, dayMemos, finish,
-    getOperationResultSnapshot, isConfigured, isSignedIn])
+    getOperationResultSnapshot, getOperationResultSnapshotToken, inspectOperationResultSnapshotAvailability,
+    isConfigured, isSignedIn])
 
   const discard = useCallback(() => {
     runIdRef.current += 1; snapshotRef.current = null; setResult(null); setChecking(false)
@@ -435,8 +483,9 @@ export function useDayMemoBodyMismatchRecoveryPostSendVerification(input: Input)
       || loaded.status !== 'ready' || !isDayMemoSyncMetadataV5(loaded.metadata)
       || loaded.raw !== current.metadataRaw || stored.status !== 'ready'
       || stored.serialized !== current.localStorageSerialized || !same(latest.dayMemos, stored.memos)
-      || JSON.stringify(loaded.metadata.pendingOperation) !== current.pendingFingerprint
-      || checkpointFingerprint(loaded.metadata) !== current.sourceCheckpointFingerprint
+      || !validPending(loaded.metadata.pendingOperation)
+      || fingerprintDayMemoRecoveryPending(loaded.metadata.pendingOperation) !== current.pendingFingerprint
+      || fingerprintDayMemoRecoveryCheckpoint(loaded.metadata) !== current.sourceCheckpointFingerprint
       || loaded.metadata.pushBlock !== null || Object.keys(loaded.metadata.localDeleteIntents).length > 0) return null
     return { ...current }
   }, [getOperationResultSnapshotToken])

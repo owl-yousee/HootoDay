@@ -1395,7 +1395,10 @@ export function ThemeSettings({
                             <li>対象日：{dayMemoBodyMismatchRecoveryPostSendVerification.result.date ?? '確認不能'}</li>
                             <li>operation mode：{dayMemoBodyMismatchRecoveryPostSendVerification.result.operationMode ?? '確認不能'}</li>
                             <li>pending status：{dayMemoBodyMismatchRecoveryPostSendVerification.result.pendingStatus ?? '確認不能'}</li>
-                            <li>operation結果snapshot：{dayMemoBodyMismatchRecoveryPostSendVerification.result.operationResultSnapshotVerified ? '確認済み' : 'なし／無効'}</li>
+                            <li>operation結果snapshot：{dayMemoBodyMismatchRecoveryPostSendVerification.result.operationResultSnapshotState}</li>
+                            <li>metadata：{dayMemoBodyMismatchRecoveryPostSendVerification.result.metadataState}</li>
+                            <li>pending：{dayMemoBodyMismatchRecoveryPostSendVerification.result.pendingState}</li>
+                            <li>checkpoint：{dayMemoBodyMismatchRecoveryPostSendVerification.result.checkpointState}</li>
                             <li>local鮮度：{dayMemoBodyMismatchRecoveryPostSendVerification.result.localFresh ? '確認済み' : '未確認／変化あり'}</li>
                             <li>remote：{dayMemoBodyMismatchRecoveryPostSendVerification.result.remoteActive ? 'active' : '未確認／非active'}</li>
                             <li>revision：{dayMemoBodyMismatchRecoveryPostSendVerification.result.revisionMatched ? '一致' : '未確認／不一致'}</li>

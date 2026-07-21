@@ -129,9 +129,21 @@ function isRecoveryRequiredPending(value: unknown): value is DayMemoBodyMismatch
     && typeof pending.preparedLocalUpdatedAt === 'string' && !Number.isNaN(Date.parse(pending.preparedLocalUpdatedAt))
 }
 
-function checkpointFingerprint(metadata: DayMemoSyncMetadataV5): string {
+export function fingerprintDayMemoBaselines(metadata: DayMemoSyncMetadataV5): string {
+  return JSON.stringify(Object.fromEntries(Object.entries(metadata.baselines).sort(([left], [right]) => left.localeCompare(right))))
+}
+
+export function fingerprintDayMemoRecoveryPending(pending: DayMemoBodyMismatchRecoveryPendingOperationV5): string {
+  return JSON.stringify({ kind: pending.kind, operationMode: pending.operationMode, date: pending.date,
+    operationId: pending.operationId, baseRevision: pending.baseRevision,
+    baseChangeSequence: pending.baseChangeSequence, baseRemoteUpdatedAt: pending.baseRemoteUpdatedAt,
+    baseRemoteState: pending.baseRemoteState, preparedLocalUpdatedAt: pending.preparedLocalUpdatedAt,
+    preparedAt: pending.preparedAt, status: pending.status })
+}
+
+export function fingerprintDayMemoRecoveryCheckpoint(metadata: DayMemoSyncMetadataV5): string {
   return JSON.stringify({ version: metadata.version, workspaceId: metadata.workspaceId,
-    baselines: metadata.baselines, cursor: metadata.lastPulledChangeSequence,
+    baselines: fingerprintDayMemoBaselines(metadata), cursor: metadata.lastPulledChangeSequence,
     baselineStatus: metadata.baselineStatus, baselineConfirmedAt: metadata.baselineConfirmedAt })
 }
 
@@ -255,8 +267,8 @@ export function useDayMemoSavedOperationResultRead({ dayMemos, isConfigured, isS
         finish('normal_body_mismatch_recovery_operation_result_local_changed', base); return
       }
       const localFingerprint = canonicalDayMemoPayloadFingerprint(memo)
-      const persistentCheckpointFingerprint = checkpointFingerprint(metadata)
-      const pendingFingerprint = JSON.stringify(pending)
+      const persistentCheckpointFingerprint = fingerprintDayMemoRecoveryCheckpoint(metadata)
+      const pendingFingerprint = fingerprintDayMemoRecoveryPending(pending)
       const accepted = window.confirm([
         `対象日：${pending.date}`,
         '既存operation IDを使用して、保存済みoperation履歴だけを読み取ります。',
@@ -293,8 +305,9 @@ export function useDayMemoSavedOperationResultRead({ dayMemos, isConfigured, isS
         || afterLoaded.status !== 'ready' || !isDayMemoSyncMetadataV5(afterLoaded.metadata)
         || afterLoaded.raw !== loaded.raw || afterStored.status !== 'ready'
         || afterStored.serialized !== stored.serialized || !same(latest.dayMemos, afterStored.memos)
-        || JSON.stringify(afterLoaded.metadata.pendingOperation) !== pendingFingerprint
-        || checkpointFingerprint(afterLoaded.metadata) !== persistentCheckpointFingerprint) {
+        || !isRecoveryRequiredPending(afterLoaded.metadata.pendingOperation)
+        || fingerprintDayMemoRecoveryPending(afterLoaded.metadata.pendingOperation) !== pendingFingerprint
+        || fingerprintDayMemoRecoveryCheckpoint(afterLoaded.metadata) !== persistentCheckpointFingerprint) {
         finish('normal_body_mismatch_recovery_operation_result_state_changed', { ...base, rpcCalled: true }); return
       }
       const afterTarget = afterStored.memos.filter((item) => item.date === pending.date)
@@ -400,8 +413,9 @@ export function useDayMemoSavedOperationResultRead({ dayMemos, isConfigured, isS
     if (loaded.status !== 'ready' || !isDayMemoSyncMetadataV5(loaded.metadata)
       || loaded.raw !== current.metadataRaw || stored.status !== 'ready'
       || stored.serialized !== current.localStorageSerialized || !same(latest.dayMemos, stored.memos)
-      || JSON.stringify(loaded.metadata.pendingOperation) !== current.pendingFingerprint
-      || checkpointFingerprint(loaded.metadata) !== current.checkpointFingerprint
+      || !isRecoveryRequiredPending(loaded.metadata.pendingOperation)
+      || fingerprintDayMemoRecoveryPending(loaded.metadata.pendingOperation) !== current.pendingFingerprint
+      || fingerprintDayMemoRecoveryCheckpoint(loaded.metadata) !== current.checkpointFingerprint
       || loaded.metadata.pushBlock !== null || loaded.metadata.localDeleteIntents[current.date]) return null
     const targets = stored.memos.filter((memo) => memo.date === current.date)
     if (targets.length !== 1 || !isStoredDayMemo(targets[0])
@@ -416,6 +430,13 @@ export function useDayMemoSavedOperationResultRead({ dayMemos, isConfigured, isS
   }, [])
 
   const getCurrentSnapshotToken = useCallback(() => snapshotRef.current?.snapshotToken ?? null, [])
+  const inspectSnapshotAvailability = useCallback((): 'missing' | 'consumed' | 'stale' | 'ready' => {
+    const current = snapshotRef.current
+    if (!current) return 'missing'
+    if (consumedSnapshotTokenRef.current === current.snapshotToken) return 'consumed'
+    return getReadySnapshot() ? 'ready' : 'stale'
+  }, [getReadySnapshot])
 
-  return { eligible, reading, result, read, discard, getReadySnapshot, consumeReadySnapshot, getCurrentSnapshotToken }
+  return { eligible, reading, result, read, discard, getReadySnapshot, consumeReadySnapshot,
+    getCurrentSnapshotToken, inspectSnapshotAvailability }
 }
