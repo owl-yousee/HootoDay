@@ -30,6 +30,7 @@ import type { useDayMemoNormalBodyMismatchLocalPreparation } from '../hooks/useD
 import type { useDayMemoBodyMismatchRecoveryPreflight } from '../hooks/useDayMemoBodyMismatchRecoveryPreflight'
 import type { useDayMemoBodyMismatchRecoverySend } from '../hooks/useDayMemoBodyMismatchRecoverySend'
 import type { useDayMemoSavedOperationResultRead } from '../hooks/useDayMemoSavedOperationResultRead'
+import type { useDayMemoBodyMismatchRecoveryPostSendVerification } from '../hooks/useDayMemoBodyMismatchRecoveryPostSendVerification'
 import type { useDayMemoMetadataV4Migration } from '../hooks/useDayMemoMetadataV4Migration'
 import type { useDayMemoMetadataV5Migration } from '../hooks/useDayMemoMetadataV5Migration'
 import type { useDayMemoSyncMetadataMigration } from '../hooks/useDayMemoSyncMetadataMigration'
@@ -83,6 +84,7 @@ interface ThemeSettingsProps {
   dayMemoBodyMismatchRecoveryPreflight: ReturnType<typeof useDayMemoBodyMismatchRecoveryPreflight>
   dayMemoBodyMismatchRecoverySend: ReturnType<typeof useDayMemoBodyMismatchRecoverySend>
   dayMemoSavedOperationResultRead: ReturnType<typeof useDayMemoSavedOperationResultRead>
+  dayMemoBodyMismatchRecoveryPostSendVerification: ReturnType<typeof useDayMemoBodyMismatchRecoveryPostSendVerification>
   dayMemoSyncBaseline: ReturnType<typeof useDayMemoSyncBaseline>
   dayMemoBaselineRebase: ReturnType<typeof useDayMemoBaselineRebase>
   dayMemoUpdatePreview: ReturnType<typeof useDayMemoUpdatePreview>
@@ -275,6 +277,7 @@ export function ThemeSettings({
   dayMemoBodyMismatchRecoveryPreflight,
   dayMemoBodyMismatchRecoverySend,
   dayMemoSavedOperationResultRead,
+  dayMemoBodyMismatchRecoveryPostSendVerification,
   dayMemoSyncBaseline,
   dayMemoBaselineRebase,
   dayMemoUpdatePreview,
@@ -1367,6 +1370,61 @@ export function ThemeSettings({
                           <button type="button" className="health-secondary-button cloud-sync-button"
                             disabled={dayMemoSavedOperationResultRead.reading}
                             onClick={dayMemoSavedOperationResultRead.discard}>取得結果を破棄</button>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {dayMemoBodyMismatchRecoveryPostSendVerification.eligible
+                    || dayMemoBodyMismatchRecoveryPostSendVerification.result ? (
+                    <div className="cloud-day-memo-baseline-panel" role="region"
+                      aria-labelledby="day-memo-recovery-post-send-heading">
+                      <h4 id="day-memo-recovery-post-send-heading">recovery送信後のremote・差異を再確認</h4>
+                      <p>取得済みoperation結果とcurrent remoteを完全full pullで照合し、全未解決差異とbaseline・cursor候補を再構築します。この段階ではmetadata、pending、baseline、cursorを保存せず、自動再試行もしません。</p>
+                      {dayMemoBodyMismatchRecoveryPostSendVerification.eligible ? (
+                        <button type="button" className="health-secondary-button cloud-sync-button"
+                          disabled={dayMemoBodyMismatchRecoveryPostSendVerification.checking}
+                          onClick={() => { void dayMemoBodyMismatchRecoveryPostSendVerification.check() }}>
+                          {dayMemoBodyMismatchRecoveryPostSendVerification.checking
+                            ? '送信後状態を確認中…' : '送信後のremoteと差異を再確認'}
+                        </button>
+                      ) : null}
+                      {dayMemoBodyMismatchRecoveryPostSendVerification.result ? (
+                        <div role="status">
+                          <p><strong>safety：{dayMemoBodyMismatchRecoveryPostSendVerification.result.safety}</strong></p>
+                          <ul className="cloud-day-memo-preview-summary">
+                            <li>対象日：{dayMemoBodyMismatchRecoveryPostSendVerification.result.date ?? '確認不能'}</li>
+                            <li>operation mode：{dayMemoBodyMismatchRecoveryPostSendVerification.result.operationMode ?? '確認不能'}</li>
+                            <li>pending status：{dayMemoBodyMismatchRecoveryPostSendVerification.result.pendingStatus ?? '確認不能'}</li>
+                            <li>operation結果snapshot：{dayMemoBodyMismatchRecoveryPostSendVerification.result.operationResultSnapshotVerified ? '確認済み' : 'なし／無効'}</li>
+                            <li>local鮮度：{dayMemoBodyMismatchRecoveryPostSendVerification.result.localFresh ? '確認済み' : '未確認／変化あり'}</li>
+                            <li>remote：{dayMemoBodyMismatchRecoveryPostSendVerification.result.remoteActive ? 'active' : '未確認／非active'}</li>
+                            <li>revision：{dayMemoBodyMismatchRecoveryPostSendVerification.result.revisionMatched ? '一致' : '未確認／不一致'}</li>
+                            <li>change sequence：{dayMemoBodyMismatchRecoveryPostSendVerification.result.changeSequenceMatched ? '一致' : '未確認／不一致'}</li>
+                            <li>remote updatedAt：{dayMemoBodyMismatchRecoveryPostSendVerification.result.remoteUpdatedAtMatched ? '一致' : '未確認／不一致'}</li>
+                            <li>payload：{dayMemoBodyMismatchRecoveryPostSendVerification.result.payloadMatched ? '一致' : '未確認／不一致'}</li>
+                            <li>対象差異：{dayMemoBodyMismatchRecoveryPostSendVerification.result.targetResolved ? '解消済み' : '未解決／未確認'}</li>
+                            <li>full pull最大sequence：{dayMemoBodyMismatchRecoveryPostSendVerification.result.fullPullMaxSequence ?? '未確認'}</li>
+                            <li>現在cursor：{dayMemoBodyMismatchRecoveryPostSendVerification.result.currentCursor ?? '未確認'}</li>
+                            <li>cursor候補：{dayMemoBodyMismatchRecoveryPostSendVerification.result.candidateCursor ?? 'なし'}</li>
+                            <li>現在baseline件数：{dayMemoBodyMismatchRecoveryPostSendVerification.result.currentBaselineCount}</li>
+                            <li>baseline候補件数：{dayMemoBodyMismatchRecoveryPostSendVerification.result.candidateBaselineCount}</li>
+                            <li>未解決差異：{dayMemoBodyMismatchRecoveryPostSendVerification.result.unresolvedCount}件</li>
+                            {Object.entries(dayMemoBodyMismatchRecoveryPostSendVerification.result.unresolvedClassifications)
+                              .map(([date, classification]) => <li key={date}>{date}：{classification}</li>)}
+                            <li>baselineStatus候補：{dayMemoBodyMismatchRecoveryPostSendVerification.result.candidateBaselineStatus ?? 'なし'}</li>
+                            <li>baselineConfirmedAt候補：{dayMemoBodyMismatchRecoveryPostSendVerification.result.candidateBaselineStatus
+                              ? 'null' : 'なし'}</li>
+                            <li>通常同期ready候補：いいえ</li>
+                            <li>verification snapshot：{dayMemoBodyMismatchRecoveryPostSendVerification.result.snapshotCreated ? '作成済み' : 'なし'}</li>
+                            <li>永続変更：なし</li><li>pending変更：なし</li><li>RPC送信：なし</li>
+                            <li>full pull：{dayMemoBodyMismatchRecoveryPostSendVerification.result.fullPullCount === 1 ? 'read-only 1回' : 'なし'}</li>
+                            <li>自動retry：なし</li>
+                            <li>確認日時：{new Date(dayMemoBodyMismatchRecoveryPostSendVerification.result.checkedAt).toLocaleString('ja-JP')}</li>
+                          </ul>
+                          <p>{dayMemoBodyMismatchRecoveryPostSendVerification.result.nextAction}</p>
+                          <button type="button" className="health-secondary-button cloud-sync-button"
+                            disabled={dayMemoBodyMismatchRecoveryPostSendVerification.checking}
+                            onClick={dayMemoBodyMismatchRecoveryPostSendVerification.discard}>確認結果を破棄</button>
                         </div>
                       ) : null}
                     </div>

@@ -170,6 +170,7 @@ export function useDayMemoSavedOperationResultRead({ dayMemos, isConfigured, isS
   const [reading, setReading] = useState(false)
   const [result, setResult] = useState<DayMemoSavedOperationResultReadResult | null>(null)
   const snapshotRef = useRef<DayMemoSavedOperationResultSnapshot | null>(null)
+  const consumedSnapshotTokenRef = useRef<string | null>(null)
   const inFlightRef = useRef(false)
   const runIdRef = useRef(0)
   const latestRef = useRef({ dayMemos, isConfigured, isSignedIn, authUserId, connection })
@@ -188,7 +189,7 @@ export function useDayMemoSavedOperationResultRead({ dayMemos, isConfigured, isS
       nextAction: nextAction(safety), ...values,
     }
     setResult(next)
-    if (!next.snapshotCreated) snapshotRef.current = null
+    if (!next.snapshotCreated) { snapshotRef.current = null; consumedSnapshotTokenRef.current = null }
     return next
   }, [])
 
@@ -196,7 +197,7 @@ export function useDayMemoSavedOperationResultRead({ dayMemos, isConfigured, isS
     if (inFlightRef.current || reading) return
     const runId = ++runIdRef.current
     inFlightRef.current = true
-    setReading(true); setResult(null); snapshotRef.current = null
+    setReading(true); setResult(null); snapshotRef.current = null; consumedSnapshotTokenRef.current = null
     try {
       if (!isConfigured || !supabaseClient) {
         finish('normal_body_mismatch_recovery_operation_result_configuration_unavailable'); return
@@ -382,6 +383,7 @@ export function useDayMemoSavedOperationResultRead({ dayMemos, isConfigured, isS
   const discard = useCallback(() => {
     runIdRef.current += 1
     snapshotRef.current = null
+    consumedSnapshotTokenRef.current = null
     setResult(null)
     setReading(false)
   }, [])
@@ -389,7 +391,8 @@ export function useDayMemoSavedOperationResultRead({ dayMemos, isConfigured, isS
   const getReadySnapshot = useCallback(() => {
     const current = snapshotRef.current
     const latest = latestRef.current
-    if (!current || !latest.isConfigured || !latest.isSignedIn || latest.authUserId !== current.authUserId
+    if (!current || consumedSnapshotTokenRef.current === current.snapshotToken
+      || !latest.isConfigured || !latest.isSignedIn || latest.authUserId !== current.authUserId
       || !connectionIsEligible(latest.connection)
       || latest.connection.workspaceId !== current.workspaceId) return null
     const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
@@ -406,5 +409,13 @@ export function useDayMemoSavedOperationResultRead({ dayMemos, isConfigured, isS
     return { ...current }
   }, [])
 
-  return { eligible, reading, result, read, discard, getReadySnapshot }
+  const consumeReadySnapshot = useCallback((snapshotToken: string) => {
+    if (snapshotRef.current?.snapshotToken !== snapshotToken || consumedSnapshotTokenRef.current === snapshotToken) return false
+    consumedSnapshotTokenRef.current = snapshotToken
+    return true
+  }, [])
+
+  const getCurrentSnapshotToken = useCallback(() => snapshotRef.current?.snapshotToken ?? null, [])
+
+  return { eligible, reading, result, read, discard, getReadySnapshot, consumeReadySnapshot, getCurrentSnapshotToken }
 }
