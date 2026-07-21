@@ -44,6 +44,7 @@ import { useDayMemoNormalBodyMismatchCandidate } from './hooks/useDayMemoNormalB
 import { useDayMemoNormalBodyMismatchLocalPreparation } from './hooks/useDayMemoNormalBodyMismatchLocalPreparation'
 import { useDayMemoBodyMismatchRecoveryPreflight } from './hooks/useDayMemoBodyMismatchRecoveryPreflight'
 import { useDayMemoBodyMismatchRecoverySend } from './hooks/useDayMemoBodyMismatchRecoverySend'
+import { useDayMemoSavedOperationResultRead } from './hooks/useDayMemoSavedOperationResultRead'
 import { useDayMemoMetadataV4Migration } from './hooks/useDayMemoMetadataV4Migration'
 import { useDayMemoMetadataV5Migration } from './hooks/useDayMemoMetadataV5Migration'
 import { useDayMemoSyncMetadataMigration } from './hooks/useDayMemoSyncMetadataMigration'
@@ -234,6 +235,13 @@ function App() {
     getReadySnapshot: dayMemoBodyMismatchRecoveryPreflight.getReadySnapshot,
     consumeReadySnapshot: dayMemoBodyMismatchRecoveryPreflight.consumeReadySnapshot,
     adoptVerifiedMetadata: dayMemoSyncBaseline.adoptVerifiedMetadata,
+  })
+  const dayMemoSavedOperationResultRead = useDayMemoSavedOperationResultRead({
+    dayMemos,
+    isConfigured: supabaseAuth.isConfigured,
+    isSignedIn: supabaseAuth.isSignedIn,
+    authUserId: supabaseAuth.authUserId,
+    connection: supabaseWorkspace.connection,
   })
   const dayMemoBaselineRebase = useDayMemoBaselineRebase({
     dayMemos,
@@ -698,6 +706,7 @@ function App() {
           dayMemoNormalBodyMismatchLocalPreparation={dayMemoNormalBodyMismatchLocalPreparation}
           dayMemoBodyMismatchRecoveryPreflight={dayMemoBodyMismatchRecoveryPreflight}
           dayMemoBodyMismatchRecoverySend={dayMemoBodyMismatchRecoverySend}
+          dayMemoSavedOperationResultRead={dayMemoSavedOperationResultRead}
           dayMemoSyncBaseline={dayMemoSyncBaseline}
           dayMemoBaselineRebase={dayMemoBaselineRebase}
           dayMemoUpdatePreview={dayMemoUpdatePreview}

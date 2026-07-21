@@ -29,6 +29,7 @@ import type { useDayMemoNormalBodyMismatchCandidate } from '../hooks/useDayMemoN
 import type { useDayMemoNormalBodyMismatchLocalPreparation } from '../hooks/useDayMemoNormalBodyMismatchLocalPreparation'
 import type { useDayMemoBodyMismatchRecoveryPreflight } from '../hooks/useDayMemoBodyMismatchRecoveryPreflight'
 import type { useDayMemoBodyMismatchRecoverySend } from '../hooks/useDayMemoBodyMismatchRecoverySend'
+import type { useDayMemoSavedOperationResultRead } from '../hooks/useDayMemoSavedOperationResultRead'
 import type { useDayMemoMetadataV4Migration } from '../hooks/useDayMemoMetadataV4Migration'
 import type { useDayMemoMetadataV5Migration } from '../hooks/useDayMemoMetadataV5Migration'
 import type { useDayMemoSyncMetadataMigration } from '../hooks/useDayMemoSyncMetadataMigration'
@@ -81,6 +82,7 @@ interface ThemeSettingsProps {
   dayMemoNormalBodyMismatchLocalPreparation: ReturnType<typeof useDayMemoNormalBodyMismatchLocalPreparation>
   dayMemoBodyMismatchRecoveryPreflight: ReturnType<typeof useDayMemoBodyMismatchRecoveryPreflight>
   dayMemoBodyMismatchRecoverySend: ReturnType<typeof useDayMemoBodyMismatchRecoverySend>
+  dayMemoSavedOperationResultRead: ReturnType<typeof useDayMemoSavedOperationResultRead>
   dayMemoSyncBaseline: ReturnType<typeof useDayMemoSyncBaseline>
   dayMemoBaselineRebase: ReturnType<typeof useDayMemoBaselineRebase>
   dayMemoUpdatePreview: ReturnType<typeof useDayMemoUpdatePreview>
@@ -272,6 +274,7 @@ export function ThemeSettings({
   dayMemoNormalBodyMismatchLocalPreparation,
   dayMemoBodyMismatchRecoveryPreflight,
   dayMemoBodyMismatchRecoverySend,
+  dayMemoSavedOperationResultRead,
   dayMemoSyncBaseline,
   dayMemoBaselineRebase,
   dayMemoUpdatePreview,
@@ -1319,6 +1322,51 @@ export function ThemeSettings({
                           <p>{dayMemoBodyMismatchRecoverySend.result.nextAction}</p>
                           <button type="button" className="health-secondary-button cloud-sync-button" disabled={dayMemoBodyMismatchRecoverySend.sending}
                             onClick={dayMemoBodyMismatchRecoverySend.discard}>送信結果表示を破棄</button>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {dayMemoSavedOperationResultRead.eligible || dayMemoSavedOperationResultRead.result ? (
+                    <div className="cloud-day-memo-baseline-panel" role="region"
+                      aria-labelledby="day-memo-saved-operation-result-heading">
+                      <h4 id="day-memo-saved-operation-result-heading">保存済みoperation結果をread-only取得</h4>
+                      <p>保存済みoperation履歴だけを読み取ります。remote更新やoperation作成、metadata・pending・baseline・cursorの変更、自動再試行は行いません。成功後は次Phaseでfull pull結果と照合します。</p>
+                      {dayMemoSavedOperationResultRead.eligible ? (
+                        <button type="button" className="health-secondary-button cloud-sync-button"
+                          disabled={dayMemoSavedOperationResultRead.reading}
+                          onClick={() => { void dayMemoSavedOperationResultRead.read() }}>
+                          {dayMemoSavedOperationResultRead.reading ? '保存済み結果を取得中…' : '保存済み送信結果を取得'}
+                        </button>
+                      ) : null}
+                      {dayMemoSavedOperationResultRead.result ? (
+                        <div role="status">
+                          <p><strong>safety：{dayMemoSavedOperationResultRead.result.safety}</strong></p>
+                          <ul className="cloud-day-memo-preview-summary">
+                            <li>対象日：{dayMemoSavedOperationResultRead.result.date ?? '確認不能'}</li>
+                            <li>operation mode：{dayMemoSavedOperationResultRead.result.operationMode ?? '確認不能'}</li>
+                            <li>pending status：{dayMemoSavedOperationResultRead.result.pendingStatus ?? '確認不能'}</li>
+                            <li>operation照合：{dayMemoSavedOperationResultRead.result.operationVerified ? '確認済み' : '不可'}</li>
+                            <li>local鮮度：{dayMemoSavedOperationResultRead.result.localFresh ? '確認済み' : '不可'}</li>
+                            <li>operation履歴：{dayMemoSavedOperationResultRead.result.historyRecovered ? '取得済み' : '未取得／見つからない'}</li>
+                            <li>result status：{dayMemoSavedOperationResultRead.result.resultStatus ?? '未確認'}</li>
+                            <li>base revision：{dayMemoSavedOperationResultRead.result.baseRevisionVerified ? '一致' : '未確認／不一致'}</li>
+                            <li>post-send revision：{dayMemoSavedOperationResultRead.result.postSendRevisionVerified ? '確認済み' : '未確認／不正'}</li>
+                            <li>post-send change sequence：{dayMemoSavedOperationResultRead.result.postSendChangeSequenceVerified ? '確認済み' : '未確認／不正'}</li>
+                            <li>post-send server updatedAt：{dayMemoSavedOperationResultRead.result.postSendUpdatedAtVerified ? '確認済み' : '未確認／不正'}</li>
+                            <li>result state：{dayMemoSavedOperationResultRead.result.activeStateVerified ? 'active' : '未確認／不正'}</li>
+                            <li>deletedAt：{dayMemoSavedOperationResultRead.result.deletedAtAbsent ? 'なし' : '未確認／あり'}</li>
+                            <li>result payload：{dayMemoSavedOperationResultRead.result.payloadVerified ? '一致' : '未確認／不一致'}</li>
+                            <li>verification snapshot：{dayMemoSavedOperationResultRead.result.snapshotCreated ? '作成済み' : 'なし'}</li>
+                            <li>remote更新：なし</li><li>operation作成・更新：なし</li>
+                            <li>metadata・pending変更：なし</li><li>baseline・cursor変更：なし</li>
+                            <li>RPC：{dayMemoSavedOperationResultRead.result.rpcCalled ? 'read-only取得1回' : 'なし'}</li>
+                            <li>自動retry：なし</li>
+                            <li>確認日時：{new Date(dayMemoSavedOperationResultRead.result.checkedAt).toLocaleString('ja-JP')}</li>
+                          </ul>
+                          <p>{dayMemoSavedOperationResultRead.result.nextAction}</p>
+                          <button type="button" className="health-secondary-button cloud-sync-button"
+                            disabled={dayMemoSavedOperationResultRead.reading}
+                            onClick={dayMemoSavedOperationResultRead.discard}>取得結果を破棄</button>
                         </div>
                       ) : null}
                     </div>

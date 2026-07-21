@@ -2519,3 +2519,12 @@ cleanup後VERIFY結果：
 - 次Phase B-3f5e4d0a向けに単一行normalizer、found/not_found、operation結果、payload、revision・sequence・timestampの厳格validatorを用意する。取得Hook・ボタン・永続変更はSQL適用確認後に実装する。
 - operation履歴cleanupを将来導入する場合は保持期間を明示し、cleanup後の`found = false`を未送信や再送可能とは扱わない。operation ID実値、本文、payload全文、fingerprint実値はUI・console・文書へ出さない。
 - RPC成功後のmetadata保存失敗は送信失敗へ戻さず、再送禁止の確認必要状態とする。自動retry、pull、merge、修復、競合解決は行わない。
+## Phase B-3f5e4d0a: read-only saved operation result
+
+- The applied and verified `hooto_day_get_sync_operation_result` RPC is called only by an explicit user action and at most once per run. It reads the saved operation history only; it does not fall back to the current remote record, full pull, upsert, delete, or another operation.
+- Eligibility is fail-closed and limited to a valid metadata v5 `body_mismatch_recovery` upsert pending in `recovery_required`, with matching workspace binding, recovery checkpoint, local DayMemo snapshot, no delete intent, and no push block.
+- The existing operation ID is passed to the RPC but is never regenerated or displayed. Local, metadata, pending, checkpoint, authentication, and workspace freshness are checked before and after the read.
+- `found = false` stops safely without a snapshot, resend, fallback, pending change, or retry. A found row must pass strict normalization and match workspace, entity, kind, base revision, applied status, conflict flag, revision, change sequence, timestamp, active state, canonical payload, and payload fingerprint.
+- A successful verification snapshot is held in React state only. It contains the minimum identifiers/fingerprints and post-send revision, change sequence, server timestamp, active state, and operation creation time needed by B-3f5e4d. Reload, discard, run replacement, or any relevant authentication/workspace/local/metadata/pending/checkpoint change invalidates it.
+- The UI never exposes the operation ID, request fingerprint, authenticated user ID, DayMemo content, complete payload, credentials, or raw metadata. This phase changes no DayMemo, metadata, pending, baseline, cursor, checkpoint, intent, push block, remote record, or operation history and performs no automatic retry.
+- B-3f5e4d will separately compare this snapshot with a new complete full pull. A later history cleanup that produces `found = false` must remain fail-closed and must not make the operation resendable.

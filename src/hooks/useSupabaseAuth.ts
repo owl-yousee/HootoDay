@@ -33,11 +33,13 @@ export function useSupabaseAuth() {
     isSupabaseConfigured ? 'checking' : 'unavailable',
   )
   const [safeErrorMessage, setSafeErrorMessage] = useState<string | null>(null)
+  const [authUserId, setAuthUserId] = useState<string | null>(null)
   const signInInFlightRef = useRef(false)
 
   useEffect(() => {
     if (!supabaseClient) {
       setAuthState('unavailable')
+      setAuthUserId(null)
       setSafeErrorMessage(null)
       return
     }
@@ -46,6 +48,7 @@ export function useSupabaseAuth() {
     const { data: authListener } = supabaseClient.auth.onAuthStateChange((_event, session) => {
       if (!isActive || signInInFlightRef.current) return
       setAuthState(session ? 'signed_in' : 'signed_out')
+      setAuthUserId(session?.user.id ?? null)
       setSafeErrorMessage(null)
     })
 
@@ -54,11 +57,13 @@ export function useSupabaseAuth() {
 
       if (error) {
         setAuthState('error')
+        setAuthUserId(null)
         setSafeErrorMessage(SESSION_CHECK_ERROR_MESSAGE)
         return
       }
 
       setAuthState(data.session ? 'signed_in' : 'signed_out')
+      setAuthUserId(data.session?.user.id ?? null)
       setSafeErrorMessage(null)
     })
 
@@ -73,6 +78,7 @@ export function useSupabaseAuth() {
 
     signInInFlightRef.current = true
     setAuthState('signing_in')
+    setAuthUserId(null)
     setSafeErrorMessage(null)
 
     try {
@@ -80,13 +86,16 @@ export function useSupabaseAuth() {
 
       if (error || !data.session) {
         setAuthState('error')
+        setAuthUserId(null)
         setSafeErrorMessage(SIGN_IN_ERROR_MESSAGE)
         return
       }
 
       setAuthState('signed_in')
+      setAuthUserId(data.session.user.id)
     } catch {
       setAuthState('error')
+      setAuthUserId(null)
       setSafeErrorMessage(SIGN_IN_ERROR_MESSAGE)
     } finally {
       signInInFlightRef.current = false
@@ -98,6 +107,7 @@ export function useSupabaseAuth() {
     authState,
     isConfigured: isSupabaseConfigured,
     isSignedIn: authState === 'signed_in',
+    authUserId,
     signInAnonymously,
     safeErrorMessage,
   }
