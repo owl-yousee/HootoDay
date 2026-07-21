@@ -2508,4 +2508,14 @@ cleanup後VERIFY結果：
 - 保存済みoperation IDとbase revisionをRPCのidempotency／compare-and-setに使用し、新IDは生成しない。戻り値は既存の単一行normalizer、conflict validator、applied payload・revision・sequence validatorでfail-closedに検証する。
 - snapshotはRPC直前に消費し、1snapshotにつき最大1回だけ送信する。失敗・結果不明・競合でも再利用せず、再preflightを必須とする。
 - RPC成功後はpendingを`recovery_required`で保持し、verified metadata保存・read-backを行う。DayMemo、baseline、cursor、checkpoint、baselineStatus、intent、pushBlockは変更せず、B-3f5e4dのread-only確認へ渡す。
+
+### Phase B-3f5e4d0s: saved operation result read-only RPC
+
+- 既存upsert RPCの冪等再呼び出しは、operation履歴が存在しなければcurrent record処理へ進み得るため、結果回収経路として採用しない。履歴不存在を事前確認できないクライアントからの再呼び出しは禁止する。
+- `hooto_day_sync_operations`の保存済み結果だけをSELECTする`hooto_day_get_sync_operation_result`を新設する。履歴不存在、workspace・entity・kind・実行ユーザー不一致は`found = false`で終了し、remote recordやoperation履歴を作成・変更しない。
+- RPCは`auth.uid()`、既存workspace membership、operationの`requested_by`を照合する。operation ID単独では返さず、workspace、entity type、対象日、operation kindもSQL条件へ含める。
+- table直接SELECT禁止とRLS・policy 0件を維持し、RPCだけを`SECURITY DEFINER`、`STABLE`、固定`search_path = pg_catalog, public`、authenticated限定EXECUTEとする。dynamic SQL、DML、upsert/delete RPC、sequence採番、advisory lockは使用しない。
+- APPLY／VERIFY／ROLLBACKは専用SQLへ分離する。SQL適用とVERIFYはユーザーがSupabase SQL Editorから明示実行し、Codexは接続・実行しない。
+- 次Phase B-3f5e4d0a向けに単一行normalizer、found/not_found、operation結果、payload、revision・sequence・timestampの厳格validatorを用意する。取得Hook・ボタン・永続変更はSQL適用確認後に実装する。
+- operation履歴cleanupを将来導入する場合は保持期間を明示し、cleanup後の`found = false`を未送信や再送可能とは扱わない。operation ID実値、本文、payload全文、fingerprint実値はUI・console・文書へ出さない。
 - RPC成功後のmetadata保存失敗は送信失敗へ戻さず、再送禁止の確認必要状態とする。自動retry、pull、merge、修復、競合解決は行わない。
