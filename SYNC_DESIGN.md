@@ -2001,3 +2001,9 @@ Candidate checking now catches unexpected failures into a `failed` result and co
 - `buildSyncShareText` is a pure presentation function. It receives only the currently displayed stage ID, state, target, classification, difference count, baseline status, cursor, ready flag, primary action, disabled reason, and safe stop reason. It performs no pull, storage access, mutation, or stage transition.
 - The manual sharing control opens the same click-time short report in a readonly, selectable textarea with select-all and close actions. Automatic copy failure opens the same fallback and never claims success without a proven Clipboard API or execCommand result.
 - Short and detailed reports exclude content, payloads, UUIDs, operation IDs, fingerprints, credentials, user identifiers, and Supabase configuration. Sync, recovery, metadata v5, baseline, cursor, pending, SQL, RPC, and RLS behavior remain unchanged.
+
+## B-3f5eUI2k-2 manual-first sharing
+
+- iPhone testing confirmed that a resolved Clipboard API or true execCommand result does not prove a later paste into LINE. The share panel therefore presents the manual text button first and keeps automatic copy as a secondary convenience.
+- Manual sharing opens a titled readonly textarea without attempting clipboard access. The user can long-press the text or use select-all, then close the surface. Automatic failure opens the same surface.
+- A proven browser copy now reports only that the copy operation ran; it does not claim that another application can paste the text. Clipboard result validation and all short-report fields remain unchanged. Sharing stays read-only and does not affect sync stages or persisted state.

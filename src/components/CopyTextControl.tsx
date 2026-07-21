@@ -55,16 +55,17 @@ export function CopyTextControl({ buttonLabel, text, successMessage, manualButto
   const manual = result === 'manual_copy_required' || result === 'failed'
 
   return <div className="sync-copy-control">
+    {manualButtonLabel ? <button type="button" className="health-primary-button cloud-sync-button"
+      onClick={showManual}>{manualButtonLabel}</button> : null}
     <button ref={buttonRef} type="button" className="health-secondary-button cloud-sync-button"
       aria-label={buttonLabel} disabled={copying} onClick={() => { void copy() }}>{copying ? 'コピーしています…' : buttonLabel}</button>
-    {manualButtonLabel ? <button type="button" className="health-secondary-button cloud-sync-button"
-      onClick={showManual}>{manualButtonLabel}</button> : null}
     <div aria-live="polite" aria-atomic="true">
       {succeeded ? <p className="cloud-day-memo-success">{successMessage}</p> : null}
       {manual ? <div className="sync-copy-manual" onKeyDown={(event) => { if (event.key === 'Escape') close() }}>
+        <h5>同期状態共有</h5>
         <p>{result === 'failed' ? '自動コピーできませんでした。下の文章を長押ししてコピーしてください。'
-          : '自動コピーできない場合は、下の文章を長押ししてコピーしてください。'}</p>
-        <label>コピーする同期状態
+          : 'コピーできない場合は文章を長押ししてコピーしてください。'}</p>
+        <label>共有用テキスト
           <textarea ref={textareaRef} readOnly rows={14} value={snapshot}
             onFocus={(event) => { event.currentTarget.select(); event.currentTarget.setSelectionRange(0, event.currentTarget.value.length) }} />
         </label>

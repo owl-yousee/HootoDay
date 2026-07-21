@@ -1038,7 +1038,7 @@ export function ThemeSettings({
                       <p className="sync-stage-id">stageId：<code>{syncStageId}</code></p>
                       <div className="sync-copy-section"><h5>共有</h5>
                         <CopyTextControl buttonLabel="共有用にコピー" manualButtonLabel="共有用テキストを表示"
-                          text={syncShareText} successMessage="共有用テキストをコピーしました" />
+                          text={syncShareText} successMessage="コピー操作を実行しました" />
                       </div>
                       <div className="sync-copy-section"><h5>詳細</h5>
                         <CopyTextControl buttonLabel="詳細コピー" text={syncStatusCopyText}

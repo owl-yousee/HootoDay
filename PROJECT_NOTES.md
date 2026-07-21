@@ -2781,3 +2781,9 @@ cleanup後VERIFY結果：
 - iPhoneからLINEへの共有は、ブラウザがclipboard成功を返しても貼り付け経路まで保証できない。通常用の短縮「共有用にコピー」と、成否に関係なく開ける「共有用テキストを表示」を追加した。
 - 短縮文面は共通のpure builderがstage ID、表示中の主操作、対象・分類・差異数、baseline、cursor、ready、停止理由だけから作る。従来の詳細は「詳細コピー」として維持する。
 - 手動表示はreadonly textarea、長押し選択、全文選択、閉じる操作を備える。本文・payload・UUID・operation ID・credentialは含めず、共有操作は同期状態や永続データを変更しない。
+
+## B-3f5eUI2k-2 manual sharing first
+
+- iPhone実機でclipboard成功表示後もLINEへ貼り付けできないことを確認した。Safari内のAPI成功は別アプリへの貼り付け成功を保証しない。
+- iPhoneの共有導線は「共有用テキストを表示」を先頭にし、長押しまたは全文選択を主手段とした。「共有用にコピー」は補助として維持する。
+- 自動コピーはClipboard API resolveまたはexecCommand trueの場合だけ完了表示するが、文言は外部アプリ貼り付けを断定しない「コピー操作を実行しました」とする。同期処理・永続状態・共有文面の安全対象は変更しない。

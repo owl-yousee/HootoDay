@@ -386,7 +386,7 @@ export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, b
       <div className="iphone-sync-guide-copy">
         <h5>共有</h5>
         <CopyTextControl buttonLabel="共有用にコピー" manualButtonLabel="共有用テキストを表示"
-          text={shareText} successMessage="共有用テキストをコピーしました" />
+          text={shareText} successMessage="コピー操作を実行しました" />
         <h5>詳細</h5>
         <CopyTextControl buttonLabel="詳細コピー" text={copyResultText} successMessage="詳細をコピーしました" />
       </div>
