@@ -7,7 +7,7 @@ import { canonicalDayMemoPayloadFingerprint } from '../utils/dayMemoSyncOperatio
 import { DAY_MEMO_SYNC_STORAGE_KEY, isDayMemoSyncMetadataV5, loadDayMemoSyncMetadataAny, replaceDayMemoSyncMetadataV2 } from '../utils/dayMemoSyncStorage'
 import { isUuid } from '../utils/syncConnectionStorage'
 import type { DayMemoNormalDifferenceClassification } from './useDayMemoNormalDifferenceRecoveryPlan'
-import type { DayMemoBodyMismatchRecoveryPostSendSnapshot } from './useDayMemoBodyMismatchRecoveryPostSendVerification'
+import type { DayMemoBodyMismatchRecoveryPostSendSnapshot, DayMemoBodyMismatchRecoveryPostSendSnapshotAvailability } from './useDayMemoBodyMismatchRecoveryPostSendVerification'
 import {
   fingerprintDayMemoBaselines,
   fingerprintDayMemoRecoveryCheckpoint,
@@ -82,7 +82,7 @@ interface Input {
   reactMetadata: DayMemoSyncMetadataV5 | null
   getReadySnapshot: () => DayMemoBodyMismatchRecoveryPostSendSnapshot | null
   consumeReadySnapshot: (snapshotToken: string) => boolean
-  inspectSnapshotAvailability: () => 'missing' | 'consumed' | 'stale' | 'ready'
+  inspectSnapshotAvailability: () => DayMemoBodyMismatchRecoveryPostSendSnapshotAvailability
   discardVerificationResult: () => void
   adoptVerifiedMetadata: (metadata: DayMemoSyncMetadataV5) => void
 }
@@ -159,8 +159,9 @@ export function useDayMemoBodyMismatchRecoveryCheckpointSave(input: Input) {
     if (!ready) {
       const availability = inspectSnapshotAvailability()
       finish(availability === 'consumed' ? 'normal_body_mismatch_recovery_checkpoint_candidate_consumed'
-        : availability === 'stale' ? 'normal_body_mismatch_recovery_checkpoint_candidate_stale'
-          : 'normal_body_mismatch_recovery_checkpoint_candidate_missing'); return
+        : availability === 'none' ? 'normal_body_mismatch_recovery_checkpoint_candidate_missing'
+          : availability === 'candidate_invalid' ? 'normal_body_mismatch_recovery_checkpoint_candidate_invalid'
+            : 'normal_body_mismatch_recovery_checkpoint_candidate_stale'); return
     }
     const base = { date: ready.date, operationMode: 'body_mismatch_recovery' as const,
       beforeBaselineCount: ready.sourceBaselineCount,

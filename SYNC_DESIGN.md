@@ -1748,3 +1748,13 @@ The save hook and App/ThemeSettings prop path were connected correctly, but the 
 Panel visibility and write eligibility are now separate responsibilities. A successful post-send verification result, a non-missing candidate availability state, or a save result displays the panel. The save button is rendered but disabled unless the existing save hook returns `canSave`; ThemeSettings does not reconstruct safety conditions or metadata candidates.
 
 This UI correction does not change candidate generation, pending lifecycle, metadata v5 validation, expected-raw compare-and-write, read-back, rollback, snapshot consumption, or React metadata adoption. Merely rendering the panel, scrolling, rerendering, or computing disabled state performs no storage or Supabase operation.
+
+### B-3f5e4d1 fresh-candidate identity correction
+
+The post-send snapshot previously serialized its pending operation with the object's incidental property order, while the subsequent availability check used the shared fixed-field pending fingerprint. This representation mismatch made an unchanged, newly created candidate stale. Snapshot creation and all later checks now use the same canonical pending representation.
+
+Freshness and candidate integrity have separate identities. The source fingerprint represents the persistent metadata before saving, including the existing pending, five source baselines, and source cursor. The candidate fingerprint represents the already validated metadata to save, including the cleared pending, added baseline, and advanced cursor. Current persistent state is never compared directly with candidate state.
+
+Canonical recursive metadata comparison sorts object keys and is independent of React object identity or reconstruction. Snapshot token continuity still links the exact post-send verification snapshot, but token inspection does not regenerate or consume it. Run IDs remain limited to asynchronous-result adoption and do not define persistent-state identity.
+
+A candidate is ready only when authentication/configuration, workspace, operation-result token, source metadata, canonical pending, source baselines/count, source cursor, checkpoint, local storage/React state, no push block, no intent, candidate metadata v5 validation, candidate baseline fingerprint, and candidate fingerprint all remain valid. Any genuine change remains fail-closed with a reason-specific availability result. Compare-and-write and snapshot consumption timing are unchanged.

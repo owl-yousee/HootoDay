@@ -107,6 +107,7 @@ export interface DayMemoBodyMismatchRecoveryPostSendSnapshot {
   pendingFingerprint: string
   pendingStatus: 'recovery_required'
   metadataRaw: string
+  sourceMetadataFingerprint: string
   workspaceId: string
   authUserId: string
   sourceCheckpointFingerprint: string
@@ -129,6 +130,7 @@ export interface DayMemoBodyMismatchRecoveryPostSendSnapshot {
   fullPullMaxSequence: number
   unresolvedClassifications: Record<string, DayMemoNormalDifferenceClassification>
   candidateMetadata: DayMemoSyncMetadataV5
+  candidateMetadataFingerprint: string
   candidateBaselineFingerprint: string
   candidateCursor: number
   candidateBaselineStatus: 'recovery_required'
@@ -139,6 +141,23 @@ export interface DayMemoBodyMismatchRecoveryPostSendSnapshot {
   runId: number
   snapshotToken: string
 }
+
+export type DayMemoBodyMismatchRecoveryPostSendSnapshotAvailability =
+  | 'none'
+  | 'ready'
+  | 'stale_metadata'
+  | 'stale_pending'
+  | 'stale_checkpoint'
+  | 'stale_baseline'
+  | 'stale_cursor'
+  | 'stale_local'
+  | 'stale_workspace'
+  | 'stale_authentication'
+  | 'stale_token'
+  | 'consumed'
+  | 'candidate_invalid'
+  | 'blocked'
+  | 'unknown'
 
 interface Input {
   dayMemos: DayMemo[]
@@ -153,6 +172,15 @@ interface Input {
 }
 
 function same(left: unknown, right: unknown): boolean { return JSON.stringify(left) === JSON.stringify(right) }
+function canonicalFingerprint(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalFingerprint).join(',')}]`
+  if (value && typeof value === 'object') {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, child]) => `${JSON.stringify(key)}:${canonicalFingerprint(child)}`).join(',')}}`
+  }
+  return JSON.stringify(value) ?? 'undefined'
+}
 function connectionEligible(connection: SyncConnection | null): connection is SyncConnection & { workspaceId: string } {
   return Boolean(connection && isUuid(connection.workspaceId)
     && ((connection.deviceRole === 'parent' && connection.workspaceRole === 'owner' && connection.pairingStatus === 'owner')
@@ -442,8 +470,9 @@ export function useDayMemoBodyMismatchRecoveryPostSendVerification(input: Input)
       const ready = finish('normal_body_mismatch_recovery_post_send_ready', values)
       const snapshotToken = `${runId}:${checkedAt}`
       snapshotRef.current = { date: pending.date, operationMode: 'body_mismatch_recovery',
-        operationId: pending.operationId, pendingFingerprint: JSON.stringify(pending), pendingStatus: 'recovery_required',
-        metadataRaw: loaded.raw, workspaceId: connection.workspaceId, authUserId,
+        operationId: pending.operationId, pendingFingerprint: fingerprintDayMemoRecoveryPending(pending), pendingStatus: 'recovery_required',
+        metadataRaw: loaded.raw, sourceMetadataFingerprint: canonicalFingerprint(metadata),
+        workspaceId: connection.workspaceId, authUserId,
         sourceCheckpointFingerprint: fingerprintDayMemoRecoveryCheckpoint(metadata),
         sourceBaselineFingerprint: fingerprintDayMemoBaselines(metadata), sourceBaselineCount: Object.keys(metadata.baselines).length,
         sourceCursor: metadata.lastPulledChangeSequence, localStorageSerialized: stored.serialized,
@@ -457,6 +486,7 @@ export function useDayMemoBodyMismatchRecoveryPostSendVerification(input: Input)
         currentRemoteChangeSequence: remote.changeSequence, currentRemoteUpdatedAt: remote.serverUpdatedAt,
         fullPullFingerprint: JSON.stringify(pulled.records), fullPullMaxSequence: pulled.maxChangeSequence,
         unresolvedClassifications, candidateMetadata,
+        candidateMetadataFingerprint: canonicalFingerprint(candidateMetadata),
         candidateBaselineFingerprint: fingerprintDayMemoBaselines(candidateMetadata), candidateCursor: pulled.maxChangeSequence,
         candidateBaselineStatus: 'recovery_required', candidateBaselineConfirmedAt: null,
         candidateNormalSyncReady: false, pendingLifecycleCandidate: 'clear_after_atomic_save',
@@ -475,35 +505,45 @@ export function useDayMemoBodyMismatchRecoveryPostSendVerification(input: Input)
     runIdRef.current += 1; snapshotRef.current = null; consumedSnapshotTokenRef.current = null
     setResult(null); setChecking(false)
   }, [])
-  const getReadySnapshot = useCallback(() => {
+  const inspectSnapshotAvailability = useCallback((): DayMemoBodyMismatchRecoveryPostSendSnapshotAvailability => {
     const current = snapshotRef.current
-    if (!current || consumedSnapshotTokenRef.current === current.snapshotToken
-      || getOperationResultSnapshotToken() !== current.operationResultSnapshotToken) return null
+    if (!current) return 'none'
+    if (consumedSnapshotTokenRef.current === current.snapshotToken) return 'consumed'
+    if (getOperationResultSnapshotToken() !== current.operationResultSnapshotToken) return 'stale_token'
     const latest = latestRef.current
     const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
     const stored = readDayMemoStorageSnapshot(window.localStorage)
-    if (!latest.isConfigured || !latest.isSignedIn || latest.authUserId !== current.authUserId
-      || !connectionEligible(latest.connection) || latest.connection.workspaceId !== current.workspaceId
-      || loaded.status !== 'ready' || !isDayMemoSyncMetadataV5(loaded.metadata)
-      || loaded.raw !== current.metadataRaw || stored.status !== 'ready'
-      || stored.serialized !== current.localStorageSerialized || !same(latest.dayMemos, stored.memos)
-      || !validPending(loaded.metadata.pendingOperation)
-      || fingerprintDayMemoRecoveryPending(loaded.metadata.pendingOperation) !== current.pendingFingerprint
-      || fingerprintDayMemoRecoveryCheckpoint(loaded.metadata) !== current.sourceCheckpointFingerprint
-      || loaded.metadata.pushBlock !== null || Object.keys(loaded.metadata.localDeleteIntents).length > 0) return null
-    return { ...current }
+    if (!latest.isConfigured || !latest.isSignedIn || latest.authUserId !== current.authUserId) return 'stale_authentication'
+    if (!connectionEligible(latest.connection) || latest.connection.workspaceId !== current.workspaceId) return 'stale_workspace'
+    if (loaded.status !== 'ready' || !isDayMemoSyncMetadataV5(loaded.metadata)) return 'stale_metadata'
+    if (loaded.metadata.workspaceId !== current.workspaceId) return 'stale_workspace'
+    if (!validPending(loaded.metadata.pendingOperation)
+      || fingerprintDayMemoRecoveryPending(loaded.metadata.pendingOperation) !== current.pendingFingerprint) return 'stale_pending'
+    if (fingerprintDayMemoBaselines(loaded.metadata) !== current.sourceBaselineFingerprint
+      || Object.keys(loaded.metadata.baselines).length !== current.sourceBaselineCount) return 'stale_baseline'
+    if (loaded.metadata.lastPulledChangeSequence !== current.sourceCursor) return 'stale_cursor'
+    if (fingerprintDayMemoRecoveryCheckpoint(loaded.metadata) !== current.sourceCheckpointFingerprint) return 'stale_checkpoint'
+    if (loaded.raw !== current.metadataRaw
+      || canonicalFingerprint(loaded.metadata) !== current.sourceMetadataFingerprint) return 'stale_metadata'
+    if (loaded.metadata.pushBlock !== null || Object.keys(loaded.metadata.localDeleteIntents).length > 0) return 'blocked'
+    if (stored.status !== 'ready' || stored.serialized !== current.localStorageSerialized
+      || !same(latest.dayMemos, stored.memos)) return 'stale_local'
+    if (!isDayMemoSyncMetadataV5(current.candidateMetadata)
+      || current.candidateMetadata.pendingOperation !== null
+      || current.candidateMetadata.lastPulledChangeSequence !== current.candidateCursor
+      || fingerprintDayMemoBaselines(current.candidateMetadata) !== current.candidateBaselineFingerprint
+      || canonicalFingerprint(current.candidateMetadata) !== current.candidateMetadataFingerprint) return 'candidate_invalid'
+    return 'ready'
   }, [getOperationResultSnapshotToken])
+  const getReadySnapshot = useCallback(() => {
+    const current = snapshotRef.current
+    return current && inspectSnapshotAvailability() === 'ready' ? { ...current } : null
+  }, [inspectSnapshotAvailability])
   const consumeReadySnapshot = useCallback((snapshotToken: string) => {
     if (snapshotRef.current?.snapshotToken !== snapshotToken || consumedSnapshotTokenRef.current === snapshotToken) return false
     consumedSnapshotTokenRef.current = snapshotToken
     return true
   }, [])
-  const inspectSnapshotAvailability = useCallback((): 'missing' | 'consumed' | 'stale' | 'ready' => {
-    const current = snapshotRef.current
-    if (!current) return 'missing'
-    if (consumedSnapshotTokenRef.current === current.snapshotToken) return 'consumed'
-    return getReadySnapshot() ? 'ready' : 'stale'
-  }, [getReadySnapshot])
   return { eligible, checking, result, check, discard, getReadySnapshot,
     consumeReadySnapshot, inspectSnapshotAvailability }
 }
