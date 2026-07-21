@@ -2799,3 +2799,25 @@ cleanup後VERIFY結果：
 - 実機確認で「差異2件」だけでは分類と対象を探しにくかったため、同期作業の主操作より前に「同期差異」カードを追加した。
 - カードは既存saved-stateの`unresolvedClassifications`、normal difference planの`items`、pull previewの`items`だけを使い、日付、日本語分類、接続済みの次操作を縦並びで表示する。新しい差異判定は行わない。
 - 短縮共有に日本語の差異内訳を、詳細コピーに対象日・分類・次操作を追加した。本文や秘密情報は含めず、同期処理・metadata・保存形式は変更しない。
+
+## 通常差異→復旧準備Bridge（設計記録）
+
+- 通常同期確認で表示される`remote_only_active`、`local_only`、`body_mismatch`等は現在差異の表示・確認結果であり、それ自体はadoptionや送信を許可するcandidateではない。
+- 正式なcandidateは、全差異を対象にしたcheckpoint確認と明示保存、`recovery_required`への遷移、saved recovery stateの再確認を経て、`normal_difference_checkpoint_saved_state_ready`の`unresolvedClassifications`から生成する。
+- 確定フローは、通常同期、差異検出、明示的な復旧準備開始、全差異checkpoint確認、checkpoint保存、saved-state確認、candidate生成、個別preflight、個別明示実行の順とする。
+- checkpointは個別採用判断ではなく現在状態の安全な基準作成であるため、表示中の全差異を対象とする。checkpoint後の採用・送信・削除・反映判断は既存経路で1件ずつ行う。
+- confirmed状態を自動で`recovery_required`へ変更しない。candidateの手動生成、remote-only表示からの直接adoption、自動同期、自動採用、自動retryは禁止する。
+- 現在、mismatch用checkpoint経路と保存後recovery確認経路は実装済みだが、confirmed通常差異からcheckpoint作成へ進む明示Bridge UIがない。このため通常同期でremote-onlyが表示されても、checkpoint未作成なら`candidateDates`は空となり、既存remote-only preflightは開始条件で安全停止する。
+- 後続実装では既存normal difference plan、checkpoint check/save、saved recovery state checkを接続し、新しい同期方式、SQL/RPC、metadata形式を追加しない。
+- 今回は設計文書の追記のみ。コード、metadata、DayMemo、Supabase、SQL、RPC、commit、pushは変更・実行していない。
+
+### confirmed通常差異Bridgeの補足
+
+- `baselineStatus = confirmed`の通常同期確認では差異を表示できるが、既存checkpoint Hookは`mismatch`または`recovery_required`を前提とするため、復旧準備へ進む正式な入口がない。
+- 後続UIでは「復旧準備を開始」をユーザー明示操作として追加し、通常差異resultの鮮度、metadata、workspace、pending、intent、pushBlock、現在状態を確認してから既存checkpoint check/saveへ接続する。通常差異を直接candidateへ変換しない。
+- 正式な順序は、`normal_sync_check → 通常差異表示 → 復旧準備開始 → Bridge安全確認 → 全差異checkpoint確認 → checkpoint保存 → recovery_required → saved recovery state確認 → unresolvedClassifications → candidate → 個別preflight → 個別明示実行`とする。
+- checkpointは表示中の全差異を対象とする。checkpoint後のremote採用、local upload、discard、delete、local反映は、分類ごとの既存経路で1件ずつ明示実行する。
+- baseline追加やcursor更新が不要なconfirmed状態では、baseline・cursorを維持し、既存のfull pull、validator、snapshot鮮度確認、verified保存、read-back、rollbackを通した上でstatusだけを`recovery_required`へ移すstatus-only checkpointを使用する。
+- status-only checkpointを含め、自動遷移、自動保存、candidate手動生成、saved-state確認省略、通常差異からの直接adoption、自動retryは禁止する。
+- candidateはcheckpoint保存後のsaved recovery state確認が成功し、`unresolvedClassifications`が再構築された場合だけ生成する。
+- 実装時は既存normal difference plan、checkpoint check/save、saved recovery state check、recovery/adoption Hookを再利用し、新しいcheckpointロジック、metadata形式、SQL、RPCを追加しない。

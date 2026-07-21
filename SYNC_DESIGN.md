@@ -2019,3 +2019,25 @@ Candidate checking now catches unexpected failures into a `failed` result and co
 - The integrated sync surface renders a read-only difference card before its primary action. Recovery uses saved-state `unresolvedClassifications`, mismatch recovery uses the existing plan `items`, and confirmed normal sync uses existing pull-preview `items`; no classification is recalculated.
 - A shared presentation mapping converts internal classifications into Japanese titles and short type labels. Each vertical card shows date and an action label backed by an existing route; unsupported or unsafe classifications explicitly say that safety confirmation is required.
 - Short sharing includes localized classification counts and per-date action lines. Detailed copy includes the same safe date, title, type, and action data. Content, payloads, identifiers, credentials, and Supabase configuration remain excluded, and all sync and persistence behavior remains unchanged.
+
+## 通常差異から復旧準備へ進むBridge設計
+
+- `normal_sync_check`が返す`remote_only_active`、`local_only`、`body_mismatch`等は、現在のlocal・remote差異を表示・確認するための通常差異である。この分類だけではrecovery operationのcandidateではなく、remote adoption、upload、delete、local反映の開始根拠にしてはならない。
+- candidateは、明示的な復旧checkpoint保存後にmetadataが`recovery_required`となり、さらにsaved recovery stateの完全full pull確認が`normal_difference_checkpoint_saved_state_ready`を返した場合だけ、その`unresolvedClassifications`から生成する。個別preflightはこの保存済み・再確認済みcandidateだけを対象とする。
+- confirmed通常同期で差異を検出した場合の正式な遷移は、`通常同期 → 差異検出 → 復旧準備開始（明示操作） → 全差異のcheckpoint確認 → checkpoint保存 → recovery_required → saved recovery state ready → candidate生成 → 個別preflight → 個別明示実行`とする。
+- checkpointは個別の採用・送信判断ではなく、観測した現在状態の安全な基準を作る処理である。そのため復旧準備開始時に表示されている全差異をcheckpoint確認対象とし、完全一致分のbaseline、最新cursor、未解決分類を一体として検証する。個別差異だけを抜き出してcheckpointやcandidateを手動生成しない。
+- checkpoint保存後も、remote採用、local upload、discard、delete、本文選択等は分類ごとの既存経路で1件ずつ明示実行する。他差異を自動解決、一括処理、暗黙採用しない。
+- confirmed状態を自動で`recovery_required`へ変更しない。通常差異カードの`remote_only_active`表示だけでadoption可能にせず、自動同期、自動採用、自動retryを追加しない。
+- 現状はmismatchからcheckpoint確認・保存へ進む既存経路と、recovery_required保存後のsaved-state確認経路は存在する。一方、confirmed通常差異からcheckpoint作成へ入る明示Bridge UIは未実装であり、通常差異から直接`useDayMemoRecoveryRemoteOnlyAdoption`へ渡すと`candidateDates`が存在せずfail-closedとなる。
+- 次の実装は既存のnormal difference plan、checkpoint check/save、saved recovery state checkを再利用する薄いBridgeとする。新しい分類、RPC、SQL、metadata形式、手動candidate生成は追加しない。
+
+### confirmed通常差異Bridgeの入口とstatus-only checkpoint
+
+- 現在、`baselineStatus = confirmed`で`normal_sync_check`が差異を検出した場合、通常差異の表示までは可能だが、既存checkpoint経路は`mismatch`または`recovery_required`を開始条件としており、正式な復旧準備入口は存在しない。
+- 今後は通常差異表示に、ユーザー明示操作の「復旧準備を開始」を追加する。正式フローは、`normal_sync_check → 通常差異表示 → 復旧準備を開始 → Bridge安全確認 → checkpoint確認 → checkpoint保存 → recovery_required → saved recovery state確認 → unresolvedClassifications生成 → candidate生成 → 個別preflight → 個別明示実行`とする。
+- Bridgeは通常差異をcandidateへ直接変換しない。最新の通常差異resultの鮮度、metadata v5とconfirmed状態、workspace binding、pending、localDeleteIntent、pushBlock、local・remote・baseline・cursorの不変性を確認し、既存checkpoint check/saveへ接続する役割だけを持つ。
+- checkpoint確認対象は、選択中の1件ではなく表示中の全差異とする。checkpointは個別採用判断ではなく、後続の復旧判断に使う安全な基準を作る処理である。採用、送信、削除、local反映はsaved-state確認後に既存経路で1件ずつ明示実行する。
+- confirmedから復旧準備へ進む際、完全一致baselineの追加もcursor更新も不要な場合がある。この場合は、baselineとcursorを維持し、既存validator、完全full pull、snapshot鮮度確認、verified保存、read-back、rollbackを満たした上で、`baselineStatus = recovery_required`、`baselineConfirmedAt = null`への明示的な状態遷移だけを行うstatus-only checkpointとして扱う。
+- status-only checkpointも自動保存しない。confirmedからの自動`recovery_required`化、candidateの手動生成、saved recovery state確認の省略、通常差異表示からの直接adoption、自動同期、自動採用、自動retryは禁止する。
+- candidateはcheckpoint保存済みかつsaved recovery state確認成功後に再構築された`unresolvedClassifications`からのみ生成する。通常差異の`remote_only_active`、`local_only`、`body_mismatch`等は、Bridge完了前には処理候補として扱わない。
+- 実装は`useDayMemoNormalDifferenceRecoveryPlan`、`useDayMemoNormalDifferenceRecoveryCheckpointCheck`、`useDayMemoNormalDifferenceRecoveryCheckpointSave`、`useDayMemoSavedRecoveryStateCheck`と既存recovery/adoption Hookを再利用する。新規checkpoint分類ロジックや別の永続形式は作成しない。
