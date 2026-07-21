@@ -1741,3 +1741,10 @@ The existing expected-raw compare-and-write utility validates the complete candi
 The B-3f5e4d snapshot is consumed immediately before compare-and-write, after every precondition and candidate validation. Cancellation or any earlier fail-closed stop leaves it unconsumed. After write start it is not reusable regardless of success, failure, read-back failure, or rollback. React metadata changes only after verified success, and the prior verification result is then discarded.
 
 Remaining differences keep recovery mode active and normal-sync-ready false. No DayMemo, remote state, operation history, intent, push block, auth, or workspace connection is changed. There is no full pull, mutation RPC, operation-ID generation, automatic retry, merge, repair, or automatic next-item processing. A following read-only phase must verify the saved baseline, cursor, null pending, and remaining classifications.
+### B-3f5e4d1 save-control visibility correction
+
+The save hook and App/ThemeSettings prop path were connected correctly, but the complete save panel was conditional on `canSave || saveResult`. A pre-save null result combined with any false `canSave` state removed the panel from the DOM, preventing both the control and fail-closed availability information from being shown despite a successful B-3f5e4d result.
+
+Panel visibility and write eligibility are now separate responsibilities. A successful post-send verification result, a non-missing candidate availability state, or a save result displays the panel. The save button is rendered but disabled unless the existing save hook returns `canSave`; ThemeSettings does not reconstruct safety conditions or metadata candidates.
+
+This UI correction does not change candidate generation, pending lifecycle, metadata v5 validation, expected-raw compare-and-write, read-back, rollback, snapshot consumption, or React metadata adoption. Merely rendering the panel, scrolling, rerendering, or computing disabled state performs no storage or Supabase operation.

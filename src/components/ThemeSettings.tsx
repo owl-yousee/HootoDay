@@ -1435,20 +1435,22 @@ export function ThemeSettings({
                       ) : null}
                     </div>
                   ) : null}
-                  {dayMemoBodyMismatchRecoveryCheckpointSave.canSave
+                  {dayMemoBodyMismatchRecoveryPostSendVerification.result?.safety
+                    === 'normal_body_mismatch_recovery_post_send_ready'
+                    || dayMemoBodyMismatchRecoveryCheckpointSave.candidateAvailability !== 'missing'
                     || dayMemoBodyMismatchRecoveryCheckpointSave.result ? (
                     <div className="cloud-day-memo-baseline-panel" role="region"
                       aria-labelledby="day-memo-recovery-checkpoint-save-heading">
                       <h4 id="day-memo-recovery-checkpoint-save-heading">検証済みrecovery候補をmetadataへ保存</h4>
                       <p>確認済みbaseline・cursor候補を保存し、対象recovery pendingを同じmetadata更新でクリアします。残る差異があるためrecovery_requiredは継続します。Supabase送信、full pull、自動再試行は行いません。</p>
-                      {dayMemoBodyMismatchRecoveryCheckpointSave.canSave ? (
-                        <button type="button" className="health-secondary-button cloud-sync-button"
-                          disabled={dayMemoBodyMismatchRecoveryCheckpointSave.saving}
-                          onClick={dayMemoBodyMismatchRecoveryCheckpointSave.save}>
-                          {dayMemoBodyMismatchRecoveryCheckpointSave.saving
-                            ? '検証済み候補を保存中…' : '検証済み候補をmetadataへ保存'}
-                        </button>
-                      ) : null}
+                      <p>保存候補：{dayMemoBodyMismatchRecoveryCheckpointSave.candidateAvailability}</p>
+                      <button type="button" className="health-secondary-button cloud-sync-button"
+                        disabled={!dayMemoBodyMismatchRecoveryCheckpointSave.canSave
+                          || dayMemoBodyMismatchRecoveryCheckpointSave.saving}
+                        onClick={dayMemoBodyMismatchRecoveryCheckpointSave.save}>
+                        {dayMemoBodyMismatchRecoveryCheckpointSave.saving
+                          ? '検証済み候補を保存中…' : '検証済み候補をmetadataへ保存'}
+                      </button>
                       {dayMemoBodyMismatchRecoveryCheckpointSave.result ? (
                         <div role="status">
                           <p><strong>safety：{dayMemoBodyMismatchRecoveryCheckpointSave.result.safety}</strong></p>

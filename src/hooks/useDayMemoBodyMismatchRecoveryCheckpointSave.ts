@@ -134,6 +134,7 @@ export function useDayMemoBodyMismatchRecoveryCheckpointSave(input: Input) {
   const inFlightRef = useRef(false)
   const runIdRef = useRef(0)
   const snapshot = getReadySnapshot()
+  const candidateAvailability = inspectSnapshotAvailability()
   const canSave = Boolean(isConfigured && isSignedIn && isUuid(authUserId) && connectionEligible(connection)
     && snapshot && snapshot.pendingLifecycleCandidate === 'clear_after_atomic_save'
     && isDayMemoSyncMetadataV5(snapshot.candidateMetadata) && !saving)
@@ -314,5 +315,5 @@ export function useDayMemoBodyMismatchRecoveryCheckpointSave(input: Input) {
     isConfigured, isSignedIn, reactMetadata, saving])
 
   const discard = useCallback(() => setResult(null), [])
-  return { canSave, saving, result, save, discard }
+  return { canSave, candidateAvailability, saving, result, save, discard }
 }

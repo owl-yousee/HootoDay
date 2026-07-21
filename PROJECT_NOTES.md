@@ -2555,3 +2555,10 @@ cleanup後VERIFY結果：
 - The verification snapshot is consumed only after confirmation, all local checks, and candidate validation, immediately before compare-and-write. Once writing begins, success or failure cannot reuse it.
 - React metadata is updated only after a complete matching read-back. Successful persistence clears only the target recovery pending, retains `recovery_required` and null confirmation time, and leaves the reconstructed unresolved differences for later one-by-one recovery.
 - This phase changes metadata only. It performs no DayMemo change, full pull, Supabase RPC/write, operation-ID generation, automatic retry, merge, repair, or transition to normal sync.
+## B-3f5e4d1 device-check correction: render save controls independently
+
+- Device verification produced a valid B-3f5e4d post-send snapshot, but the B-3f5e4d1 save panel was absent and no metadata write occurred.
+- App already created the save hook, passed the official post-send snapshot accessors, connected verified metadata adoption, and forwarded the complete hook result to ThemeSettings. The handler and result props were not missing.
+- The exact UI defect was the panel-level condition `canSave || saveResult`. Before a save result exists, any false `canSave` state hid the entire panel, including the disabled control and the reason that the candidate could not be used.
+- Panel visibility now follows the successful B-3f5e4d result, candidate availability, or an existing save result. The button is always rendered in that panel and is enabled only by the unchanged save-hook `canSave` decision. Candidate availability is shown without exposing internal identifiers.
+- The save handler, candidate metadata, validator, compare-and-write, read-back, rollback, snapshot consumption timing, and successful React metadata adoption are unchanged. Rendering and disabled-state calculation do not consume the snapshot or change persistent data.
