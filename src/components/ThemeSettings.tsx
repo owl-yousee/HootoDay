@@ -32,6 +32,7 @@ import type { useDayMemoBodyMismatchRecoverySend } from '../hooks/useDayMemoBody
 import type { useDayMemoSavedOperationResultRead } from '../hooks/useDayMemoSavedOperationResultRead'
 import type { useDayMemoBodyMismatchRecoveryPostSendVerification } from '../hooks/useDayMemoBodyMismatchRecoveryPostSendVerification'
 import type { useDayMemoBodyMismatchRecoveryCheckpointSave } from '../hooks/useDayMemoBodyMismatchRecoveryCheckpointSave'
+import type { useDayMemoSavedRecoveryStateCheck } from '../hooks/useDayMemoSavedRecoveryStateCheck'
 import type { useDayMemoMetadataV4Migration } from '../hooks/useDayMemoMetadataV4Migration'
 import type { useDayMemoMetadataV5Migration } from '../hooks/useDayMemoMetadataV5Migration'
 import type { useDayMemoSyncMetadataMigration } from '../hooks/useDayMemoSyncMetadataMigration'
@@ -87,6 +88,7 @@ interface ThemeSettingsProps {
   dayMemoSavedOperationResultRead: ReturnType<typeof useDayMemoSavedOperationResultRead>
   dayMemoBodyMismatchRecoveryPostSendVerification: ReturnType<typeof useDayMemoBodyMismatchRecoveryPostSendVerification>
   dayMemoBodyMismatchRecoveryCheckpointSave: ReturnType<typeof useDayMemoBodyMismatchRecoveryCheckpointSave>
+  dayMemoSavedRecoveryStateCheck: ReturnType<typeof useDayMemoSavedRecoveryStateCheck>
   dayMemoSyncBaseline: ReturnType<typeof useDayMemoSyncBaseline>
   dayMemoBaselineRebase: ReturnType<typeof useDayMemoBaselineRebase>
   dayMemoUpdatePreview: ReturnType<typeof useDayMemoUpdatePreview>
@@ -281,6 +283,7 @@ export function ThemeSettings({
   dayMemoSavedOperationResultRead,
   dayMemoBodyMismatchRecoveryPostSendVerification,
   dayMemoBodyMismatchRecoveryCheckpointSave,
+  dayMemoSavedRecoveryStateCheck,
   dayMemoSyncBaseline,
   dayMemoBaselineRebase,
   dayMemoUpdatePreview,
@@ -1485,6 +1488,56 @@ export function ThemeSettings({
                           <button type="button" className="health-secondary-button cloud-sync-button"
                             disabled={dayMemoBodyMismatchRecoveryCheckpointSave.saving}
                             onClick={dayMemoBodyMismatchRecoveryCheckpointSave.discard}>保存結果を破棄</button>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {dayMemoSavedRecoveryStateCheck.eligible || dayMemoSavedRecoveryStateCheck.result ? (
+                    <div className="cloud-day-memo-baseline-panel" role="region"
+                      aria-labelledby="day-memo-saved-recovery-state-heading">
+                      <h4 id="day-memo-saved-recovery-state-heading">recovery checkpoint保存後の状態を確認</h4>
+                      <p>保存済みmetadataとcurrent remoteを完全full pullで読み取り専用確認し、2026-07-12のbaseline確定と残る差異を再構築します。永続状態の変更、自動再試行、Supabaseへの書き込みは行いません。</p>
+                      <button type="button" className="health-secondary-button cloud-sync-button"
+                        disabled={!dayMemoSavedRecoveryStateCheck.eligible || dayMemoSavedRecoveryStateCheck.checking}
+                        onClick={() => { void dayMemoSavedRecoveryStateCheck.check() }}>
+                        {dayMemoSavedRecoveryStateCheck.checking ? '保存後状態を確認中…' : '保存後の同期状態を確認'}
+                      </button>
+                      {dayMemoSavedRecoveryStateCheck.result ? (
+                        <div role="status">
+                          <p><strong>safety：{dayMemoSavedRecoveryStateCheck.result.safety}</strong></p>
+                          <ul className="cloud-day-memo-preview-summary">
+                            <li>metadata version：{dayMemoSavedRecoveryStateCheck.result.metadataVersion ?? '未確認'}</li>
+                            <li>metadata validator：{dayMemoSavedRecoveryStateCheck.result.metadataValid ? '正常' : '未確認／不正'}</li>
+                            <li>workspace binding：{dayMemoSavedRecoveryStateCheck.result.workspaceBound ? '一致' : '未確認／不一致'}</li>
+                            <li>pending：{dayMemoSavedRecoveryStateCheck.result.pendingAbsent ? 'なし' : '残存／未確認'}</li>
+                            <li>cursor：{dayMemoSavedRecoveryStateCheck.result.cursor ?? '未確認'}</li>
+                            <li>full pull最大sequence：{dayMemoSavedRecoveryStateCheck.result.fullPullMaxSequence ?? '未確認'}</li>
+                            <li>cursor一致：{dayMemoSavedRecoveryStateCheck.result.cursorMatched ? '一致' : '未確認／不一致'}</li>
+                            <li>baseline件数：{dayMemoSavedRecoveryStateCheck.result.baselineCount}</li>
+                            <li>2026-07-12 baseline：{dayMemoSavedRecoveryStateCheck.result.targetBaselineVerified ? '確認済み' : '未確認／不一致'}</li>
+                            <li>2026-07-12 local／remote：{dayMemoSavedRecoveryStateCheck.result.targetLocalRemoteMatched ? '一致' : '未確認／不一致'}</li>
+                            <li>2026-07-12差異：{dayMemoSavedRecoveryStateCheck.result.targetResolved ? '解消済み' : '未解決／未確認'}</li>
+                            <li>baselineStatus：{dayMemoSavedRecoveryStateCheck.result.baselineStatus ?? '未確認／不正'}</li>
+                            <li>baselineConfirmedAt：{dayMemoSavedRecoveryStateCheck.result.baselineConfirmedAtNull ? 'null' : '未確認／不正'}</li>
+                            <li>未解決差異：{dayMemoSavedRecoveryStateCheck.result.unresolvedCount}件</li>
+                            {Object.entries(dayMemoSavedRecoveryStateCheck.result.unresolvedClassifications)
+                              .map(([date, classification]) => <li key={date}>{date}：{classification}</li>)}
+                            <li>通常同期ready：いいえ</li>
+                            <li>次の1件を復旧：{dayMemoSavedRecoveryStateCheck.result.oneByOneRecoveryPossible ? '可能' : '未確認／対象なし'}</li>
+                            <li>次の推奨対象：{dayMemoSavedRecoveryStateCheck.result.nextRecommendedDate
+                              ? `${dayMemoSavedRecoveryStateCheck.result.nextRecommendedDate} ${dayMemoSavedRecoveryStateCheck.result.nextRecommendedClassification}`
+                              : 'なし／未確認'}</li>
+                            <li>永続変更：なし</li><li>RPC送信：なし</li>
+                            <li>full pull：{dayMemoSavedRecoveryStateCheck.result.fullPullCount === 1 ? 'read-only 1回' : 'なし'}</li>
+                            <li>自動retry：なし</li>
+                            <li>確認日時：{new Date(dayMemoSavedRecoveryStateCheck.result.checkedAt).toLocaleString('ja-JP')}</li>
+                          </ul>
+                          {dayMemoSavedRecoveryStateCheck.result.safety === 'normal_difference_checkpoint_saved_state_ready' ? (
+                            <p className="cloud-day-memo-success">2026-07-12の復旧結果がbaseline・cursorへ保存済みであることを確認しました。残る差異を1件ずつ復旧できます。</p>
+                          ) : <p>{dayMemoSavedRecoveryStateCheck.result.nextAction}</p>}
+                          <button type="button" className="health-secondary-button cloud-sync-button"
+                            disabled={dayMemoSavedRecoveryStateCheck.checking}
+                            onClick={dayMemoSavedRecoveryStateCheck.discard}>確認結果を破棄</button>
                         </div>
                       ) : null}
                     </div>

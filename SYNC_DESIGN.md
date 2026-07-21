@@ -1758,3 +1758,35 @@ Freshness and candidate integrity have separate identities. The source fingerpri
 Canonical recursive metadata comparison sorts object keys and is independent of React object identity or reconstruction. Snapshot token continuity still links the exact post-send verification snapshot, but token inspection does not regenerate or consume it. Run IDs remain limited to asynchronous-result adoption and do not define persistent-state identity.
 
 A candidate is ready only when authentication/configuration, workspace, operation-result token, source metadata, canonical pending, source baselines/count, source cursor, checkpoint, local storage/React state, no push block, no intent, candidate metadata v5 validation, candidate baseline fingerprint, and candidate fingerprint all remain valid. Any genuine change remains fail-closed with a reason-specific availability result. Compare-and-write and snapshot consumption timing are unchanged.
+
+## HootoDay個人利用同期基盤の完成基準
+
+HootoDay同期は本人一人がPC親機とiPhone子機で利用する個人用基盤である。多数ユーザー・多数端末・高負荷・完全自動競合解決を完成条件にしない。完成の目的は、重大なデータ消失、古い状態による誤上書き、二重適用、削除済みデータの意図しない復活、不明または失敗状態の成功扱い、復旧材料の消失を防ぐことである。
+
+完成前に満たす必須安全条件は次のとおりとする。
+
+1. 保存失敗で保存前のlocalデータを失わない。失敗時はverified rollbackまたは復旧材料を保持したfail-closed状態にする。
+2. revision、change sequence、baseline、完全full pull、workspace、local snapshotの鮮度を確認し、古い状態で新しいremoteまたはlocalを上書きしない。
+3. operation ID、request fingerprint、operation履歴、pending、in-flight／snapshot guardにより同じ操作の二重送信・二重保存を防ぐ。
+4. PC・iPhone・Supabaseの状態を一意に判断できない場合は自動選択、merge、retry、repairを行わず停止する。
+5. deleteは明示tombstoneとし、tombstone revisionを確認した明示復活以外で削除済みDayMemoをactiveへ戻さない。
+6. 通信切断、認証切れ、workspace不一致、validator失敗、不明なRPC戻り値を成功扱いしない。
+7. 失敗後も元データ、pending、operation ID、保存前metadata、operation履歴などread-only再確認と復旧に必要な永続情報を失わない。一時verification snapshotは再読み込みで消えてよい。
+8. 成功後はmetadata、baseline、revision、change sequence、cursor、pending／intent lifecycleを同じ確認済み結果へ整合させ、read-backで証明する。
+9. コードはGitから戻せる状態を維持し、データ保存はJSONバックアップ、保存前snapshot、compare-and-write、verified rollbackなど対象に適した復旧手段を持つ。
+10. UIは正常終了、安全停止、失敗、確認必要を区別し、本文、payload、UUID、operation ID、credential、fingerprint実値を安全状態表示へ出さない。
+
+既存fail-closed経路で重大事故を防げる場合、より細かな理由表示だけを目的に専用Hook、分類、画面を追加しない。エラー文の詳細化、低頻度異常の専用表示、ログ・装飾、手順短縮、確認回数削減、batch処理、理論上の全タイミング再現は完成後の改善Phaseへ分離できる。
+
+完成を止めるのは、データ消失、stale overwrite、duplicate application、unintended resurrection、unknown/failure success、recovery evidence loss、別workspaceへの処理、未解決差異がある状態でのnormal化、またはrollback不能を成功扱いする問題である。文言が粗い、操作が長い、既存安全停止に専用説明がない、低頻度表示が不十分という問題だけでは完成を止めない。
+
+同期基盤は、必須条件の正常系と代表的失敗系をPC・iPhoneで確認し、重大リスクが未解決でなく、判断不能時にfail-closedとなり、復旧材料が残り、Gitがcleanかつmainとorigin/mainが一致し、PROJECT_NOTES.mdと本設計が実装に一致した時点で完成扱いとする。
+
+### B-3f5e4d2: recovery checkpoint保存後のread-only総合確認
+
+- B-3f5e4d1の実機保存で2026-07-12のactive baseline、cursor 17、null pendingをmetadata v5へ同時保存し、`recovery_required`とnull確認日時を維持した。保存前後のvalidator、compare-and-write、read-backが成功し、DayMemo・remote変更とrollbackはなかった。
+- B-3f5e4d2は専用ボタンでだけ実行するread-only adapterである。metadata v5、workspace、React/storage同一性、null pending、recovery checkpoint、target local/baseline、intent・push block不在をpull前に確認し、不成立ならRPC前に停止する。
+- 既存の完全full pull utilityを1操作につき最大1回だけ使用する。同じ完全結果でcursor一致、2026-07-12のactive remoteと保存済みbaseline、local/remote payload分類、local・remote・baselineの日付unionを検証する。run IDとin-flight guardにより並列実行と古い結果採用を拒否する。
+- 差異は既存`classifyDayMemoNormalDifference`だけで再構築する。2026-07-12は`exact_match_baseline_confirmed`でなければ成功にせず、その他の日付と件数は期待値へ強制しない。既知の現在状態では2026-07-15 `body_mismatch`、2026-07-18 `local_only`、2026-07-19 `remote_only_active`の3件が残り、次は既存body-mismatch経路を再利用する。
+- 成功分類は`normal_difference_checkpoint_saved_state_ready`であり、通常同期readyはfalseのまま、未解決差異を1件ずつ処理可能とする。metadata不正、pending残存、workspace不一致、pull失敗／不正、cursor不一致、baseline／target不一致、再構築不能、push block、intent、途中状態変化、unknownはfail-closedとする。
+- 結果はReact stateだけに保持し、破棄しても永続状態を変更しない。metadata、baseline、cursor、DayMemo、pending、intent、push block、operation履歴、remote、workspace、認証を変更せず、mutation RPC、自動retry、自動次項目処理、normal／confirmed化を行わない。

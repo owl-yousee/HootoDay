@@ -2570,3 +2570,19 @@ cleanup後VERIFY結果：
 - Current baseline count 5/cursor 16/pending present are not compared with candidate baseline count 6/cursor 17/pending null. Candidate values remain save-output validation only. Object identity, React rerender references, callbacks, run ID, and newly generated tokens do not participate in persistent-state equality.
 - Availability now distinguishes missing, consumed, token, authentication, workspace, metadata, pending, baseline, cursor, checkpoint, local, blocked, and invalid-candidate states without exposing identifiers or fingerprint values. Availability inspection does not consume the snapshot.
 - The compare-and-write, atomic pending/baseline/cursor save, metadata v5 validation, read-back, verified rollback, and snapshot-consumption point are unchanged. B-3f5e4d1 device verification is the next step.
+
+## Phase B-3f5e4d2: read-only verification after recovery-checkpoint save
+
+- B-3f5e4d1 was completed on device for 2026-07-12: metadata v5 saved successfully, baseline count changed from 5 to 6, cursor changed from 16 to 17, the recovery pending was cleared, and `recovery_required` with a null confirmation time was retained. DayMemo and Supabase were not changed by that metadata-only save.
+- A single explicit button now performs at most one complete read-only full pull. Before the pull it requires valid metadata v5, matching workspace and React/storage state, no pending, no intent or push block, a valid recovery checkpoint, and the saved target local/baseline. Run and in-flight guards prevent parallel or stale-result adoption.
+- The same complete pull verifies cursor equality, the saved active baseline for 2026-07-12, exact local/remote payload classification, and the union of all local, remote, and baseline dates using the existing normal-difference classifier. Expected dates or counts are not forced.
+- Success is `normal_difference_checkpoint_saved_state_ready`. The expected current result is three remaining differences: 2026-07-15 `body_mismatch`, 2026-07-18 `local_only`, and 2026-07-19 `remote_only_active`; actual data remains authoritative. The next recommended item prioritizes the existing body-mismatch recovery path.
+- Results are React-only and may be discarded. This phase writes no metadata, pending, baseline, cursor, DayMemo, intent, push block, operation history, workspace, authentication, or remote data. It performs no mutation RPC, automatic pull, retry, merge, repair, conflict resolution, or automatic transition to normal sync.
+
+## Current shortest sync-completion roadmap
+
+- Reconfirm the saved 2026-07-12 state with B-3f5e4d2, then reuse the existing body-mismatch recovery flow for 2026-07-15 without adding a date-specific Hook.
+- Add only the minimum recovery-mode adapters required for the remaining 2026-07-18 local-only upload and 2026-07-19 remote-only active adoption, reusing existing preflight, send/adoption, validator, read-back, rollback, and fail-closed behavior.
+- After every difference is resolved, run one complete verification and explicitly persist `confirmed` only when all dates, baselines, cursor, pending, intents, push block, workspace, and metadata v5 are consistent.
+- Complete representative PC/iPhone normal, conflict/unknown, authentication/workspace, tombstone/resurrection, and backup/restore guard checks, then reconcile these notes and the design. Extra labels, rare-condition screens, shorter procedures, batching, and visual polish remain post-completion improvements.
+- A new Hook, classification, or confirmation step is justified before completion only when it prevents data loss, stale overwrite, duplicate application, unintended resurrection, treating unknown/failure as success, or loss of recovery evidence. Existing fail-closed coverage must otherwise be reused.
