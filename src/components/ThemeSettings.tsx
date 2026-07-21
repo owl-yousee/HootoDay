@@ -2,7 +2,7 @@ import { DesktopIcon } from '@phosphor-icons/react/Desktop'
 import { MoonIcon } from '@phosphor-icons/react/Moon'
 import { SunIcon } from '@phosphor-icons/react/Sun'
 import { XIcon } from '@phosphor-icons/react/X'
-import { useEffect, useRef, type MouseEvent, type SyntheticEvent } from 'react'
+import { useEffect, useRef, useState, type MouseEvent, type SyntheticEvent } from 'react'
 import { DayMemoBodyMismatchComparison } from './DayMemoBodyMismatchComparison'
 import type { SupabaseAuthState, SupabaseConfigurationState } from '../hooks/useSupabaseAuth'
 import type { useDayMemoInitialUpload } from '../hooks/useDayMemoInitialUpload'
@@ -121,6 +121,82 @@ interface ThemeSettingsProps {
   dayMemoResurrectionUpload: ReturnType<typeof useDayMemoResurrectionUpload>
   dayMemoDeleteUpload: ReturnType<typeof useDayMemoDeleteUpload>
   onClose: () => void
+}
+
+type SyncRecoveryUiStage = 'checkpoint_check' | 'body_mismatch_compare' | 'candidate_prepare'
+  | 'preflight' | 'send' | 'operation_result_read' | 'post_send_verify'
+  | 'metadata_save' | 'saved_state_check' | 'next_difference' | 'blocked' | 'complete'
+
+interface SyncRecoveryNavigation {
+  stage: SyncRecoveryUiStage
+  targetDate: string | null
+  classification: string | null
+  title: string
+  description: string
+  writesRemote: boolean
+  changesPersistentState: boolean
+  disabledReason: string | null
+}
+
+function deriveSyncRecoveryNavigation(input: {
+  safety: DayMemoSyncSafety['state']
+  pending: { operationMode?: string; status: string; date: string } | null
+  savedResult: ReturnType<typeof useDayMemoSavedRecoveryStateCheck>['result']
+  pushBlocked: boolean
+  preflightCanSend: boolean
+  operationSnapshot: 'missing' | 'consumed' | 'stale' | 'ready'
+  postSendSnapshot: string
+  checkpointSavedAt: string | null
+}): SyncRecoveryNavigation {
+  const { safety, pending, savedResult } = input
+  const blocked = input.pushBlocked || safety === 'metadata_invalid' || safety === 'conflict' || safety === 'response_unknown'
+  if (blocked || pending?.status === 'conflict' || pending?.status === 'response_unknown') {
+    return { stage: 'blocked', targetDate: pending?.date ?? null, classification: pending?.operationMode ?? null,
+      title: '同期状態の確認が必要です', description: '不明または競合状態のため、送信せず詳細・診断を確認してください。',
+      writesRemote: false, changesPersistentState: false, disabledReason: '安全確認が完了するまで操作できません。' }
+  }
+  if (pending?.status === 'prepared') {
+    if (input.preflightCanSend) return { stage: 'send', targetDate: pending.date, classification: pending.operationMode ?? null,
+      title: '確認済みの1件を明示送信', description: '有効なpreflight snapshotを使い、既存operation IDで1回だけ送信します。',
+      writesRemote: true, changesPersistentState: true, disabledReason: null }
+    return { stage: 'preflight', targetDate: pending.date, classification: pending.operationMode ?? null,
+      title: '送信前に同期先を再確認', description: 'remoteとlocal、pending、checkpointの鮮度をread-onlyで確認します。',
+      writesRemote: false, changesPersistentState: false, disabledReason: null }
+  }
+  if (pending?.status === 'recovery_required') {
+    if (input.postSendSnapshot === 'ready') return { stage: 'metadata_save', targetDate: pending.date,
+      classification: pending.operationMode ?? null, title: '検証済み候補をmetadataへ保存',
+      description: 'baseline、cursor、pendingを1つの候補として原子的に保存します。', writesRemote: false,
+      changesPersistentState: true, disabledReason: null }
+    if (input.operationSnapshot === 'ready') return { stage: 'post_send_verify', targetDate: pending.date,
+      classification: pending.operationMode ?? null, title: '送信後のremoteと差異を確認',
+      description: '保存済みoperation結果と完全full pullを照合します。', writesRemote: false,
+      changesPersistentState: false, disabledReason: null }
+    return { stage: 'operation_result_read', targetDate: pending.date, classification: pending.operationMode ?? null,
+      title: '保存済み送信結果を取得', description: 'operation履歴をread-onlyで取得し、送信済み結果を確認します。',
+      writesRemote: false, changesPersistentState: false, disabledReason: null }
+  }
+  const savedAt = savedResult?.checkedAt ? Date.parse(savedResult.checkedAt) : 0
+  const checkpointAt = input.checkpointSavedAt ? Date.parse(input.checkpointSavedAt) : 0
+  if (!savedResult || savedResult.safety !== 'normal_difference_checkpoint_saved_state_ready' || checkpointAt >= savedAt) {
+    return { stage: checkpointAt > 0 ? 'saved_state_check' : 'checkpoint_check', targetDate: null, classification: null,
+      title: '保存後の同期状態を確認', description: '現在のmetadataと完全full pullをread-onlyで確認し、次の差異を決めます。',
+      writesRemote: false, changesPersistentState: false, disabledReason: null }
+  }
+  const date = savedResult.nextRecommendedDate
+  const classification = savedResult.nextRecommendedClassification
+  if (!date || !classification || savedResult.unresolvedCount === 0) return { stage: 'complete', targetDate: null,
+    classification: null, title: '復旧対象はありません', description: '未解決差異はありません。最終同期確認へ進めます。',
+    writesRemote: false, changesPersistentState: false, disabledReason: null }
+  if (classification === 'local_only') return { stage: 'candidate_prepare', targetDate: date, classification,
+    title: 'local-onlyのupload候補を準備', description: '同期先にactive recordとtombstoneがないことを確認し、pendingを準備します。',
+    writesRemote: false, changesPersistentState: true, disabledReason: null }
+  if (classification === 'body_mismatch') return { stage: 'body_mismatch_compare', targetDate: date, classification,
+    title: 'localとremoteを比較', description: '本文相違の1件をread-onlyで比較し、後続候補を選択します。',
+    writesRemote: false, changesPersistentState: false, disabledReason: null }
+  return { stage: 'next_difference', targetDate: date, classification, title: '次の差異を確認',
+    description: 'この分類は専用の安全な復旧経路から1件ずつ処理します。詳細・診断を確認してください。',
+    writesRemote: false, changesPersistentState: false, disabledReason: '現在の統合操作はこの分類に未対応です。' }
 }
 
 interface CloudSyncPresentation {
@@ -320,6 +396,7 @@ export function ThemeSettings({
 }: ThemeSettingsProps) {
   const dialogRef = useRef<HTMLDialogElement>(null)
   const pendingInternalCloseEventsRef = useRef(0)
+  const [recoveryWorkOpen, setRecoveryWorkOpen] = useState(false)
   const supabasePairing = useSupabasePairing({
     isConfigured: supabaseAuth.isConfigured,
     isSignedIn: supabaseAuth.isSignedIn,
@@ -390,6 +467,61 @@ export function ThemeSettings({
   const isWorkspaceCreationDisabled = supabaseWorkspace.workspaceState !== 'not_created'
   const pairingMinutes = Math.floor(supabasePairing.remainingSeconds / 60)
   const pairingSeconds = supabasePairing.remainingSeconds % 60
+  const syncMetadata = dayMemoSyncBaseline.metadata?.version === 5 ? dayMemoSyncBaseline.metadata : null
+  const operationSnapshotAvailability = dayMemoSavedOperationResultRead.inspectSnapshotAvailability()
+  const postSendSnapshotAvailability = dayMemoBodyMismatchRecoveryPostSendVerification.inspectSnapshotAvailability()
+  const checkpointSavedAt = dayMemoBodyMismatchRecoveryCheckpointSave.result?.succeeded
+    ? dayMemoBodyMismatchRecoveryCheckpointSave.result.checkedAt : null
+  const recoveryNavigation = deriveSyncRecoveryNavigation({
+    safety: dayMemoSyncSafety.state,
+    pending: syncMetadata?.pendingOperation ?? null,
+    savedResult: dayMemoSavedRecoveryStateCheck.result,
+    pushBlocked: Boolean(syncMetadata?.pushBlock),
+    preflightCanSend: dayMemoBodyMismatchRecoverySend.canSend,
+    operationSnapshot: operationSnapshotAvailability,
+    postSendSnapshot: postSendSnapshotAvailability,
+    checkpointSavedAt,
+  })
+  const navigationCanExecute = recoveryNavigation.stage === 'checkpoint_check' || recoveryNavigation.stage === 'saved_state_check'
+    ? dayMemoSavedRecoveryStateCheck.eligible && !dayMemoSavedRecoveryStateCheck.checking
+    : recoveryNavigation.stage === 'candidate_prepare'
+      ? Boolean(recoveryNavigation.targetDate && dayMemoRecoveryLocalOnlyPreparation.eligible
+        && dayMemoRecoveryLocalOnlyPreparation.candidateDates.includes(recoveryNavigation.targetDate)
+        && !dayMemoRecoveryLocalOnlyPreparation.preparing)
+      : recoveryNavigation.stage === 'body_mismatch_compare'
+        ? dayMemoNormalBodyMismatchCandidate.eligible && !dayMemoNormalBodyMismatchCandidate.checking
+        : recoveryNavigation.stage === 'preflight'
+          ? dayMemoBodyMismatchRecoveryPreflight.eligible && !dayMemoBodyMismatchRecoveryPreflight.checking
+          : recoveryNavigation.stage === 'send'
+            ? dayMemoBodyMismatchRecoverySend.canSend && !dayMemoBodyMismatchRecoverySend.sending
+            : recoveryNavigation.stage === 'operation_result_read'
+              ? dayMemoSavedOperationResultRead.eligible && !dayMemoSavedOperationResultRead.reading
+              : recoveryNavigation.stage === 'post_send_verify'
+                ? dayMemoBodyMismatchRecoveryPostSendVerification.eligible && !dayMemoBodyMismatchRecoveryPostSendVerification.checking
+                : recoveryNavigation.stage === 'metadata_save'
+                  ? dayMemoBodyMismatchRecoveryCheckpointSave.canSave && !dayMemoBodyMismatchRecoveryCheckpointSave.saving
+                  : false
+  const navigationDisabledReason = recoveryNavigation.disabledReason
+    ?? (navigationCanExecute ? null : '現在のsnapshotまたは前提条件を安全に確認できないため実行できません。')
+
+  const runRecoveryNavigationAction = () => {
+    const date = recoveryNavigation.targetDate
+    switch (recoveryNavigation.stage) {
+      case 'checkpoint_check': case 'saved_state_check': void dayMemoSavedRecoveryStateCheck.check(); break
+      case 'candidate_prepare': if (date) void dayMemoRecoveryLocalOnlyPreparation.prepare(date); break
+      case 'body_mismatch_compare':
+        if (!date) break
+        if (dayMemoNormalBodyMismatchCandidate.selectedDate !== date) dayMemoNormalBodyMismatchCandidate.setSelectedDate(date)
+        else void dayMemoNormalBodyMismatchCandidate.compare()
+        break
+      case 'preflight': void dayMemoBodyMismatchRecoveryPreflight.check(); break
+      case 'send': void dayMemoBodyMismatchRecoverySend.send(); break
+      case 'operation_result_read': void dayMemoSavedOperationResultRead.read(); break
+      case 'post_send_verify': void dayMemoBodyMismatchRecoveryPostSendVerification.check(); break
+      case 'metadata_save': dayMemoBodyMismatchRecoveryCheckpointSave.save(); break
+      default: break
+    }
+  }
 
   return (
     <dialog
@@ -469,6 +601,56 @@ export function ThemeSettings({
             <div className="cloud-workspace-panel">
               {supabaseWorkspace.workspaceState === 'created' ? (
                 <>
+                  <div className={`cloud-day-memo-safety-panel is-${dayMemoSyncSafety.state}`} role={dayMemoSyncSafety.state === 'normal' ? 'status' : 'alert'}>
+                    <h4>同期状態</h4>
+                    <p><strong>{dayMemoSyncSafety.state === 'normal' ? '通常同期を利用できます'
+                      : dayMemoSyncSafety.state === 'recovery_required' ? `復旧中です。残り${dayMemoSavedRecoveryStateCheck.result?.unresolvedCount ?? '未確認'}件`
+                        : '同期先の確認が必要です'}</strong></p>
+                    <ul className="cloud-day-memo-preview-summary">
+                      <li>状態：{dayMemoSyncSafety.state}</li>
+                      <li>metadata version：{syncMetadata?.version ?? '確認不能'}</li>
+                      <li>validator：{syncMetadata ? '正常' : '確認不能'}</li>
+                      <li>workspace binding：{syncMetadata?.workspaceId === supabaseWorkspace.connection?.workspaceId ? '一致' : '確認不能／不一致'}</li>
+                      <li>pending：{syncMetadata?.pendingOperation ? `${syncMetadata.pendingOperation.kind} / ${syncMetadata.pendingOperation.status}` : 'なし'}</li>
+                      <li>baselineStatus：{syncMetadata?.baselineStatus ?? '確認不能'}</li>
+                      <li>通常同期ready：{dayMemoSavedRecoveryStateCheck.result?.normalSyncReady ? 'はい' : 'いいえ'}</li>
+                      <li>未解決差異：{dayMemoSavedRecoveryStateCheck.result?.unresolvedCount ?? '未確認'}件</li>
+                      <li>次の対象：{recoveryNavigation.targetDate
+                        ? `${recoveryNavigation.targetDate} ${recoveryNavigation.classification ?? ''}` : '未確認／なし'}</li>
+                      <li>pushBlock：{syncMetadata?.pushBlock ? 'あり' : 'なし'}</li>
+                      <li>localDeleteIntent：{syncMetadata ? Object.keys(syncMetadata.localDeleteIntents).length : '未確認'}件</li>
+                      <li>最終確認：{dayMemoSavedRecoveryStateCheck.result?.checkedAt
+                        ? new Date(dayMemoSavedRecoveryStateCheck.result.checkedAt).toLocaleString('ja-JP') : '未実施'}</li>
+                    </ul>
+                    <button type="button" className="health-primary-button cloud-sync-button"
+                      onClick={() => setRecoveryWorkOpen((current) => !current)}>
+                      {recoveryWorkOpen ? '復旧作業を閉じる' : '復旧作業を続ける'}
+                    </button>
+                  </div>
+
+                  {recoveryWorkOpen ? (
+                    <div className="cloud-day-memo-recovery-check-panel" role="region" aria-labelledby="current-sync-recovery-work-heading">
+                      <h4 id="current-sync-recovery-work-heading">現在の復旧作業</h4>
+                      <ul className="cloud-day-memo-preview-summary">
+                        <li>対象：{recoveryNavigation.targetDate ?? '同期状態全体'}</li>
+                        <li>分類：{recoveryNavigation.classification ?? '状態確認'}</li>
+                        <li>段階：{recoveryNavigation.stage}</li>
+                        <li>次の操作：{recoveryNavigation.title}</li>
+                        <li>Supabase書き込み：{recoveryNavigation.writesRemote ? 'あり（確認後1回）' : 'なし'}</li>
+                        <li>永続変更：{recoveryNavigation.changesPersistentState ? 'あり（既存handler内で検証）' : 'なし'}</li>
+                        <li>自動retry：なし</li>
+                      </ul>
+                      <p>{recoveryNavigation.description}</p>
+                      <button type="button" className="health-primary-button cloud-sync-button"
+                        disabled={!navigationCanExecute} onClick={runRecoveryNavigationAction}>
+                        {recoveryNavigation.title}
+                      </button>
+                      {!navigationCanExecute && navigationDisabledReason ? <p className="cloud-sync-note">{navigationDisabledReason}</p> : null}
+                    </div>
+                  ) : null}
+
+                  <details className="cloud-sync-diagnostics">
+                    <summary>同期の詳細・診断</summary>
                   <div className={`cloud-day-memo-safety-panel is-${dayMemoSyncSafety.state}`} role={dayMemoSyncSafety.state === 'normal' ? 'status' : 'alert'}>
                     <h4>DayMemo同期の安全状態</h4>
                     <strong>{dayMemoSyncSafety.state === 'normal' ? '通常'
@@ -2209,6 +2391,7 @@ export function ThemeSettings({
                     </div>
                     </>
                   ) : null}
+                  </details>
                 </>
               ) : supabaseWorkspace.workspaceState === 'creating' ? (
                 <>

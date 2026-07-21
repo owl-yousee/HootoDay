@@ -10,6 +10,16 @@
 - Existing operation-result read and post-send verification require applied history, active current remote, exact local payload, revision/sequence/timestamp agreement, and target reclassification to `exact_match_baseline_missing`.
 - Atomic save adds only the target active baseline, advances cursor to the verified complete-pull maximum, and clears pending together. Other differences remain unresolved, so recovery status and null confirmation time continue.
 
+## B-3f5eUI1 recovery UI navigation
+
+- Sync logic and recovery UI navigation are separate responsibilities. New sync phases connect existing results, availability, eligibility, handlers, and discard lifecycles to the current-work navigator instead of adding another normal-view panel.
+- The normal settings view has three layers: a concise sync-status summary, one current recovery step, and closed-by-default details/diagnostics. Completed and unrelated historical results remain diagnostic information and never select the next action.
+- `SyncRecoveryUiStage` is React-derived UI state only. It is not stored in metadata and does not replace existing safety classifications, pending statuses, operation modes, or snapshot lifecycles.
+- Stage selection uses validated metadata, pending kind/mode/status, the current saved recovery-state result, unresolved classifications, push block and intent presence, and existing snapshot availability. Object identity and render timing do not select a stage.
+- Panel visibility is independent from button eligibility: the current step remains visible when its existing `canExecute` condition is false, with a disabled button and a safe reason. ThemeSettings does not reconstruct a write candidate or bypass an existing confirmation dialog.
+- The local-only recovery step uses the date recommended by the fresh saved recovery-state result and calls the existing B-3f5e5 preparation handler. It never routes `remote_only_active` into a local-only handler.
+- UI consolidation does not consume snapshots or mutate metadata, pending, DayMemo, baseline, cursor, intent, or remote data. Existing fail-closed safety remains authoritative.
+
 ## 1. 文書の位置付け
 
 この文書は、HootoDayのPC親機とiPhone子機の間で保存データを安全に同期するための正式設計である。同期実装は段階的に導入し、既存のlocalStorage単体動作、localStorageの各`version: 1`形式、JSONバックアップ`formatVersion: 2`および旧`formatVersion: 1`の復元互換を維持する。

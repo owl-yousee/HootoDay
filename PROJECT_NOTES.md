@@ -2595,3 +2595,12 @@ cleanup後VERIFY結果：
 - Existing recovery preflight, one-shot upsert, saved-operation-result read, post-send full-pull verification, and atomic checkpoint save are reused. The stored operation ID is not regenerated.
 - RPC success alone does not change baseline/cursor. Verified history and current remote must agree before the target baseline, cursor, and pending lifecycle are saved together.
 - Remaining `remote_only_active` stays unresolved; `recovery_required`, null confirmation time, and normal-sync-not-ready are retained. No automatic pull, retry, merge, repair, or resolution is added.
+
+## B-3f5eUI1 sync recovery UI consolidation
+
+- The settings screen now presents sync status, the single current recovery step, and collapsed diagnostics instead of stacking every recovery phase in the normal view.
+- The existing B-3f5e5 local-only preparation UI was wired correctly through App and ThemeSettings, but its JSX was nested under the conflict-preview eligibility branch. It was therefore invisible in the current non-conflict `recovery_required` state.
+- The current-work navigator derives its stage from existing metadata, pending status, saved recovery result, and existing snapshot availability. It does not add or persist a sync status and does not replace any safety decision.
+- For the current two unresolved differences, the saved result recommends the 2026-07-18 `local_only` item. The unified panel exposes its existing preparation handler without hard-coding the date; the remaining `remote_only_active` item stays unresolved.
+- Existing result panels and developer diagnostics remain available under a closed-by-default details section. Old results do not select the current action.
+- This UI-only change does not alter metadata v5, pending lifecycle, operation IDs, snapshots, validators, storage formats, RPCs, SQL, full-pull behavior, read-back, rollback, or fail-closed semantics.
