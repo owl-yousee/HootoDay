@@ -160,6 +160,17 @@ interface SyncRecoveryNavigation {
   disabledReason: string | null
 }
 
+interface NormalDifferenceRecoveryBridgeSnapshot {
+  differences: Array<{
+    date: string
+    classification: string
+  }>
+  currentTarget: {
+    date: string
+    classification: string
+  } | null
+}
+
 type NormalSyncCheckUiResult = {
   status: 'idle' | 'checking' | 'success' | 'blocked' | 'failed'
   stageId: string | null
@@ -591,6 +602,8 @@ export function ThemeSettings({
   const [recoveryWorkOpen, setRecoveryWorkOpen] = useState(false)
   const [selectedMismatchDate, setSelectedMismatchDate] = useState('')
   const [syncDifferencePreparation, setSyncDifferencePreparation] = useState<SyncDifferenceActionSelection | null>(null)
+  const [normalDifferenceRecoveryBridge, setNormalDifferenceRecoveryBridge]
+    = useState<NormalDifferenceRecoveryBridgeSnapshot | null>(null)
   const [normalSyncCheckUi, setNormalSyncCheckUi] = useState<NormalSyncCheckUiResult>(IDLE_NORMAL_SYNC_CHECK_UI)
   const normalSyncCheckStartedAtRef = useRef(0)
   const normalSyncCheckTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -917,6 +930,18 @@ export function ThemeSettings({
     setSyncDifferencePreparation(selection)
     void dayMemoRecoveryRemoteOnlyAdoption.checkCandidate(selection.date)
   }
+  const startNormalDifferenceRecoveryBridge = () => {
+    if (!isConfirmedMetadata || !syncDifferenceItems?.length) return
+    const selected = syncDifferencePreparation
+      && syncDifferenceItems.some((item) => item.date === syncDifferencePreparation.date
+        && item.classification === syncDifferencePreparation.classification)
+      ? { date: syncDifferencePreparation.date, classification: syncDifferencePreparation.classification }
+      : null
+    setNormalDifferenceRecoveryBridge({
+      differences: syncDifferenceItems.map((item) => ({ date: item.date, classification: item.classification })),
+      currentTarget: selected,
+    })
+  }
   const syncDifferenceDetailLines = syncDifferenceItems === null
     ? ['差異一覧：未確認']
     : syncDifferenceItems.length === 0 ? ['差異一覧：なし']
@@ -1145,6 +1170,31 @@ export function ThemeSettings({
                       </ul>
                       <DayMemoSyncDifferenceCards items={syncDifferenceItems} stopReason={syncStopped ? syncStopReason : null}
                         onActionPrepared={prepareSyncDifferenceAction} />
+                      {isConfirmedMetadata && syncDifferenceItems && syncDifferenceItems.length > 0 ? (
+                        <div className="cloud-day-memo-preview-result">
+                          <button type="button" className="health-primary-button cloud-sync-button"
+                            onClick={startNormalDifferenceRecoveryBridge}>復旧準備を開始</button>
+                          {normalDifferenceRecoveryBridge ? (
+                            <div role="status" aria-live="polite">
+                              <h5>復旧準備の確認</h5>
+                              <p>現在表示中の全差異を、後続のcheckpoint確認対象として保持しました。</p>
+                              <ul className="cloud-day-memo-preview-summary">
+                                {normalDifferenceRecoveryBridge.differences.map((item) => (
+                                  <li key={`${item.date}:${item.classification}`}>
+                                    対象：{item.date}／分類：{item.classification}
+                                  </li>
+                                ))}
+                              </ul>
+                              <p>開始時点の確認対象：{normalDifferenceRecoveryBridge.currentTarget
+                                ? `${normalDifferenceRecoveryBridge.currentTarget.date}／${normalDifferenceRecoveryBridge.currentTarget.classification}`
+                                : '個別選択なし（全差異）'}</p>
+                              <p className="cloud-sync-note">この段階では同期・反映・削除・checkpoint保存を実行しません。Bridge状態はこの画面のReact stateだけに保持しています。</p>
+                              <button type="button" className="health-secondary-button cloud-sync-button"
+                                onClick={() => setNormalDifferenceRecoveryBridge(null)}>復旧準備確認を閉じる</button>
+                            </div>
+                          ) : <p className="cloud-sync-note">通常差異をcandidateへ直接変換せず、まず全差異の復旧準備対象を確認します。</p>}
+                        </div>
+                      ) : null}
                       {syncDifferencePreparation?.classification === 'remote_only_active'
                         && syncDifferencePreparation.action === 'adopt_remote'
                         && syncDifferenceItems?.some((item) => item.date === syncDifferencePreparation.date
