@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabaseClient } from '../lib/supabaseClient'
 import type { DayMemo } from '../types/dayMemo'
 import type { DayMemoSyncMetadataV5 } from '../types/dayMemoSync'
@@ -139,13 +139,17 @@ export function useDayMemoNormalDifferenceRecoveryPlan({ dayMemos, isConfigured,
   const [result, setResult] = useState<DayMemoNormalDifferenceRecoveryPlan | null>(null)
   const runIdRef = useRef(0)
   const signature = useMemo(() => localSignature(dayMemos), [dayMemos])
-  const eligible = Boolean(isConfigured && isSignedIn && supabaseClient && connectionIsEligible(connection))
+  const current = connection?.workspaceId ? loadDayMemoSyncMetadataAny(window.localStorage) : null
+  const eligible = Boolean(isConfigured && isSignedIn && supabaseClient && connectionIsEligible(connection)
+    && current?.status === 'ready' && current.metadata.version === 5
+    && current.metadata.baselineStatus === 'recovery_required')
 
   const discard = useCallback(() => {
     runIdRef.current += 1
     setResult(null)
     setChecking(false)
   }, [])
+  useEffect(() => { if (!eligible) discard() }, [discard, eligible])
 
   const check = useCallback(async () => {
     if (!eligible || !supabaseClient || !connectionIsEligible(connection) || checking) return
@@ -176,7 +180,7 @@ export function useDayMemoNormalDifferenceRecoveryPlan({ dayMemos, isConfigured,
       const safety: DayMemoNormalDifferenceRecoverySafety = workspaceBound
         ? 'normal_difference_state_unknown' : 'normal_difference_workspace_mismatch'
       setResult({
-        metadataVersion: 4, workspaceBound, metadataValid: true, pushBlocked: metadata.pushBlock !== null,
+        metadataVersion: metadata.version, workspaceBound, metadataValid: true, pushBlocked: metadata.pushBlock !== null,
         pendingCount: metadata.pendingOperation ? 1 : 0, intentCount: Object.keys(metadata.localDeleteIntents).length,
         remoteCount: 0, localCount: dayMemos.length, baselineCount: Object.keys(metadata.baselines).length,
         cursor: metadata.lastPulledChangeSequence, cursorValid: false, items: [],
@@ -193,7 +197,7 @@ export function useDayMemoNormalDifferenceRecoveryPlan({ dayMemos, isConfigured,
     if (!pulled || pulled.status !== 'complete') {
       const safety: DayMemoNormalDifferenceRecoverySafety = 'normal_difference_remote_incomplete'
       setResult({
-        metadataVersion: 4, workspaceBound: true, metadataValid: true, pushBlocked: metadata.pushBlock !== null,
+        metadataVersion: metadata.version, workspaceBound: true, metadataValid: true, pushBlocked: metadata.pushBlock !== null,
         pendingCount: metadata.pendingOperation ? 1 : 0, intentCount: Object.keys(metadata.localDeleteIntents).length,
         remoteCount: 0, localCount: stored.memos.length, baselineCount: Object.keys(metadata.baselines).length,
         cursor: metadata.lastPulledChangeSequence, cursorValid: false, items: [],
@@ -270,7 +274,7 @@ export function useDayMemoNormalDifferenceRecoveryPlan({ dayMemos, isConfigured,
       '通常同期安全状態をconfirmedへ戻す',
     ]
     setResult({
-      metadataVersion: 4, workspaceBound: true, metadataValid: true, pushBlocked: metadata.pushBlock !== null,
+      metadataVersion: metadata.version, workspaceBound: true, metadataValid: true, pushBlocked: metadata.pushBlock !== null,
       pendingCount: metadata.pendingOperation ? 1 : 0, intentCount: Object.keys(metadata.localDeleteIntents).length,
       remoteCount: pulled.records.length, localCount: stored.memos.length, baselineCount: Object.keys(metadata.baselines).length,
       cursor: metadata.lastPulledChangeSequence, cursorValid, items, counts, exactBaselineCandidateDates,

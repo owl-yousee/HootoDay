@@ -2620,3 +2620,10 @@ cleanup後VERIFY結果：
 - The React-only candidate preserves all metadata and changes only the confirmed baseline status, final-pull confirmation time, verified cursor, and null pending state. It is saved separately after explicit confirmation with compare-and-write, full read-back, and verified rollback.
 - A third explicit read-only check verifies the saved confirmed metadata, cursor, and all-date equality before reporting normal sync ready. No automatic pull, save, retry, send, or remote write is introduced.
 - This completes the difference-recovery state transition. Representative PC/iPhone regression checks for normal update/delete, authentication/workspace failure, conflict/unknown recovery, tombstone/resurrection, and backup/restore guards remain before the overall sync foundation is declared complete.
+
+## B-3f5e8 confirmed v5 normal local-only regression
+
+- After confirmed restoration, the legacy normal-difference recovery-plan UI incorrectly reported metadata version 4 and allowed a recovery-only workflow to run against a normal metadata v5 state. The result type was populated with a hard-coded version 4 in three branches, while the Hook eligibility did not require `recovery_required`; a stale legacy result could therefore remain visible after metadata changed.
+- The recovery plan now reports the metadata version actually validated and is eligible only for metadata v5 in `recovery_required`. Confirmed v5 no longer offers that checkpoint/baseline-rebuild route.
+- The integrated current-operation UI now connects confirmed normal state to the existing local-only preview and upload lifecycle. The existing preview reads the actual v5 baselines, so already synchronized dates remain confirmed and only a baseline-free local date can become `local_new_candidate`.
+- The normal path retains `operationMode: normal`, the existing explicit preflight/prepare/send sequence, revision-zero new-record contract, operation ID lifecycle, result validation, active baseline/cursor save, and confirmed status. It does not enter recovery mode or automatically pull, retry, or send.

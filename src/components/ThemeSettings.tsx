@@ -131,7 +131,8 @@ type SyncRecoveryUiStage = 'checkpoint_check' | 'body_mismatch_compare' | 'candi
   | 'preflight' | 'send' | 'operation_result_read' | 'post_send_verify'
   | 'metadata_save' | 'saved_state_check' | 'remote_only_check' | 'remote_only_adopt'
   | 'remote_only_post_check' | 'remote_only_metadata_save' | 'final_confirmation' | 'confirmed_save'
-  | 'final_ready_check' | 'next_difference' | 'blocked' | 'complete'
+  | 'final_ready_check' | 'normal_local_only_check' | 'normal_local_only_preflight'
+  | 'normal_local_only_prepare' | 'normal_local_only_send' | 'next_difference' | 'blocked' | 'complete'
 
 interface SyncRecoveryNavigation {
   stage: SyncRecoveryUiStage
@@ -155,6 +156,11 @@ function deriveSyncRecoveryNavigation(input: {
   checkpointSavedAt: string | null
   remoteOnlyStage: ReturnType<typeof useDayMemoRecoveryRemoteOnlyAdoption>['stage']
   finalizationStage: ReturnType<typeof useDayMemoRecoveryFinalization>['stage']
+  normalLocalOnlyPreview: ReturnType<typeof useDayMemoLocalOnlyPreview>['previewState']
+  normalLocalOnlyCandidateCount: number
+  normalLocalOnlyNewCount: number
+  normalLocalOnlyDate: string | null
+  normalLocalOnlyUpload: ReturnType<typeof useDayMemoLocalOnlyUpload>['state']
 }): SyncRecoveryNavigation {
   const { safety, pending, savedResult } = input
   const blocked = input.pushBlocked || safety === 'metadata_invalid' || safety === 'conflict' || safety === 'response_unknown'
@@ -162,6 +168,20 @@ function deriveSyncRecoveryNavigation(input: {
     return { stage: 'blocked', targetDate: pending?.date ?? null, classification: pending?.operationMode ?? null,
       title: '同期状態の確認が必要です', description: '不明または競合状態のため、送信せず詳細・診断を確認してください。',
       writesRemote: false, changesPersistentState: false, disabledReason: '安全確認が完了するまで操作できません。' }
+  }
+  if (safety === 'normal') {
+    if (input.normalLocalOnlyUpload === 'preflight_ready') return { stage: 'normal_local_only_prepare', targetDate: input.normalLocalOnlyDate, classification: 'local_only',
+      title: '新規uploadを準備', description: '確認済みの1件に通常operationを準備します。', writesRemote: false, changesPersistentState: true, disabledReason: null }
+    if (input.normalLocalOnlyUpload === 'prepared') return { stage: 'normal_local_only_send', targetDate: input.normalLocalOnlyDate, classification: 'local_only',
+      title: '新規DayMemoを明示送信', description: '保存済みoperation IDで通常upsertを1回だけ実行します。', writesRemote: true, changesPersistentState: true, disabledReason: null }
+    if (input.normalLocalOnlyPreview === 'preview_ready' && input.normalLocalOnlyCandidateCount === 1 && input.normalLocalOnlyNewCount === 1) {
+      return { stage: 'normal_local_only_preflight', targetDate: input.normalLocalOnlyDate, classification: 'local_only', title: '送信前に同期先を確認',
+        description: 'remote active、tombstone、既存baselineがないことを再確認します。', writesRemote: false, changesPersistentState: false, disabledReason: null }
+    }
+    if (input.normalLocalOnlyUpload === 'completed') return { stage: 'complete', targetDate: null, classification: null,
+      title: '通常local-only同期が完了しました', description: 'active baselineとcursorが保存され、通常同期を維持しています。', writesRemote: false, changesPersistentState: false, disabledReason: null }
+    return { stage: 'normal_local_only_check', targetDate: null, classification: 'local_only', title: 'local-only候補を確認',
+      description: 'confirmed metadata v5と保存済みbaselineを使い、新規候補だけをread-onlyで確認します。', writesRemote: false, changesPersistentState: false, disabledReason: null }
   }
   if (pending?.status === 'prepared') {
     if (input.preflightCanSend) return { stage: 'send', targetDate: pending.date, classification: pending.operationMode ?? null,
@@ -518,6 +538,11 @@ export function ThemeSettings({
     checkpointSavedAt,
     remoteOnlyStage: dayMemoRecoveryRemoteOnlyAdoption.stage,
     finalizationStage: dayMemoRecoveryFinalization.stage,
+    normalLocalOnlyPreview: dayMemoLocalOnlyPreview.previewState,
+    normalLocalOnlyCandidateCount: dayMemoLocalOnlyPreview.summary?.candidateCount ?? 0,
+    normalLocalOnlyNewCount: dayMemoLocalOnlyPreview.summary?.localNewCandidateCount ?? 0,
+    normalLocalOnlyDate: dayMemoLocalOnlyPreview.items.length === 1 ? dayMemoLocalOnlyPreview.items[0].date : null,
+    normalLocalOnlyUpload: dayMemoLocalOnlyUpload.state,
   })
   const navigationCanExecute = recoveryNavigation.stage === 'checkpoint_check' || recoveryNavigation.stage === 'saved_state_check'
     ? dayMemoSavedRecoveryStateCheck.eligible && !dayMemoSavedRecoveryStateCheck.checking
@@ -551,6 +576,14 @@ export function ThemeSettings({
                               ? dayMemoRecoveryFinalization.canSave && !dayMemoRecoveryFinalization.running
                               : recoveryNavigation.stage === 'final_ready_check'
                                 ? dayMemoRecoveryFinalization.canVerify && !dayMemoRecoveryFinalization.running
+                                : recoveryNavigation.stage === 'normal_local_only_check'
+                                  ? dayMemoLocalOnlyPreview.eligible && dayMemoLocalOnlyPreview.previewState !== 'checking'
+                                  : recoveryNavigation.stage === 'normal_local_only_preflight'
+                                    ? dayMemoLocalOnlyUpload.state === 'idle'
+                                    : recoveryNavigation.stage === 'normal_local_only_prepare'
+                                      ? dayMemoLocalOnlyUpload.state === 'preflight_ready'
+                                      : recoveryNavigation.stage === 'normal_local_only_send'
+                                        ? dayMemoLocalOnlyUpload.state === 'prepared'
                   : false
   const navigationDisabledReason = recoveryNavigation.disabledReason
     ?? (navigationCanExecute ? null : '現在のsnapshotまたは前提条件を安全に確認できないため実行できません。')
@@ -577,6 +610,10 @@ export function ThemeSettings({
       case 'final_confirmation': void dayMemoRecoveryFinalization.check(); break
       case 'confirmed_save': dayMemoRecoveryFinalization.save(); break
       case 'final_ready_check': void dayMemoRecoveryFinalization.verify(); break
+      case 'normal_local_only_check': void dayMemoLocalOnlyPreview.previewLocalOnly(); break
+      case 'normal_local_only_preflight': void dayMemoLocalOnlyUpload.runPreflight(); break
+      case 'normal_local_only_prepare': dayMemoLocalOnlyUpload.prepareUpload(); break
+      case 'normal_local_only_send': void dayMemoLocalOnlyUpload.uploadPrepared(); break
       default: break
     }
   }

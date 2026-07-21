@@ -37,6 +37,14 @@
 - After separate explicit confirmation, source state and candidate validity are rechecked without another pull. The snapshot is consumed immediately before compare-and-write. Baselines, cursor, `confirmed`, confirmation time, and null pending are written as one metadata v5 object, followed by strict read-back or verified rollback.
 - Successful save updates React metadata only from verified storage. A separate explicit complete pull is required to report `normal_sync_ready`; saving does not automatically pull, send, retry, merge, repair, or start normal synchronization.
 
+## B-3f5e8 confirmed v5 normal local-only routing
+
+- `useDayMemoNormalDifferenceRecoveryPlan` is a recovery-only diagnostic. It is available only for validated metadata v5 whose baseline status is `recovery_required`; it must not be used as the normal confirmed local-only entry point.
+- Recovery-plan results report the validated metadata's actual version. No fixed v4 presentation value or pre-migration result is authoritative after v5 migration or confirmed restoration.
+- In confirmed v5, normal local-only detection uses the existing local-only preview: stored v5 baselines exclude the nine confirmed dates, and only a local date with no baseline and no active/tombstone remote may become the single normal upload candidate.
+- The integrated UI delegates to the existing normal local-only preflight, preparation, and explicit send handlers. The pending remains `operationMode: normal`; successful upsert adds one active baseline, advances cursor, clears pending, and retains confirmed readiness.
+- No recovery checkpoint, baseline rebuild, recovery operation mode, metadata migration, SQL/RPC change, automatic pull, automatic retry, or automatic send is introduced.
+
 ## 1. 文書の位置付け
 
 この文書は、HootoDayのPC親機とiPhone子機の間で保存データを安全に同期するための正式設計である。同期実装は段階的に導入し、既存のlocalStorage単体動作、localStorageの各`version: 1`形式、JSONバックアップ`formatVersion: 2`および旧`formatVersion: 1`の復元互換を維持する。
