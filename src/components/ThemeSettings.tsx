@@ -34,6 +34,7 @@ import type { useDayMemoBodyMismatchRecoveryPostSendVerification } from '../hook
 import type { useDayMemoBodyMismatchRecoveryCheckpointSave } from '../hooks/useDayMemoBodyMismatchRecoveryCheckpointSave'
 import type { useDayMemoSavedRecoveryStateCheck } from '../hooks/useDayMemoSavedRecoveryStateCheck'
 import type { useDayMemoRecoveryLocalOnlyPreparation } from '../hooks/useDayMemoRecoveryLocalOnlyPreparation'
+import type { useDayMemoRecoveryRemoteOnlyAdoption } from '../hooks/useDayMemoRecoveryRemoteOnlyAdoption'
 import type { useDayMemoMetadataV4Migration } from '../hooks/useDayMemoMetadataV4Migration'
 import type { useDayMemoMetadataV5Migration } from '../hooks/useDayMemoMetadataV5Migration'
 import type { useDayMemoSyncMetadataMigration } from '../hooks/useDayMemoSyncMetadataMigration'
@@ -91,6 +92,7 @@ interface ThemeSettingsProps {
   dayMemoBodyMismatchRecoveryCheckpointSave: ReturnType<typeof useDayMemoBodyMismatchRecoveryCheckpointSave>
   dayMemoSavedRecoveryStateCheck: ReturnType<typeof useDayMemoSavedRecoveryStateCheck>
   dayMemoRecoveryLocalOnlyPreparation: ReturnType<typeof useDayMemoRecoveryLocalOnlyPreparation>
+  dayMemoRecoveryRemoteOnlyAdoption: ReturnType<typeof useDayMemoRecoveryRemoteOnlyAdoption>
   dayMemoSyncBaseline: ReturnType<typeof useDayMemoSyncBaseline>
   dayMemoBaselineRebase: ReturnType<typeof useDayMemoBaselineRebase>
   dayMemoUpdatePreview: ReturnType<typeof useDayMemoUpdatePreview>
@@ -125,7 +127,8 @@ interface ThemeSettingsProps {
 
 type SyncRecoveryUiStage = 'checkpoint_check' | 'body_mismatch_compare' | 'candidate_prepare'
   | 'preflight' | 'send' | 'operation_result_read' | 'post_send_verify'
-  | 'metadata_save' | 'saved_state_check' | 'next_difference' | 'blocked' | 'complete'
+  | 'metadata_save' | 'saved_state_check' | 'remote_only_check' | 'remote_only_adopt'
+  | 'remote_only_post_check' | 'remote_only_metadata_save' | 'next_difference' | 'blocked' | 'complete'
 
 interface SyncRecoveryNavigation {
   stage: SyncRecoveryUiStage
@@ -147,6 +150,7 @@ function deriveSyncRecoveryNavigation(input: {
   operationSnapshot: 'missing' | 'consumed' | 'stale' | 'ready'
   postSendSnapshot: string
   checkpointSavedAt: string | null
+  remoteOnlyStage: ReturnType<typeof useDayMemoRecoveryRemoteOnlyAdoption>['stage']
 }): SyncRecoveryNavigation {
   const { safety, pending, savedResult } = input
   const blocked = input.pushBlocked || safety === 'metadata_invalid' || safety === 'conflict' || safety === 'response_unknown'
@@ -194,6 +198,23 @@ function deriveSyncRecoveryNavigation(input: {
   if (classification === 'body_mismatch') return { stage: 'body_mismatch_compare', targetDate: date, classification,
     title: 'localとremoteを比較', description: '本文相違の1件をread-onlyで比較し、後続候補を選択します。',
     writesRemote: false, changesPersistentState: false, disabledReason: null }
+  if (classification === 'remote_only_active') {
+    if (input.remoteOnlyStage === 'candidate_ready') return { stage: 'remote_only_adopt', targetDate: date, classification,
+      title: '同期先の内容をこの端末へ反映', description: '確認済みremote activeを1件だけlocalへ保存します。',
+      writesRemote: false, changesPersistentState: true, disabledReason: null }
+    if (input.remoteOnlyStage === 'local_saved') return { stage: 'remote_only_post_check', targetDate: date, classification,
+      title: '採用後のremoteと差異を確認', description: 'local保存後のremoteと全差異をread-onlyで再確認します。',
+      writesRemote: false, changesPersistentState: false, disabledReason: null }
+    if (input.remoteOnlyStage === 'post_adoption_ready') return { stage: 'remote_only_metadata_save', targetDate: date, classification,
+      title: 'baselineとcursorをmetadataへ保存', description: '検証済み候補を原子的に保存し、recovery_requiredを維持します。',
+      writesRemote: false, changesPersistentState: true, disabledReason: null }
+    if (input.remoteOnlyStage === 'metadata_saved') return { stage: 'saved_state_check', targetDate: date, classification,
+      title: '保存後の同期状態を確認', description: '未解決差異をread-onlyで再構築します。',
+      writesRemote: false, changesPersistentState: false, disabledReason: null }
+    return { stage: 'remote_only_check', targetDate: date, classification,
+      title: '同期先のDayMemoを採用候補として確認', description: 'local不在とremote activeを完全full pullで確認します。',
+      writesRemote: false, changesPersistentState: false, disabledReason: null }
+  }
   return { stage: 'next_difference', targetDate: date, classification, title: '次の差異を確認',
     description: 'この分類は専用の安全な復旧経路から1件ずつ処理します。詳細・診断を確認してください。',
     writesRemote: false, changesPersistentState: false, disabledReason: '現在の統合操作はこの分類に未対応です。' }
@@ -363,6 +384,7 @@ export function ThemeSettings({
   dayMemoBodyMismatchRecoveryCheckpointSave,
   dayMemoSavedRecoveryStateCheck,
   dayMemoRecoveryLocalOnlyPreparation,
+  dayMemoRecoveryRemoteOnlyAdoption,
   dayMemoSyncBaseline,
   dayMemoBaselineRebase,
   dayMemoUpdatePreview,
@@ -481,6 +503,7 @@ export function ThemeSettings({
     operationSnapshot: operationSnapshotAvailability,
     postSendSnapshot: postSendSnapshotAvailability,
     checkpointSavedAt,
+    remoteOnlyStage: dayMemoRecoveryRemoteOnlyAdoption.stage,
   })
   const navigationCanExecute = recoveryNavigation.stage === 'checkpoint_check' || recoveryNavigation.stage === 'saved_state_check'
     ? dayMemoSavedRecoveryStateCheck.eligible && !dayMemoSavedRecoveryStateCheck.checking
@@ -500,6 +523,14 @@ export function ThemeSettings({
                 ? dayMemoBodyMismatchRecoveryPostSendVerification.eligible && !dayMemoBodyMismatchRecoveryPostSendVerification.checking
                 : recoveryNavigation.stage === 'metadata_save'
                   ? dayMemoBodyMismatchRecoveryCheckpointSave.canSave && !dayMemoBodyMismatchRecoveryCheckpointSave.saving
+                  : recoveryNavigation.stage === 'remote_only_check'
+                    ? dayMemoRecoveryRemoteOnlyAdoption.eligible && !dayMemoRecoveryRemoteOnlyAdoption.running
+                    : recoveryNavigation.stage === 'remote_only_adopt'
+                      ? dayMemoRecoveryRemoteOnlyAdoption.canAdopt && !dayMemoRecoveryRemoteOnlyAdoption.running
+                      : recoveryNavigation.stage === 'remote_only_post_check'
+                        ? dayMemoRecoveryRemoteOnlyAdoption.canPostCheck && !dayMemoRecoveryRemoteOnlyAdoption.running
+                        : recoveryNavigation.stage === 'remote_only_metadata_save'
+                          ? dayMemoRecoveryRemoteOnlyAdoption.canSave && !dayMemoRecoveryRemoteOnlyAdoption.running
                   : false
   const navigationDisabledReason = recoveryNavigation.disabledReason
     ?? (navigationCanExecute ? null : '現在のsnapshotまたは前提条件を安全に確認できないため実行できません。')
@@ -519,6 +550,10 @@ export function ThemeSettings({
       case 'operation_result_read': void dayMemoSavedOperationResultRead.read(); break
       case 'post_send_verify': void dayMemoBodyMismatchRecoveryPostSendVerification.check(); break
       case 'metadata_save': dayMemoBodyMismatchRecoveryCheckpointSave.save(); break
+      case 'remote_only_check': void dayMemoRecoveryRemoteOnlyAdoption.checkCandidate(); break
+      case 'remote_only_adopt': dayMemoRecoveryRemoteOnlyAdoption.adoptLocal(); break
+      case 'remote_only_post_check': void dayMemoRecoveryRemoteOnlyAdoption.checkPostAdoption(); break
+      case 'remote_only_metadata_save': dayMemoRecoveryRemoteOnlyAdoption.saveMetadata(); break
       default: break
     }
   }
@@ -651,6 +686,21 @@ export function ThemeSettings({
 
                   <details className="cloud-sync-diagnostics">
                     <summary>同期の詳細・診断</summary>
+                  {dayMemoRecoveryRemoteOnlyAdoption.result ? (
+                    <div className="cloud-day-memo-preview-result">
+                      <h4>recovery remote-only active採用</h4>
+                      <ul className="cloud-day-memo-preview-summary">
+                        <li>対象日：{dayMemoRecoveryRemoteOnlyAdoption.result.date ?? '未確認'}</li>
+                        <li>段階：{dayMemoRecoveryRemoteOnlyAdoption.result.stage}</li>
+                        <li>safety：{dayMemoRecoveryRemoteOnlyAdoption.result.safety}</li>
+                        <li>未解決差異：{dayMemoRecoveryRemoteOnlyAdoption.result.unresolvedCount}件</li>
+                        <li>Supabase書き込み：なし</li><li>自動retry：なし</li>
+                      </ul>
+                      {dayMemoRecoveryRemoteOnlyAdoption.safeErrorMessage ? <p className="cloud-pairing-error" role="alert">{dayMemoRecoveryRemoteOnlyAdoption.safeErrorMessage}</p> : null}
+                      <button type="button" className="health-secondary-button cloud-sync-button" onClick={dayMemoRecoveryRemoteOnlyAdoption.discard}
+                        disabled={dayMemoRecoveryRemoteOnlyAdoption.running}>結果表示を破棄</button>
+                    </div>
+                  ) : null}
                   <div className={`cloud-day-memo-safety-panel is-${dayMemoSyncSafety.state}`} role={dayMemoSyncSafety.state === 'normal' ? 'status' : 'alert'}>
                     <h4>DayMemo同期の安全状態</h4>
                     <strong>{dayMemoSyncSafety.state === 'normal' ? '通常'

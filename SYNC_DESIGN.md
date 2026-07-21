@@ -20,6 +20,15 @@
 - The local-only recovery step uses the date recommended by the fresh saved recovery-state result and calls the existing B-3f5e5 preparation handler. It never routes `remote_only_active` into a local-only handler.
 - UI consolidation does not consume snapshots or mutate metadata, pending, DayMemo, baseline, cursor, intent, or remote data. Existing fail-closed safety remains authoritative.
 
+## B-3f5e6 recovery remote-only active adoption
+
+- This is a thin recovery adapter for one `remote_only_active` item selected by the current saved-recovery result. It does not reuse the normal conflict adoption precondition because that path requires `confirmed`, a conflict snapshot, and pending/intent evidence and would finalize metadata as confirmed.
+- Candidate confirmation performs one explicit complete full pull and requires local absence, one canonical active remote, no target baseline, cursor equality, and no unrelated unresolved difference. Tombstones and any changed or unknown state are rejected.
+- The React-only candidate snapshot binds the workspace, source metadata/local raw values, remote revision/sequence/timestamp/payload, and completed local candidate. No identifier or payload is shown in the normal summary.
+- Explicit local adoption performs no additional pull. It rechecks source state, saves a backup, writes the completed DayMemo array with verified read-back, and relies on verified rollback to restore the original target absence on failure.
+- A separate explicit post-adoption full pull proves the remote snapshot is unchanged, reclassifies every date, and builds a validated metadata v5 candidate. A final explicit save writes the active baseline and cursor together using compare-and-write/read-back while retaining null pending, `recovery_required`, and null confirmation time.
+- No remote write RPC, operation ID, pending operation, metadata version, SQL, RLS, automatic retry, automatic pull, automatic adoption, batching, or automatic transition to `confirmed` is introduced.
+
 ## 1. 文書の位置付け
 
 この文書は、HootoDayのPC親機とiPhone子機の間で保存データを安全に同期するための正式設計である。同期実装は段階的に導入し、既存のlocalStorage単体動作、localStorageの各`version: 1`形式、JSONバックアップ`formatVersion: 2`および旧`formatVersion: 1`の復元互換を維持する。

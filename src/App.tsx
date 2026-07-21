@@ -49,6 +49,7 @@ import { useDayMemoBodyMismatchRecoveryPostSendVerification } from './hooks/useD
 import { useDayMemoBodyMismatchRecoveryCheckpointSave } from './hooks/useDayMemoBodyMismatchRecoveryCheckpointSave'
 import { useDayMemoSavedRecoveryStateCheck } from './hooks/useDayMemoSavedRecoveryStateCheck'
 import { useDayMemoRecoveryLocalOnlyPreparation } from './hooks/useDayMemoRecoveryLocalOnlyPreparation'
+import { useDayMemoRecoveryRemoteOnlyAdoption } from './hooks/useDayMemoRecoveryRemoteOnlyAdoption'
 import { useDayMemoMetadataV4Migration } from './hooks/useDayMemoMetadataV4Migration'
 import { useDayMemoMetadataV5Migration } from './hooks/useDayMemoMetadataV5Migration'
 import { useDayMemoSyncMetadataMigration } from './hooks/useDayMemoSyncMetadataMigration'
@@ -286,6 +287,16 @@ function App() {
     connection: supabaseWorkspace.connection,
     reactMetadata: dayMemoSyncBaseline.metadata?.version === 5 ? dayMemoSyncBaseline.metadata : null,
     savedRecoveryResult: dayMemoSavedRecoveryStateCheck.result,
+    adoptVerifiedMetadata: dayMemoSyncBaseline.adoptVerifiedMetadata,
+  })
+  const dayMemoRecoveryRemoteOnlyAdoption = useDayMemoRecoveryRemoteOnlyAdoption({
+    dayMemos,
+    isConfigured: supabaseAuth.isConfigured,
+    isSignedIn: supabaseAuth.isSignedIn,
+    connection: supabaseWorkspace.connection,
+    reactMetadata: dayMemoSyncBaseline.metadata?.version === 5 ? dayMemoSyncBaseline.metadata : null,
+    savedResult: dayMemoSavedRecoveryStateCheck.result,
+    adoptVerifiedStoredDayMemos,
     adoptVerifiedMetadata: dayMemoSyncBaseline.adoptVerifiedMetadata,
   })
   const dayMemoBaselineRebase = useDayMemoBaselineRebase({
@@ -756,6 +767,7 @@ function App() {
           dayMemoBodyMismatchRecoveryCheckpointSave={dayMemoBodyMismatchRecoveryCheckpointSave}
           dayMemoSavedRecoveryStateCheck={dayMemoSavedRecoveryStateCheck}
           dayMemoRecoveryLocalOnlyPreparation={dayMemoRecoveryLocalOnlyPreparation}
+          dayMemoRecoveryRemoteOnlyAdoption={dayMemoRecoveryRemoteOnlyAdoption}
           dayMemoSyncBaseline={dayMemoSyncBaseline}
           dayMemoBaselineRebase={dayMemoBaselineRebase}
           dayMemoUpdatePreview={dayMemoUpdatePreview}

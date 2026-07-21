@@ -2604,3 +2604,11 @@ cleanup後VERIFY結果：
 - For the current two unresolved differences, the saved result recommends the 2026-07-18 `local_only` item. The unified panel exposes its existing preparation handler without hard-coding the date; the remaining `remote_only_active` item stays unresolved.
 - Existing result panels and developer diagnostics remain available under a closed-by-default details section. Old results do not select the current action.
 - This UI-only change does not alter metadata v5, pending lifecycle, operation IDs, snapshots, validators, storage formats, RPCs, SQL, full-pull behavior, read-back, rollback, or fail-closed semantics.
+
+## B-3f5e6 recovery remote-only active adoption
+
+- A single `remote_only_active` difference from the current saved recovery result can now enter an explicit four-step adapter: read-only candidate confirmation, verified local adoption, post-adoption read-only verification, and atomic metadata save.
+- The adapter requires metadata v5 in `recovery_required`, null confirmation time, matching workspace/cursor, no pending, push block, intent, target baseline, or target local memo. A missing remote, tombstone, invalid payload, changed snapshot, or unrelated difference stops fail-closed.
+- Existing complete full pull, canonical remote validation, DayMemo verified replacement/read-back, pull-apply backup, rollback behavior, normal-difference classifier, metadata validator, compare-and-write, and read-back utilities are reused.
+- No operation ID, pending mode, metadata version, SQL, RPC, or remote write is added. The target date comes from the fresh saved recovery result and is never hard-coded.
+- Local content is saved before metadata. Post-adoption verification must prove unchanged remote and matching local before the active baseline and cursor are saved together. `recovery_required` and null confirmation time remain even when no differences remain.
