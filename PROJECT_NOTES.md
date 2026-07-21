@@ -2761,3 +2761,10 @@ cleanup後VERIFY結果：
 - confirmed metadataのReact state変更時に通常update/pull previewを未確認状態へ戻し、古いresult、summary、errorを破棄する。confirmed_savedとnormal_sync_readyは通常同期分岐より先にrouteし、保存後の明示full pull確認を可能にする。
 - 通常pullでcursorが一致し、same件数がbaseline件数と一致し、local-only、remote-only、body difference、active/tombstone不整合がすべて0件の場合は正常な差異なしとして扱う。local-only 1件専用blocked文言へ誤配置しない。
 - baseline、metadata、DayMemo、pending、intent、cursorを自動変更せず、remote write、自動送信、自動pull、自動retryを追加しない。SQL、RPC、RLS、metadata v5・baseline・checkpoint等の保存形式に変更はない。
+## B-3f5eUI2j normal local-only regression plan
+
+- 復旧完了・metadata v5 confirmed・通常同期ready確認後に、既存本番DayMemoを使わず、iPhone child/memberで新規テストDayMemo 1件を作成して通常local-only経路を確認する。
+- 対象日はbaselineなし、remote activeなし、remote tombstoneなし、pending・intent・pushBlockなし、他差異なしの場合だけ`local_new_candidate` 1件となる。previewとfull-pull preflightでは自動送信せず、明示準備時だけoperation IDを1個生成してpendingを先行保存する。
+- 明示送信は既存upsert RPCを対象1件だけに使用する。base revision 0、workspace/device、payload、revision、change sequence、active状態を厳格検証し、conflict／response unknownではpendingとoperation IDを保持して自動retryしない。
+- RPC applied結果の検証後だけactive baseline、cursor、confirmedAt、成功日時、pending解消をmetadata v5へverified保存する。保存成功後は同じverified metadataをReact stateへ反映し、統合UIを既存の「送信後の状態を確認」read-only full pullへ進める。送信前preflightと送信には個別in-flight guardを置く。
+- SQL、RPC、RLS、metadata・pending・baseline・cursor・DayMemoの保存形式、compare-and-write、read-back、rollback方式は変更しない。

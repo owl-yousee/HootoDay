@@ -362,6 +362,7 @@ function App() {
     connection: supabaseWorkspace.connection,
     getSingleNewCandidateSnapshot: dayMemoLocalOnlyPreview.getSingleNewCandidateSnapshot,
     discardLocalOnlyPreview: dayMemoLocalOnlyPreview.discardPreview,
+    adoptVerifiedMetadata: dayMemoSyncBaseline.adoptVerifiedMetadata,
   })
   const dayMemoUpdateUpload = useDayMemoUpdateUpload({
     dayMemos,

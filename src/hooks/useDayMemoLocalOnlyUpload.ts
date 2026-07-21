@@ -44,6 +44,7 @@ interface UseDayMemoLocalOnlyUploadInput {
   connection: SyncConnection | null
   getSingleNewCandidateSnapshot: () => DayMemoLocalOnlyUploadCandidateSnapshot | null
   discardLocalOnlyPreview: () => void
+  adoptVerifiedMetadata: (metadata: DayMemoSyncMetadataV5) => void
 }
 
 interface PreflightSnapshot {
@@ -124,12 +125,15 @@ export function useDayMemoLocalOnlyUpload({
   connection,
   getSingleNewCandidateSnapshot,
   discardLocalOnlyPreview,
+  adoptVerifiedMetadata,
 }: UseDayMemoLocalOnlyUploadInput) {
   const [state, setState] = useState<DayMemoLocalOnlyUploadState>('unavailable')
   const [safeErrorMessage, setSafeErrorMessage] = useState<string | null>(null)
   const [result, setResult] = useState<DayMemoLocalOnlyUploadResult | null>(null)
   const preflightRef = useRef<PreflightSnapshot | null>(null)
   const preparedRef = useRef<PreparedSnapshot | null>(null)
+  const preflightInFlightRef = useRef(false)
+  const uploadInFlightRef = useRef(false)
   const generation = useRef(0)
   const currentLocalSignature = useMemo(() => localSignature(dayMemos), [dayMemos])
   const latestLocalSignature = useRef(currentLocalSignature)
@@ -164,7 +168,9 @@ export function useDayMemoLocalOnlyUpload({
   }, [currentLocalSignature, reset])
 
   const runPreflight = useCallback(async () => {
-    if (!eligible || !connection?.workspaceId || !supabaseClient || state !== 'idle') return
+    if (!eligible || !connection?.workspaceId || !supabaseClient || state !== 'idle' || preflightInFlightRef.current) return
+    preflightInFlightRef.current = true
+    try {
     const preview = getSingleNewCandidateSnapshot()
     if (!preview || preview.workspaceId !== connection.workspaceId || !localMatchesPreview(dayMemos, preview)) {
       setState('local_changed')
@@ -213,6 +219,9 @@ export function useDayMemoLocalOnlyUpload({
     }
     preflightRef.current = { preview, previousChangeSequence: pulled.maxChangeSequence }
     setState('preflight_ready')
+    } finally {
+      preflightInFlightRef.current = false
+    }
   }, [connection, currentLocalSignature, dayMemos, eligible, getSingleNewCandidateSnapshot, state])
 
   const prepareUpload = useCallback(() => {
@@ -260,7 +269,9 @@ export function useDayMemoLocalOnlyUpload({
 
   const uploadPrepared = useCallback(async () => {
     const prepared = preparedRef.current
-    if (!eligible || !connection?.workspaceId || !connection.deviceId || !supabaseClient || state !== 'prepared' || !prepared) return
+    if (!eligible || !connection?.workspaceId || !connection.deviceId || !supabaseClient || state !== 'prepared' || !prepared || uploadInFlightRef.current) return
+    uploadInFlightRef.current = true
+    try {
     const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
     const pending = loaded.status === 'ready' && loaded.metadata.version === 5 && loaded.metadata.pendingOperation?.kind === 'upsert' ? loaded.metadata.pendingOperation : null
     if (loaded.status !== 'ready'
@@ -367,10 +378,14 @@ export function useDayMemoLocalOnlyUpload({
       setSafeErrorMessage(messageForState('post_rpc_metadata_failed'))
       return
     }
+    adoptVerifiedMetadata(completed)
     setResult({ date: memo.date, revision: normalized.revision, changeSequence: normalized.change_sequence })
     discardLocalOnlyPreview()
     setState('completed')
-  }, [connection, dayMemos, discardLocalOnlyPreview, eligible, state])
+    } finally {
+      uploadInFlightRef.current = false
+    }
+  }, [adoptVerifiedMetadata, connection, dayMemos, discardLocalOnlyPreview, eligible, state])
 
   return {
     eligible,

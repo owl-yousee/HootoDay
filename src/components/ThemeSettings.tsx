@@ -206,8 +206,6 @@ function deriveSyncRecoveryNavigation(input: {
       return { stage: 'normal_local_only_preflight', targetDate: input.normalLocalOnlyDate, classification: 'local_only', title: '送信前に同期先を確認',
         description: 'remote active、tombstone、既存baselineがないことを再確認します。', writesRemote: false, changesPersistentState: false, disabledReason: null }
     }
-    if (input.normalLocalOnlyUpload === 'completed') return { stage: 'complete', targetDate: null, classification: null,
-      title: '通常local-only同期が完了しました', description: 'active baselineとcursorが保存され、通常同期を維持しています。', writesRemote: false, changesPersistentState: false, disabledReason: null }
     const pull = input.normalPullSummary
     if (input.normalPullState !== 'preview_ready' || !pull || pull.maxChangeSequence !== input.metadataCursor) {
       return { stage: 'normal_state_check', targetDate: null, classification: null, title: '通常同期状態を確認',
