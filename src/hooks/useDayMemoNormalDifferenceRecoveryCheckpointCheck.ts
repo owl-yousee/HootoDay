@@ -76,6 +76,16 @@ export interface DayMemoNormalDifferenceCheckpointSnapshot {
   sourceBaselineStatus: 'mismatch' | 'recovery_required'
 }
 
+interface DayMemoBridgeNormalCheckpointSnapshot {
+  result: DayMemoNormalDifferenceCheckpointResult
+  metadataRaw: string
+  localStorageSerialized: string
+  workspaceId: string
+  bridgeDifferences: DayMemoStatusOnlyCheckpointBridgeDifference[]
+  remoteRecords: RemoteDayMemoRecord[]
+  candidateMetadata: DayMemoSyncMetadataV5
+}
+
 const UNRESOLVED: DayMemoNormalDifferenceClassification[] = [
   'exact_body_timestamp_mismatch', 'body_mismatch', 'local_only', 'remote_only_active', 'remote_only_tombstone',
 ]
@@ -112,6 +122,7 @@ export function useDayMemoNormalDifferenceRecoveryCheckpointCheck({ dayMemos, is
   const [result, setResult] = useState<DayMemoNormalDifferenceCheckpointResult | null>(null)
   const runIdRef = useRef(0)
   const snapshotRef = useRef<DayMemoNormalDifferenceCheckpointSnapshot | null>(null)
+  const bridgeNormalSnapshotRef = useRef<DayMemoBridgeNormalCheckpointSnapshot | null>(null)
   const signature = useMemo(() => localSignature(dayMemos), [dayMemos])
   const eligible = Boolean(isConfigured && isSignedIn && supabaseClient && connectionIsEligible(connection))
 
@@ -127,7 +138,13 @@ export function useDayMemoNormalDifferenceRecoveryCheckpointCheck({ dayMemos, is
       checkedAt: new Date().toISOString(), ...values, safety, nextAction: nextAction(safety) })
   }, [dayMemos.length])
 
-  const discard = useCallback(() => { runIdRef.current += 1; snapshotRef.current = null; setResult(null); setChecking(false) }, [])
+  const discard = useCallback(() => {
+    runIdRef.current += 1
+    snapshotRef.current = null
+    bridgeNormalSnapshotRef.current = null
+    setResult(null)
+    setChecking(false)
+  }, [])
 
   const check = useCallback(async () => {
     if (!eligible || !supabaseClient || !connectionIsEligible(connection) || checking) return
@@ -256,10 +273,160 @@ export function useDayMemoNormalDifferenceRecoveryCheckpointCheck({ dayMemos, is
     } finally { if (runIdRef.current === runId) setChecking(false) }
   }, [checking, connection, dayMemos, eligible, finish, signature])
 
+  const checkBridgeNormalCandidate = useCallback(async (bridgeDifferences: DayMemoStatusOnlyCheckpointBridgeDifference[]) => {
+    if (!eligible || !supabaseClient || !connectionIsEligible(connection) || checking || bridgeDifferences.length === 0) return
+    const runId = ++runIdRef.current
+    snapshotRef.current = null
+    bridgeNormalSnapshotRef.current = null
+    setChecking(true)
+    setResult(null)
+    try {
+      const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
+      const stored = readDayMemoStorageSnapshot(window.localStorage)
+      if (loaded.status !== 'ready' || !isDayMemoSyncMetadataV5(loaded.metadata) || stored.status !== 'ready') {
+        finish('normal_difference_checkpoint_state_unknown'); return
+      }
+      const metadata = loaded.metadata
+      const common = { metadataCursor: metadata.lastPulledChangeSequence, localCount: stored.memos.length,
+        baselineCount: Object.keys(metadata.baselines).length,
+        diagnosticStopStage: 'prerequisite_check' as const,
+        remoteUniqueDateCount: null, sequenceValidationPassed: null,
+        differenceClassificationReached: false }
+      if (metadata.workspaceId !== connection.workspaceId) {
+        finish('normal_difference_checkpoint_workspace_mismatch', common); return
+      }
+      if (metadata.baselineStatus !== 'confirmed' || metadata.baselineConfirmedAt === null) {
+        finish('normal_difference_checkpoint_unsupported', common); return
+      }
+      if (localSignature(stored.memos) !== signature || !stored.memos.every(isStoredDayMemo)) {
+        finish('normal_difference_checkpoint_state_changed', common); return
+      }
+      if (metadata.pendingOperation) { finish('normal_difference_checkpoint_pending_remaining', common); return }
+      if (Object.keys(metadata.localDeleteIntents).length) { finish('normal_difference_checkpoint_intent_remaining', common); return }
+      if (metadata.pushBlock) { finish('normal_difference_checkpoint_push_blocked', common); return }
+      if (bridgeDifferences.some((item) => !DAY_MEMO_NORMAL_DIFFERENCE_CLASSIFICATIONS
+        .includes(item.classification as DayMemoNormalDifferenceClassification))) {
+        finish('normal_difference_status_only_checkpoint_bridge_changed', common); return
+      }
+
+      const pulled = await pullAllDayMemoSyncRecords(supabaseClient, connection.workspaceId,
+        () => runIdRef.current === runId).catch(() => null)
+      if (!pulled || pulled.status !== 'complete') {
+        finish('normal_difference_checkpoint_remote_incomplete', { ...common, diagnosticStopStage: 'full_pull' }); return
+      }
+      const after = loadDayMemoSyncMetadataAny(window.localStorage)
+      const afterStored = readDayMemoStorageSnapshot(window.localStorage)
+      if (runIdRef.current !== runId || after.status !== 'ready' || after.raw !== loaded.raw
+        || afterStored.status !== 'ready' || afterStored.serialized !== stored.serialized
+        || localSignature(dayMemos) !== signature) {
+        finish('normal_difference_checkpoint_state_changed', { ...common,
+          diagnosticStopStage: 'snapshot_revalidation' }); return
+      }
+
+      const remoteByDate = new Map(pulled.records.map((record) => [record.entityId, record]))
+      const sequenceValidationPassed = Number.isSafeInteger(pulled.maxChangeSequence)
+      const remoteCommon = { ...common, remoteCount: pulled.records.length,
+        fullPullMaxSequence: pulled.maxChangeSequence,
+        cursorDifference: pulled.maxChangeSequence - metadata.lastPulledChangeSequence,
+        diagnosticStopStage: 'cursor_validation' as const,
+        remoteUniqueDateCount: remoteByDate.size,
+        sequenceValidationPassed }
+      if (remoteByDate.size !== pulled.records.length || !sequenceValidationPassed
+        || pulled.maxChangeSequence < metadata.lastPulledChangeSequence) {
+        finish('normal_difference_checkpoint_cursor_invalid', remoteCommon); return
+      }
+
+      const localByDate = new Map(stored.memos.map((memo) => [memo.date, memo]))
+      const dates = [...new Set([...localByDate.keys(), ...remoteByDate.keys(), ...Object.keys(metadata.baselines)])].sort()
+      const classifications = new Map(dates.map((date) => [date, classifyDayMemoNormalDifference(
+        localByDate.get(date) ?? null, remoteByDate.get(date) ?? null, metadata.baselines[date] ?? null)]))
+      const currentCounts = emptyCounts()
+      for (const classification of classifications.values()) currentCounts[classification] += 1
+      const exactDates = dates.filter((date) => classifications.get(date) === 'exact_match_baseline_missing')
+      const unresolvedDates = dates.filter((date) => UNRESOLVED.includes(classifications.get(date)!))
+      const unresolvedCounts = emptyCounts()
+      for (const date of unresolvedDates) unresolvedCounts[classifications.get(date)!] += 1
+      const unresolvedClassifications = Object.fromEntries(unresolvedDates.map((date) => [date, classifications.get(date)!]))
+      const classifiedCommon = { ...remoteCommon, exactBaselineCandidateCount: exactDates.length,
+        diagnosticStopStage: 'difference_classification' as const, differenceClassificationReached: true,
+        unresolvedCount: unresolvedDates.length, unresolvedCounts, unresolvedDates,
+        bodyMismatchDates: unresolvedDates.filter((date) => classifications.get(date) === 'body_mismatch'),
+        unresolvedClassifications, reclassifiedCounts: currentCounts }
+      if (dates.some((date) => ['revision_lineage_mismatch', 'active_tombstone_mismatch', 'unknown']
+        .includes(classifications.get(date)!))) {
+        finish('normal_difference_checkpoint_revision_mismatch', classifiedCommon); return
+      }
+      const currentDifferences = dates.filter((date) => classifications.get(date) !== 'exact_match_baseline_confirmed')
+        .map((date) => ({ date, classification: classifications.get(date)! }))
+      if (normalizedDifferences(currentDifferences) !== normalizedDifferences(bridgeDifferences)) {
+        finish('normal_difference_status_only_checkpoint_bridge_changed', classifiedCommon); return
+      }
+      const cursorChanges = pulled.maxChangeSequence !== metadata.lastPulledChangeSequence
+      if (!cursorChanges && exactDates.length === 0) {
+        finish('normal_difference_checkpoint_cursor_not_advanced', classifiedCommon); return
+      }
+
+      const baselines: DayMemoSyncMetadataV5['baselines'] = { ...metadata.baselines }
+      for (const date of exactDates) {
+        const local = localByDate.get(date)
+        const remote = remoteByDate.get(date)
+        if (!local || !remote || remote.deletedAt !== null || !remote.payload) {
+          finish('normal_difference_checkpoint_unsupported', classifiedCommon); return
+        }
+        baselines[date] = { date, remoteRevision: remote.revision,
+          remoteChangeSequence: remote.changeSequence, remoteUpdatedAt: remote.payload.updatedAt,
+          baselineLocalUpdatedAt: local.updatedAt, deletedAt: null }
+      }
+      const candidate: DayMemoSyncMetadataV5 = { ...metadata, baselines,
+        lastPulledChangeSequence: pulled.maxChangeSequence,
+        baselineStatus: 'recovery_required', baselineConfirmedAt: null }
+      const candidateCommon = { ...classifiedCommon,
+        candidateBaselineCount: Object.keys(baselines).length,
+        candidateBaselineStatus: 'recovery_required' as const,
+        candidateBaselineConfirmedAtNull: true, candidateCursor: pulled.maxChangeSequence }
+      if (!isDayMemoSyncMetadataV5(candidate)) {
+        finish('normal_difference_checkpoint_validator_failed', { ...candidateCommon,
+          diagnosticStopStage: 'validator_validation' }); return
+      }
+      const reclassifiedCounts = emptyCounts()
+      const reconstructed = new Map(dates.map((date) => {
+        const classification = classifyDayMemoNormalDifference(localByDate.get(date) ?? null,
+          remoteByDate.get(date) ?? null, baselines[date] ?? null)
+        reclassifiedCounts[classification] += 1
+        return [date, classification]
+      }))
+      const unresolvedReconstructable = dates.every((date) => exactDates.includes(date)
+        ? reconstructed.get(date) === 'exact_match_baseline_confirmed'
+        : reconstructed.get(date) === classifications.get(date))
+      const safety = unresolvedReconstructable
+        ? 'normal_difference_checkpoint_ready' : 'normal_difference_checkpoint_unresolved_not_reconstructable'
+      const values = { ...candidateCommon, diagnosticStopStage: 'complete' as const,
+        metadataValidatorPassed: true, unresolvedReconstructable, reclassifiedCounts,
+        oneByOneRecoveryPossible: unresolvedReconstructable && unresolvedDates.length > 0 }
+      finish(safety, values)
+      if (safety === 'normal_difference_checkpoint_ready') {
+        const readyResult: DayMemoNormalDifferenceCheckpointResult = {
+          ...values, normalSyncReady: false, persistentStateChanged: false, rpcSent: false,
+          checkedAt: new Date().toISOString(), safety, nextAction: nextAction(safety),
+        }
+        bridgeNormalSnapshotRef.current = { result: readyResult, metadataRaw: loaded.raw,
+          localStorageSerialized: stored.serialized, workspaceId: connection.workspaceId,
+          bridgeDifferences: bridgeDifferences.map((item) => ({ ...item })),
+          remoteRecords: pulled.records.map((record) => ({ ...record,
+            payload: record.payload ? { ...record.payload } : null })),
+          candidateMetadata: candidate }
+        setResult(readyResult)
+      }
+    } finally {
+      if (runIdRef.current === runId) setChecking(false)
+    }
+  }, [checking, connection, dayMemos, eligible, finish, signature])
+
   const checkStatusOnlyCandidate = useCallback(async (bridgeDifferences: DayMemoStatusOnlyCheckpointBridgeDifference[]) => {
     if (!eligible || !supabaseClient || !connectionIsEligible(connection) || checking || bridgeDifferences.length === 0) return
     const runId = ++runIdRef.current
     snapshotRef.current = null
+    bridgeNormalSnapshotRef.current = null
     setChecking(true)
     setResult(null)
     try {
@@ -373,5 +540,6 @@ export function useDayMemoNormalDifferenceRecoveryCheckpointCheck({ dayMemos, is
 
   const getReadySnapshot = useCallback(() => snapshotRef.current, [])
   const consumeReadySnapshot = useCallback(() => { snapshotRef.current = null }, [])
-  return { eligible, checking, result, check, checkStatusOnlyCandidate, discard, getReadySnapshot, consumeReadySnapshot }
+  return { eligible, checking, result, check, checkStatusOnlyCandidate, checkBridgeNormalCandidate,
+    discard, getReadySnapshot, consumeReadySnapshot }
 }

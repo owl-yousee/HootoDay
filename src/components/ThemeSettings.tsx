@@ -171,6 +171,7 @@ interface NormalDifferenceRecoveryBridgeSnapshot {
   } | null
   checkpointRequested: boolean
   checkpointBlockReason: string | null
+  saveConfirmationOpen: boolean
 }
 
 type NormalSyncCheckUiResult = {
@@ -944,6 +945,7 @@ export function ThemeSettings({
       currentTarget: selected,
       checkpointRequested: false,
       checkpointBlockReason: null,
+      saveConfirmationOpen: false,
     })
     dayMemoNormalDifferenceRecoveryCheckpointCheck.discard()
   }
@@ -958,6 +960,7 @@ export function ThemeSettings({
         ...current,
         checkpointRequested: false,
         checkpointBlockReason: '開始時点から差異一覧が変化したため、復旧準備を最初から確認してください。',
+        saveConfirmationOpen: false,
       } : null)
       return
     }
@@ -966,6 +969,7 @@ export function ThemeSettings({
         ...current,
         checkpointRequested: false,
         checkpointBlockReason: 'checkpoint確認の認証・workspace前提を確認できません。',
+        saveConfirmationOpen: false,
       } : null)
       return
     }
@@ -973,8 +977,43 @@ export function ThemeSettings({
       ...current,
       checkpointRequested: true,
       checkpointBlockReason: null,
+      saveConfirmationOpen: false,
     } : null)
     void dayMemoNormalDifferenceRecoveryCheckpointCheck.checkStatusOnlyCandidate(
+      normalDifferenceRecoveryBridge.differences,
+    )
+  }
+  const checkNormalDifferenceRecoveryBridgeNormalCandidate = () => {
+    if (!normalDifferenceRecoveryBridge || !syncDifferenceItems) return
+    const currentDifferences = syncDifferenceItems.map((item) => ({
+      date: item.date,
+      classification: item.classification,
+    }))
+    if (JSON.stringify(currentDifferences) !== JSON.stringify(normalDifferenceRecoveryBridge.differences)) {
+      setNormalDifferenceRecoveryBridge((current) => current ? {
+        ...current,
+        checkpointRequested: false,
+        checkpointBlockReason: '開始時点から差異一覧が変化したため、復旧準備を最初から確認してください。',
+        saveConfirmationOpen: false,
+      } : null)
+      return
+    }
+    if (!dayMemoNormalDifferenceRecoveryCheckpointCheck.eligible) {
+      setNormalDifferenceRecoveryBridge((current) => current ? {
+        ...current,
+        checkpointRequested: false,
+        checkpointBlockReason: 'normal checkpoint確認の認証・workspace前提を確認できません。',
+        saveConfirmationOpen: false,
+      } : null)
+      return
+    }
+    setNormalDifferenceRecoveryBridge((current) => current ? {
+      ...current,
+      checkpointRequested: true,
+      checkpointBlockReason: null,
+      saveConfirmationOpen: false,
+    } : null)
+    void dayMemoNormalDifferenceRecoveryCheckpointCheck.checkBridgeNormalCandidate(
       normalDifferenceRecoveryBridge.differences,
     )
   }
@@ -1292,6 +1331,12 @@ export function ThemeSettings({
                                         <li>cursor差分：{checkpointResult.cursorDifference ?? '確認不能'}</li>
                                         <li>baseline変更予定：{baselineRequiresNormalCheckpoint
                                           ? 'あり' : '差異分類前のため未確認'}</li>
+                                        {ready ? <>
+                                          <li>normal checkpoint候補：ready</li>
+                                          <li>baseline追加候補：{checkpointResult.exactBaselineCandidateCount}件</li>
+                                          <li>cursor更新予定：{checkpointResult.metadataCursor ?? '確認不能'} → {checkpointResult.candidateCursor ?? '確認不能'}</li>
+                                          <li>次操作：checkpoint保存待ち</li>
+                                        </> : null}
                                       </> : null}
                                       <li>safety分類：{checkpointResult.safety}</li>
                                       <li>永続変更：なし</li>
@@ -1314,6 +1359,53 @@ export function ThemeSettings({
                                       {checkpointResult.unresolvedDates.map((date) => <li key={date}>{date}：{checkpointResult.unresolvedClassifications[date]}</li>)}
                                     </ul> : null}
                                     {!ready ? <p className="cloud-pairing-error">安全停止理由：{checkpointResult.nextAction}</p> : null}
+                                    {checkpointMethod === 'normal checkpoint' && !ready ? (
+                                      <button type="button" className="health-primary-button cloud-sync-button"
+                                        disabled={dayMemoNormalDifferenceRecoveryCheckpointCheck.checking}
+                                        onClick={checkNormalDifferenceRecoveryBridgeNormalCandidate}>
+                                        normal checkpoint候補を確認
+                                      </button>
+                                    ) : null}
+                                    {ready && checkpointMethod ? (
+                                      <button type="button" className="health-primary-button cloud-sync-button"
+                                        onClick={() => setNormalDifferenceRecoveryBridge((current) => current ? {
+                                          ...current,
+                                          saveConfirmationOpen: true,
+                                        } : null)}>
+                                        checkpoint保存前の内容を確認
+                                      </button>
+                                    ) : null}
+                                    {ready && checkpointMethod && normalDifferenceRecoveryBridge.saveConfirmationOpen ? (
+                                      <div className="cloud-day-memo-preview-result" role="region"
+                                        aria-labelledby="bridge-checkpoint-save-confirmation-heading">
+                                        <h6 id="bridge-checkpoint-save-confirmation-heading">checkpoint保存前確認</h6>
+                                        <ul className="cloud-day-memo-preview-summary">
+                                          <li>checkpoint方式：{checkpointMethod}</li>
+                                          <li>metadata変更予定：confirmed → recovery_required</li>
+                                          <li>baseline変更予定：{checkpointResult.exactBaselineCandidateCount > 0
+                                            ? `${checkpointResult.exactBaselineCandidateCount}件追加` : 'なし'}</li>
+                                          <li>cursor変更予定：{checkpointResult.metadataCursor ?? '確認不能'} → {checkpointResult.candidateCursor ?? '確認不能'}</li>
+                                          <li>保存後の次状態：recovery_required</li>
+                                          <li>保存後の次操作：saved recovery stateのread-only確認</li>
+                                        </ul>
+                                        <h6>対象差異一覧</h6>
+                                        <ul className="cloud-day-memo-preview-summary">
+                                          {normalDifferenceRecoveryBridge.differences.map((item) => (
+                                            <li key={`save-confirmation:${item.date}:${item.classification}`}>
+                                              対象：{item.date}／差異分類：{item.classification}
+                                            </li>
+                                          ))}
+                                        </ul>
+                                        <p className="cloud-sync-note">このPhaseでは確認表示だけです。checkpoint保存処理には接続していません。</p>
+                                        <button type="button" className="health-secondary-button cloud-sync-button"
+                                          onClick={() => setNormalDifferenceRecoveryBridge((current) => current ? {
+                                            ...current,
+                                            saveConfirmationOpen: false,
+                                          } : null)}>
+                                          保存前確認を閉じる
+                                        </button>
+                                      </div>
+                                    ) : null}
                                   </div>
                                 })() : null}
                               <button type="button" className="health-secondary-button cloud-sync-button"
