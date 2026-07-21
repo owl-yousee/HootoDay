@@ -88,6 +88,16 @@ interface DayMemoBridgeNormalCheckpointSnapshot {
   candidateMetadata: DayMemoSyncMetadataV5
 }
 
+export interface DayMemoBridgeNormalSaveSelection {
+  checkpointMethod: 'normal checkpoint'
+  candidateMetadata: DayMemoSyncMetadataV5
+  currentCursor: number
+  candidateCursor: number
+  baselineAdditionCount: number
+  unresolvedCount: number
+  unresolvedClassifications: Record<string, DayMemoNormalDifferenceClassification>
+}
+
 const UNRESOLVED: DayMemoNormalDifferenceClassification[] = [
   'exact_body_timestamp_mismatch', 'body_mismatch', 'local_only', 'remote_only_active', 'remote_only_tombstone',
 ]
@@ -685,9 +695,29 @@ export function useDayMemoNormalDifferenceRecoveryCheckpointCheck({ dayMemos, is
     }
   }, [checking, connection, dayMemos, eligible, finish, signature])
 
+  const prepareBridgeNormalSaveSelection = useCallback((
+    bridgeDifferences: DayMemoStatusOnlyCheckpointBridgeDifference[],
+  ): DayMemoBridgeNormalSaveSelection | null => {
+    const ready = bridgeNormalSnapshotRef.current
+    if (!ready || savePreparationChecking
+      || savePreparationResult?.safety !== 'normal_difference_bridge_checkpoint_save_preparation_ready'
+      || ready.result.metadataCursor === null
+      || normalizedDifferences(ready.bridgeDifferences) !== normalizedDifferences(bridgeDifferences)) return null
+    return {
+      checkpointMethod: 'normal checkpoint',
+      candidateMetadata: structuredClone(ready.candidateMetadata),
+      currentCursor: ready.result.metadataCursor,
+      candidateCursor: ready.candidateMetadata.lastPulledChangeSequence,
+      baselineAdditionCount: ready.result.exactBaselineCandidateCount,
+      unresolvedCount: ready.result.unresolvedCount,
+      unresolvedClassifications: { ...ready.result.unresolvedClassifications },
+    }
+  }, [savePreparationChecking, savePreparationResult])
+
   const getReadySnapshot = useCallback(() => snapshotRef.current, [])
   const consumeReadySnapshot = useCallback(() => { snapshotRef.current = null }, [])
   return { eligible, checking, result, check, checkStatusOnlyCandidate, checkBridgeNormalCandidate,
     savePreparationChecking, savePreparationResult, checkBridgeNormalSavePreparation,
+    prepareBridgeNormalSaveSelection,
     discard, getReadySnapshot, consumeReadySnapshot }
 }

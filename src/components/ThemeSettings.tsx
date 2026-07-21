@@ -29,7 +29,7 @@ import type { useDayMemoLocalOperationPreparation } from '../hooks/useDayMemoLoc
 import type { useDayMemoLocalOperationRemoteCheck } from '../hooks/useDayMemoLocalOperationRemoteCheck'
 import type { useDayMemoLocalOperationSend } from '../hooks/useDayMemoLocalOperationSend'
 import type { useDayMemoNormalDifferenceRecoveryPlan } from '../hooks/useDayMemoNormalDifferenceRecoveryPlan'
-import type { useDayMemoNormalDifferenceRecoveryCheckpointCheck } from '../hooks/useDayMemoNormalDifferenceRecoveryCheckpointCheck'
+import type { DayMemoBridgeNormalSaveSelection, useDayMemoNormalDifferenceRecoveryCheckpointCheck } from '../hooks/useDayMemoNormalDifferenceRecoveryCheckpointCheck'
 import type { useDayMemoNormalDifferenceRecoveryCheckpointSave } from '../hooks/useDayMemoNormalDifferenceRecoveryCheckpointSave'
 import type { useDayMemoNormalBodyMismatchCandidate } from '../hooks/useDayMemoNormalBodyMismatchCandidate'
 import type { useDayMemoNormalBodyMismatchLocalPreparation } from '../hooks/useDayMemoNormalBodyMismatchLocalPreparation'
@@ -173,6 +173,7 @@ interface NormalDifferenceRecoveryBridgeSnapshot {
   checkpointBlockReason: string | null
   saveConfirmationOpen: boolean
   savePreparationRequested: boolean
+  saveSelection: DayMemoBridgeNormalSaveSelection | null
 }
 
 type NormalSyncCheckUiResult = {
@@ -948,6 +949,7 @@ export function ThemeSettings({
       checkpointBlockReason: null,
       saveConfirmationOpen: false,
       savePreparationRequested: false,
+      saveSelection: null,
     })
     dayMemoNormalDifferenceRecoveryCheckpointCheck.discard()
   }
@@ -964,6 +966,7 @@ export function ThemeSettings({
         checkpointBlockReason: '開始時点から差異一覧が変化したため、復旧準備を最初から確認してください。',
         saveConfirmationOpen: false,
         savePreparationRequested: false,
+        saveSelection: null,
       } : null)
       return
     }
@@ -974,6 +977,7 @@ export function ThemeSettings({
         checkpointBlockReason: 'checkpoint確認の認証・workspace前提を確認できません。',
         saveConfirmationOpen: false,
         savePreparationRequested: false,
+        saveSelection: null,
       } : null)
       return
     }
@@ -983,6 +987,7 @@ export function ThemeSettings({
       checkpointBlockReason: null,
       saveConfirmationOpen: false,
       savePreparationRequested: false,
+      saveSelection: null,
     } : null)
     void dayMemoNormalDifferenceRecoveryCheckpointCheck.checkStatusOnlyCandidate(
       normalDifferenceRecoveryBridge.differences,
@@ -1001,6 +1006,7 @@ export function ThemeSettings({
         checkpointBlockReason: '開始時点から差異一覧が変化したため、復旧準備を最初から確認してください。',
         saveConfirmationOpen: false,
         savePreparationRequested: false,
+        saveSelection: null,
       } : null)
       return
     }
@@ -1011,6 +1017,7 @@ export function ThemeSettings({
         checkpointBlockReason: 'normal checkpoint確認の認証・workspace前提を確認できません。',
         saveConfirmationOpen: false,
         savePreparationRequested: false,
+        saveSelection: null,
       } : null)
       return
     }
@@ -1020,6 +1027,7 @@ export function ThemeSettings({
       checkpointBlockReason: null,
       saveConfirmationOpen: false,
       savePreparationRequested: false,
+      saveSelection: null,
     } : null)
     void dayMemoNormalDifferenceRecoveryCheckpointCheck.checkBridgeNormalCandidate(
       normalDifferenceRecoveryBridge.differences,
@@ -1030,10 +1038,22 @@ export function ThemeSettings({
     setNormalDifferenceRecoveryBridge((current) => current ? {
       ...current,
       savePreparationRequested: true,
+      saveSelection: null,
     } : null)
     void dayMemoNormalDifferenceRecoveryCheckpointCheck.checkBridgeNormalSavePreparation(
       normalDifferenceRecoveryBridge.differences,
     )
+  }
+  const prepareNormalDifferenceRecoveryBridgeSave = () => {
+    if (!normalDifferenceRecoveryBridge) return
+    const selection = dayMemoNormalDifferenceRecoveryCheckpointCheck.prepareBridgeNormalSaveSelection(
+      normalDifferenceRecoveryBridge.differences,
+    )
+    if (!selection) return
+    setNormalDifferenceRecoveryBridge((current) => current ? {
+      ...current,
+      saveSelection: selection,
+    } : null)
   }
   const syncDifferenceDetailLines = syncDifferenceItems === null
     ? ['差異一覧：未確認']
@@ -1390,6 +1410,7 @@ export function ThemeSettings({
                                           ...current,
                                           saveConfirmationOpen: true,
                                           savePreparationRequested: false,
+                                          saveSelection: null,
                                         } : null)}>
                                         checkpoint保存前の内容を確認
                                       </button>
@@ -1461,6 +1482,34 @@ export function ThemeSettings({
                                                     ? '未確認' : preparation.sequenceValidationPassed ? '正常' : '不正'}</li>
                                                 </ul>
                                               </> : null}
+                                              {preparationReady ? (
+                                                <button type="button" className="health-primary-button cloud-sync-button"
+                                                  onClick={prepareNormalDifferenceRecoveryBridgeSave}>
+                                                  checkpointを保存
+                                                </button>
+                                              ) : null}
+                                              {preparationReady && normalDifferenceRecoveryBridge.saveSelection ? (
+                                                <div className="cloud-day-memo-preview-result" role="status">
+                                                  <h6>checkpoint保存実行準備</h6>
+                                                  <ul className="cloud-day-memo-preview-summary">
+                                                    <li>checkpoint方式：{normalDifferenceRecoveryBridge.saveSelection.checkpointMethod}</li>
+                                                    <li>cursor変更予定：{normalDifferenceRecoveryBridge.saveSelection.currentCursor} → {normalDifferenceRecoveryBridge.saveSelection.candidateCursor}</li>
+                                                    <li>baseline追加予定：{normalDifferenceRecoveryBridge.saveSelection.baselineAdditionCount}件</li>
+                                                    <li>未解決差異：{normalDifferenceRecoveryBridge.saveSelection.unresolvedCount}件</li>
+                                                    <li>保存対象metadata：React stateへ保持済み</li>
+                                                    <li>永続保存：未実行</li>
+                                                  </ul>
+                                                  {Object.entries(normalDifferenceRecoveryBridge.saveSelection.unresolvedClassifications).length > 0 ? (
+                                                    <ul className="cloud-day-memo-preview-summary">
+                                                      {Object.entries(normalDifferenceRecoveryBridge.saveSelection.unresolvedClassifications)
+                                                        .map(([date, classification]) => (
+                                                          <li key={`save-selection:${date}`}>{date}：{classification}</li>
+                                                        ))}
+                                                    </ul>
+                                                  ) : null}
+                                                  <p className="cloud-sync-note">このボタンは保存対象を保持するだけです。checkpoint保存処理はまだ呼び出しません。</p>
+                                                </div>
+                                              ) : null}
                                             </div>
                                           })() : null}
                                         <button type="button" className="health-secondary-button cloud-sync-button"
@@ -1468,6 +1517,7 @@ export function ThemeSettings({
                                             ...current,
                                             saveConfirmationOpen: false,
                                             savePreparationRequested: false,
+                                            saveSelection: null,
                                           } : null)}>
                                           保存前確認を閉じる
                                         </button>
