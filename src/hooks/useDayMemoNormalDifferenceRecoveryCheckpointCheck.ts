@@ -75,7 +75,7 @@ export interface DayMemoNormalDifferenceCheckpointSnapshot {
   remoteRecords: RemoteDayMemoRecord[]
   candidateMetadata: DayMemoSyncMetadataV5
   unresolvedClassifications: Record<string, DayMemoNormalDifferenceClassification>
-  sourceBaselineStatus: 'mismatch' | 'recovery_required'
+  sourceBaselineStatus: 'confirmed' | 'mismatch' | 'recovery_required'
 }
 
 interface DayMemoBridgeNormalCheckpointSnapshot {
@@ -135,6 +135,7 @@ export function useDayMemoNormalDifferenceRecoveryCheckpointCheck({ dayMemos, is
   const [result, setResult] = useState<DayMemoNormalDifferenceCheckpointResult | null>(null)
   const [savePreparationChecking, setSavePreparationChecking] = useState(false)
   const [savePreparationResult, setSavePreparationResult] = useState<DayMemoNormalDifferenceCheckpointResult | null>(null)
+  const [readySnapshotRevision, setReadySnapshotRevision] = useState(0)
   const runIdRef = useRef(0)
   const snapshotRef = useRef<DayMemoNormalDifferenceCheckpointSnapshot | null>(null)
   const bridgeNormalSnapshotRef = useRef<DayMemoBridgeNormalCheckpointSnapshot | null>(null)
@@ -703,6 +704,18 @@ export function useDayMemoNormalDifferenceRecoveryCheckpointCheck({ dayMemos, is
       || savePreparationResult?.safety !== 'normal_difference_bridge_checkpoint_save_preparation_ready'
       || ready.result.metadataCursor === null
       || normalizedDifferences(ready.bridgeDifferences) !== normalizedDifferences(bridgeDifferences)) return null
+    snapshotRef.current = {
+      result: ready.result,
+      metadataRaw: ready.metadataRaw,
+      localStorageSerialized: ready.localStorageSerialized,
+      workspaceId: ready.workspaceId,
+      remoteRecords: ready.remoteRecords.map((record) => ({ ...record,
+        payload: record.payload ? { ...record.payload } : null })),
+      candidateMetadata: structuredClone(ready.candidateMetadata),
+      unresolvedClassifications: { ...ready.result.unresolvedClassifications },
+      sourceBaselineStatus: 'confirmed',
+    }
+    setReadySnapshotRevision((current) => current + 1)
     return {
       checkpointMethod: 'normal checkpoint',
       candidateMetadata: structuredClone(ready.candidateMetadata),
@@ -715,9 +728,12 @@ export function useDayMemoNormalDifferenceRecoveryCheckpointCheck({ dayMemos, is
   }, [savePreparationChecking, savePreparationResult])
 
   const getReadySnapshot = useCallback(() => snapshotRef.current, [])
-  const consumeReadySnapshot = useCallback(() => { snapshotRef.current = null }, [])
+  const consumeReadySnapshot = useCallback(() => {
+    snapshotRef.current = null
+    bridgeNormalSnapshotRef.current = null
+  }, [])
   return { eligible, checking, result, check, checkStatusOnlyCandidate, checkBridgeNormalCandidate,
     savePreparationChecking, savePreparationResult, checkBridgeNormalSavePreparation,
-    prepareBridgeNormalSaveSelection,
+    prepareBridgeNormalSaveSelection, readySnapshotRevision,
     discard, getReadySnapshot, consumeReadySnapshot }
 }

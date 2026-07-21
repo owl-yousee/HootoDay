@@ -81,9 +81,14 @@ export function useDayMemoNormalDifferenceRecoveryCheckpointSave({ dayMemos, isC
   const inFlightRef = useRef(false)
   const snapshot = getReadySnapshot()
   const eligible = Boolean(isConfigured && isSignedIn && supabaseClient && connectionIsEligible(connection))
+  const bridgeNormalCandidateReady = snapshot?.sourceBaselineStatus === 'confirmed'
+    && snapshot.result.candidateCursor !== null && snapshot.result.metadataCursor !== null
+    && (snapshot.result.candidateCursor > snapshot.result.metadataCursor
+      || snapshot.result.exactBaselineCandidateCount > 0)
   const canSave = Boolean(eligible && !saving && snapshot?.result.safety === 'normal_difference_checkpoint_ready'
     && snapshot.result.unresolvedReconstructable && snapshot.result.candidateBaselineStatus === 'recovery_required'
-    && snapshot.result.candidateBaselineConfirmedAtNull && snapshot.result.exactBaselineCandidateCount > 0)
+    && snapshot.result.candidateBaselineConfirmedAtNull
+    && (snapshot.result.exactBaselineCandidateCount > 0 || bridgeNormalCandidateReady))
 
   const finish = useCallback((safety: DayMemoNormalDifferenceCheckpointSaveSafety, values: Partial<DayMemoNormalDifferenceCheckpointSaveResult> = {}) => {
     setResult({ succeeded: false, beforeCursor: null, fullPullMaxSequence: null, afterCursor: null,
@@ -179,7 +184,8 @@ export function useDayMemoNormalDifferenceRecoveryCheckpointSave({ dayMemos, isC
         localByDate.get(date) ?? null, remoteByDate.get(date) ?? null, candidate.baselines[date] ?? null) }))
       const unresolvedStillMatch = ready.result.unresolvedDates.every((date) => {
         const item = reconstructed.find((value) => value.date === date)
-        return item?.classification === ready.unresolvedClassifications[date] && !candidate.baselines[date]
+        return item?.classification === ready.unresolvedClassifications[date]
+          && (ready.sourceBaselineStatus === 'confirmed' || !candidate.baselines[date])
       })
       if (!unresolvedStillMatch || reconstructed.filter((item) => item.classification !== 'exact_match_baseline_confirmed').length !== ready.result.unresolvedCount) {
         finish('normal_difference_checkpoint_unresolved_changed', base); return

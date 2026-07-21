@@ -1050,10 +1050,16 @@ export function ThemeSettings({
       normalDifferenceRecoveryBridge.differences,
     )
     if (!selection) return
+    dayMemoNormalDifferenceRecoveryCheckpointSave.discard()
     setNormalDifferenceRecoveryBridge((current) => current ? {
       ...current,
       saveSelection: selection,
     } : null)
+  }
+  const saveNormalDifferenceRecoveryBridgeCheckpoint = () => {
+    if (!normalDifferenceRecoveryBridge?.saveSelection
+      || !dayMemoNormalDifferenceRecoveryCheckpointSave.canSave) return
+    void dayMemoNormalDifferenceRecoveryCheckpointSave.save()
   }
   const syncDifferenceDetailLines = syncDifferenceItems === null
     ? ['差異一覧：未確認']
@@ -1283,10 +1289,13 @@ export function ThemeSettings({
                       </ul>
                       <DayMemoSyncDifferenceCards items={syncDifferenceItems} stopReason={syncStopped ? syncStopReason : null}
                         onActionPrepared={prepareSyncDifferenceAction} />
-                      {isConfirmedMetadata && syncDifferenceItems && syncDifferenceItems.length > 0 ? (
+                      {(isConfirmedMetadata && syncDifferenceItems && syncDifferenceItems.length > 0)
+                        || normalDifferenceRecoveryBridge ? (
                         <div className="cloud-day-memo-preview-result">
-                          <button type="button" className="health-primary-button cloud-sync-button"
-                            onClick={startNormalDifferenceRecoveryBridge}>復旧準備を開始</button>
+                          {isConfirmedMetadata && syncDifferenceItems && syncDifferenceItems.length > 0 ? (
+                            <button type="button" className="health-primary-button cloud-sync-button"
+                              onClick={startNormalDifferenceRecoveryBridge}>復旧準備を開始</button>
+                          ) : null}
                           {normalDifferenceRecoveryBridge ? (
                             <div role="status" aria-live="polite">
                               <h5>復旧準備の確認</h5>
@@ -1507,9 +1516,37 @@ export function ThemeSettings({
                                                         ))}
                                                     </ul>
                                                   ) : null}
-                                                  <p className="cloud-sync-note">このボタンは保存対象を保持するだけです。checkpoint保存処理はまだ呼び出しません。</p>
+                                                  <p className="cloud-sync-note">保存対象を確認しました。次の明示操作で既存checkpoint保存処理を実行します。</p>
+                                                  <button type="button" className="health-primary-button cloud-sync-button"
+                                                    disabled={!dayMemoNormalDifferenceRecoveryCheckpointSave.canSave
+                                                      || dayMemoNormalDifferenceRecoveryCheckpointSave.saving}
+                                                    onClick={saveNormalDifferenceRecoveryBridgeCheckpoint}>
+                                                    {dayMemoNormalDifferenceRecoveryCheckpointSave.saving
+                                                      ? 'checkpointを保存中…' : 'checkpointを明示保存'}
+                                                  </button>
                                                 </div>
                                               ) : null}
+                                              {normalDifferenceRecoveryBridge.saveSelection
+                                                && dayMemoNormalDifferenceRecoveryCheckpointSave.result ? (() => {
+                                                  const saveResult = dayMemoNormalDifferenceRecoveryCheckpointSave.result
+                                                  return <div className={`cloud-day-memo-preview-result ${saveResult.succeeded ? '' : 'is-blocked'}`}
+                                                    role={saveResult.succeeded ? 'status' : 'alert'}>
+                                                    <h6>{saveResult.succeeded ? 'checkpoint保存完了' : 'checkpoint保存を完了できませんでした'}</h6>
+                                                    <ul className="cloud-day-memo-preview-summary">
+                                                      <li>safety分類：{saveResult.safety}</li>
+                                                      <li>保存前cursor：{saveResult.beforeCursor ?? '確認不能'}</li>
+                                                      <li>保存後cursor：{saveResult.afterCursor ?? '未保存'}</li>
+                                                      <li>追加baseline：{saveResult.addedBaselineCount}件</li>
+                                                      <li>baselineStatus：{saveResult.baselineStatus ?? '未保存'}</li>
+                                                      <li>metadata保存：{saveResult.metadataSaved ? 'あり' : 'なし'}</li>
+                                                      <li>read-back：{saveResult.readBackSucceeded ? '成功' : '未実施または失敗'}</li>
+                                                      <li>rollback：{saveResult.rollbackAttempted
+                                                        ? saveResult.rollbackSucceeded ? '成功' : '失敗' : '未実施'}</li>
+                                                      <li>次操作：{saveResult.succeeded
+                                                        ? 'Saved Recovery State確認待ち' : saveResult.nextAction}</li>
+                                                    </ul>
+                                                  </div>
+                                                })() : null}
                                             </div>
                                           })() : null}
                                         <button type="button" className="health-secondary-button cloud-sync-button"
