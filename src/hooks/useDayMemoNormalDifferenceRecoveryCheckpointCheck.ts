@@ -321,9 +321,12 @@ export function useDayMemoNormalDifferenceRecoveryCheckpointCheck({ dayMemos, is
         localByDate.get(date) ?? null, remoteByDate.get(date) ?? null, metadata.baselines[date] ?? null)]))
       const currentCounts = emptyCounts()
       for (const classification of classifications.values()) currentCounts[classification] += 1
+      const exactBaselineCandidateCount = dates.filter((date) =>
+        classifications.get(date) === 'exact_match_baseline_missing').length
       const classifiedCommon = { ...remoteCommon,
         diagnosticStopStage: 'difference_classification' as const,
-        differenceClassificationReached: true }
+        differenceClassificationReached: true,
+        exactBaselineCandidateCount }
       if (dates.some((date) => ['revision_lineage_mismatch', 'active_tombstone_mismatch', 'unknown']
         .includes(classifications.get(date)!))) {
         finish('normal_difference_checkpoint_revision_mismatch', { ...classifiedCommon,
@@ -349,7 +352,7 @@ export function useDayMemoNormalDifferenceRecoveryCheckpointCheck({ dayMemos, is
       for (const date of unresolvedDates) unresolvedCounts[classifications.get(date)!] += 1
       const candidate: DayMemoSyncMetadataV5 = { ...metadata,
         baselineStatus: 'recovery_required', baselineConfirmedAt: null }
-      const candidateValues = { ...classifiedCommon, exactBaselineCandidateCount: 0,
+      const candidateValues = { ...classifiedCommon,
         unresolvedCount: unresolvedDates.length, unresolvedCounts, unresolvedDates,
         bodyMismatchDates: unresolvedDates.filter((date) => classifications.get(date) === 'body_mismatch'),
         unresolvedClassifications, candidateBaselineCount: Object.keys(metadata.baselines).length,

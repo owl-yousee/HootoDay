@@ -1256,6 +1256,23 @@ export function ThemeSettings({
                                               ? 'validator確認中'
                                               : checkpointResult.diagnosticStopStage === 'complete'
                                                 ? '確認完了' : '確認不能'
+                                  const cursorRequiresNormalCheckpoint = checkpointResult.sequenceValidationPassed === true
+                                    && checkpointResult.remoteUniqueDateCount === checkpointResult.remoteCount
+                                    && checkpointResult.cursorDifference !== null
+                                    && checkpointResult.cursorDifference !== 0
+                                  const baselineRequiresNormalCheckpoint = checkpointResult.differenceClassificationReached
+                                    && (checkpointResult.exactBaselineCandidateCount > 0
+                                      || checkpointResult.safety === 'normal_difference_status_only_checkpoint_baseline_change_required')
+                                  const checkpointMethod = checkpointResult.safety === 'normal_difference_status_only_checkpoint_ready'
+                                    ? 'status-only' : cursorRequiresNormalCheckpoint || baselineRequiresNormalCheckpoint
+                                      ? 'normal checkpoint' : null
+                                  const normalCheckpointReasons = [
+                                    cursorRequiresNormalCheckpoint ? 'metadata cursorとfull pull max sequenceに差があります' : null,
+                                    checkpointResult.exactBaselineCandidateCount > 0
+                                      ? `baseline追加候補が${checkpointResult.exactBaselineCandidateCount}件あります` : null,
+                                    baselineRequiresNormalCheckpoint && checkpointResult.exactBaselineCandidateCount === 0
+                                      ? '既存baselineの整合に変更が必要です' : null,
+                                  ].filter((reason): reason is string => reason !== null)
                                   return <div className={`cloud-day-memo-preview-result ${ready ? '' : 'is-blocked'}`}>
                                     <h6>{ready ? 'checkpoint候補を確認しました' : 'checkpoint候補を安全に確認できませんでした'}</h6>
                                     <ul className="cloud-day-memo-preview-summary">
@@ -1263,11 +1280,18 @@ export function ThemeSettings({
                                       <li>候補状態：{checkpointResult.candidateBaselineStatus ?? '候補なし'}</li>
                                       <li>未解決差異：{checkpointResult.differenceClassificationReached
                                         ? `${checkpointResult.unresolvedCount}件` : '差異分類前に停止（未分類）'}</li>
-                                      {checkpointResult.safety === 'normal_difference_status_only_checkpoint_ready' ? <>
+                                      {checkpointMethod ? <li>checkpoint方式：{checkpointMethod}</li> : null}
+                                      {checkpointMethod === 'status-only' ? <>
                                         <li>baseline変更：なし</li>
                                         <li>cursor変更：なし</li>
-                                        <li>変更候補：状態遷移のみ</li>
-                                        <li>次の状態：recovery_required保存待ち</li>
+                                        <li>recovery_required保存待ち</li>
+                                      </> : checkpointMethod === 'normal checkpoint' ? <>
+                                        {normalCheckpointReasons.map((reason) => <li key={reason}>理由：{reason}</li>)}
+                                        <li>metadata cursor：{checkpointResult.metadataCursor ?? '確認不能'}</li>
+                                        <li>full pull max sequence：{checkpointResult.fullPullMaxSequence ?? '確認不能'}</li>
+                                        <li>cursor差分：{checkpointResult.cursorDifference ?? '確認不能'}</li>
+                                        <li>baseline変更予定：{baselineRequiresNormalCheckpoint
+                                          ? 'あり' : '差異分類前のため未確認'}</li>
                                       </> : null}
                                       <li>safety分類：{checkpointResult.safety}</li>
                                       <li>永続変更：なし</li>
