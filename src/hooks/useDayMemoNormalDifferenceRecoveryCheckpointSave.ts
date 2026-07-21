@@ -132,8 +132,12 @@ export function useDayMemoNormalDifferenceRecoveryCheckpointSave({ dayMemos, isC
       if (metadata.lastPulledChangeSequence !== ready.result.metadataCursor) {
         finish('normal_difference_checkpoint_cursor_invalid', base); return
       }
-      const pulled = await pullAllDayMemoSyncRecords(supabaseClient, connection.workspaceId)
-      if (pulled.status !== 'complete') { finish('normal_difference_checkpoint_remote_incomplete', base); return }
+      const pulled = ready.sourceBaselineStatus === 'mismatch'
+        ? { status: 'complete' as const, records: ready.remoteRecords, maxChangeSequence: ready.result.fullPullMaxSequence ?? -1 }
+        : await pullAllDayMemoSyncRecords(supabaseClient, connection.workspaceId)
+      if (pulled.status !== 'complete' || pulled.maxChangeSequence < 0) {
+        finish('normal_difference_checkpoint_remote_incomplete', base); return
+      }
       const afterPullMetadata = loadDayMemoSyncMetadataAny(window.localStorage)
       const afterPullLocal = readDayMemoStorageSnapshot(window.localStorage)
       if (afterPullMetadata.status !== 'ready' || afterPullMetadata.raw !== loaded.raw

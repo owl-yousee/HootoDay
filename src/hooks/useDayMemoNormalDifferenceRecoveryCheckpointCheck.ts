@@ -60,6 +60,7 @@ export interface DayMemoNormalDifferenceCheckpointSnapshot {
   remoteRecords: RemoteDayMemoRecord[]
   candidateMetadata: DayMemoSyncMetadataV5
   unresolvedClassifications: Record<string, DayMemoNormalDifferenceClassification>
+  sourceBaselineStatus: 'mismatch' | 'recovery_required'
 }
 
 const UNRESOLVED: DayMemoNormalDifferenceClassification[] = [
@@ -224,6 +225,7 @@ export function useDayMemoNormalDifferenceRecoveryCheckpointCheck({ dayMemos, is
           localStorageSerialized: stored.serialized, workspaceId: connection.workspaceId,
           remoteRecords: pulled.records.map((record) => ({ ...record, payload: record.payload ? { ...record.payload } : null })),
           candidateMetadata: candidate,
+          sourceBaselineStatus: metadata.baselineStatus === 'mismatch' ? 'mismatch' : 'recovery_required',
           unresolvedClassifications }
         setResult(readyResult)
       }

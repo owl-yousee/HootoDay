@@ -135,7 +135,8 @@ type SyncRecoveryUiStage = 'checkpoint_check' | 'body_mismatch_compare' | 'candi
   | 'metadata_save' | 'saved_state_check' | 'remote_only_check' | 'remote_only_adopt'
   | 'remote_only_post_check' | 'remote_only_metadata_save' | 'final_confirmation' | 'confirmed_save'
   | 'final_ready_check' | 'metadata_repair_check' | 'metadata_repair_save' | 'normal_mismatch_difference_check'
-  | 'normal_mismatch_difference_review' | 'normal_state_check' | 'normal_local_only_check' | 'normal_local_only_preflight'
+  | 'normal_mismatch_difference_review' | 'normal_mismatch_checkpoint_check' | 'normal_mismatch_checkpoint_save'
+  | 'normal_state_check' | 'normal_local_only_check' | 'normal_local_only_preflight'
   | 'normal_local_only_prepare' | 'normal_local_only_send' | 'next_difference' | 'blocked' | 'complete'
 
 interface SyncRecoveryNavigation {
@@ -173,6 +174,8 @@ function deriveSyncRecoveryNavigation(input: {
   normalPullSummary: ReturnType<typeof useDayMemoPullPreview>['summary']
   metadataRepairStage: ReturnType<typeof useDayMemoNormalMetadataRepair>['stage']
   mismatchDifferenceResult: ReturnType<typeof useDayMemoNormalDifferenceRecoveryPlan>['result']
+  mismatchCheckpointResult: ReturnType<typeof useDayMemoNormalDifferenceRecoveryCheckpointCheck>['result']
+  mismatchCheckpointCanSave: boolean
 }): SyncRecoveryNavigation {
   const { safety, pending, savedResult } = input
   const blocked = input.pushBlocked || safety === 'metadata_invalid' || safety === 'conflict' || safety === 'response_unknown'
@@ -212,9 +215,15 @@ function deriveSyncRecoveryNavigation(input: {
   }
   if (input.metadataBaselineStatus === 'mismatch') {
     if (input.metadataRepairStage === 'blocked') {
-      if (input.mismatchDifferenceResult) return { stage: 'normal_mismatch_difference_review', targetDate: null, classification: '複数差異確認',
-        title: '差異を1件選択', description: '分類結果から対象を1件選択します。このPhaseでは送信・採用・metadata保存は行いません。',
-        writesRemote: false, changesPersistentState: false, disabledReason: '一覧から対象日を選択してください。' }
+      if (input.mismatchCheckpointCanSave) return { stage: 'normal_mismatch_checkpoint_save', targetDate: null, classification: '復旧checkpoint',
+        title: '復旧checkpointをmetadataへ保存', description: '確認済みsnapshotから完全一致baselineと最新cursorを原子的に保存し、未解決差異を維持します。',
+        writesRemote: false, changesPersistentState: true, disabledReason: null }
+      if (input.mismatchCheckpointResult) return { stage: 'normal_mismatch_checkpoint_check', targetDate: null, classification: '復旧checkpoint',
+        title: '復旧checkpoint候補を再確認', description: '候補が保存可能ではありません。永続変更せず、完全full pullから安全条件を再確認します。',
+        writesRemote: false, changesPersistentState: false, disabledReason: null }
+      if (input.mismatchDifferenceResult) return { stage: 'normal_mismatch_checkpoint_check', targetDate: null, classification: '復旧checkpoint',
+        title: '一致分と最新cursorを復旧checkpoint候補として確認', description: '完全full pullを1回だけ行い、一致分baselineと未解決差異をread-onlyで再構築します。',
+        writesRemote: false, changesPersistentState: false, disabledReason: null }
       return { stage: 'normal_mismatch_difference_check', targetDate: null, classification: '複数差異確認',
         title: '端末と同期先の差異を確認', description: 'validなmismatch metadataを維持したまま、全日付をread-onlyで正式分類します。',
         writesRemote: false, changesPersistentState: false, disabledReason: null }
@@ -583,7 +592,9 @@ export function ThemeSettings({
   const operationSnapshotAvailability = dayMemoSavedOperationResultRead.inspectSnapshotAvailability()
   const postSendSnapshotAvailability = dayMemoBodyMismatchRecoveryPostSendVerification.inspectSnapshotAvailability()
   const checkpointSavedAt = dayMemoBodyMismatchRecoveryCheckpointSave.result?.succeeded
-    ? dayMemoBodyMismatchRecoveryCheckpointSave.result.checkedAt : null
+    ? dayMemoBodyMismatchRecoveryCheckpointSave.result.checkedAt
+    : dayMemoNormalDifferenceRecoveryCheckpointSave.result?.succeeded
+      ? dayMemoNormalDifferenceRecoveryCheckpointSave.result.checkedAt : null
   const recoveryNavigation = deriveSyncRecoveryNavigation({
     safety: dayMemoSyncSafety.state,
     metadataBaselineStatus: syncMetadata?.baselineStatus ?? null,
@@ -612,6 +623,8 @@ export function ThemeSettings({
       && dayMemoNormalDifferenceRecoveryPlan.result.workspaceBound
       && dayMemoNormalDifferenceRecoveryPlan.result.items.length > 0
       ? dayMemoNormalDifferenceRecoveryPlan.result : null,
+    mismatchCheckpointResult: dayMemoNormalDifferenceRecoveryCheckpointCheck.result,
+    mismatchCheckpointCanSave: dayMemoNormalDifferenceRecoveryCheckpointSave.canSave,
   })
   const navigationCanExecute = recoveryNavigation.stage === 'checkpoint_check' || recoveryNavigation.stage === 'saved_state_check'
     ? dayMemoSavedRecoveryStateCheck.eligible && !dayMemoSavedRecoveryStateCheck.checking
@@ -651,6 +664,10 @@ export function ThemeSettings({
                               ? dayMemoNormalMetadataRepair.canSave && !dayMemoNormalMetadataRepair.running
                             : recoveryNavigation.stage === 'normal_mismatch_difference_check'
                               ? dayMemoNormalDifferenceRecoveryPlan.eligible && !dayMemoNormalDifferenceRecoveryPlan.checking
+                            : recoveryNavigation.stage === 'normal_mismatch_checkpoint_check'
+                              ? dayMemoNormalDifferenceRecoveryCheckpointCheck.eligible && !dayMemoNormalDifferenceRecoveryCheckpointCheck.checking
+                            : recoveryNavigation.stage === 'normal_mismatch_checkpoint_save'
+                              ? dayMemoNormalDifferenceRecoveryCheckpointSave.canSave && !dayMemoNormalDifferenceRecoveryCheckpointSave.saving
                             : recoveryNavigation.stage === 'normal_state_check'
                               ? dayMemoPullPreview.canStartNormalStateCheck
                             : recoveryNavigation.stage === 'normal_local_only_check'
@@ -691,6 +708,8 @@ export function ThemeSettings({
       case 'metadata_repair_check': void dayMemoNormalMetadataRepair.check(); break
       case 'metadata_repair_save': dayMemoNormalMetadataRepair.save(); break
       case 'normal_mismatch_difference_check': void dayMemoNormalDifferenceRecoveryPlan.check(); break
+      case 'normal_mismatch_checkpoint_check': void dayMemoNormalDifferenceRecoveryCheckpointCheck.check(); break
+      case 'normal_mismatch_checkpoint_save': void dayMemoNormalDifferenceRecoveryCheckpointSave.save(); break
       case 'normal_state_check': void dayMemoPullPreview.pullPreview({ requireConfirmedMetadata: true }); break
       case 'normal_local_only_check': void dayMemoLocalOnlyPreview.previewLocalOnly(); break
       case 'normal_local_only_preflight': void dayMemoLocalOnlyUpload.runPreflight(); break

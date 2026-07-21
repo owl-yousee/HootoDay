@@ -2665,3 +2665,11 @@ cleanup後VERIFY結果：
 - 結果はReact stateだけに保持し、日付・分類の1件選択UIまでを提供する。自動で先頭を選択・送信・採用・baseline保存しない。
 - 既存body mismatch/local-only/remote-onlyのhandlerは`recovery_required` checkpointまたは`confirmed`を前提とするため、mismatch・baseline未確定から推測で接続せず、今回はread-only選択で停止する。
 - metadata/local/workspaceが変化したら旧resultを破棄し、V3/V4・migration前resultをstage判定に使用しない。SQL/RPC/RLS/保存形式の変更はない。
+# Phase B-3f5e10: iPhone V5 mismatch recovery checkpoint
+
+- metadata v5 / baselineStatus=mismatch の有効な子端末を対象に、完全full pull 1回から完全一致分だけをactive baseline候補として再構築する。
+- 候補確認はread-onlyで、metadata cursorとfull pull最大change sequence、未解決のbody mismatch / local-only / remote-only / tombstone差異を同じsnapshotへ保持する。
+- 保存候補はcursorをfull pull最大sequenceへ進め、baselineStatus=recovery_required、baselineConfirmedAt=null、pendingOperation=nullを維持する。未解決差異へbaselineは作らない。
+- 保存は別の明示操作で行い、mismatch確認済みsnapshotを使うため追加pullは行わない。保存直前にmetadata、DayMemo、workspace、pending、intent、pushBlockと候補validatorを再確認する。
+- 既存compare-and-write、完全read-back、条件付きverified rollbackを再利用する。保存後は既存の保存済みrecovery状態確認へ進み、差異を1件ずつ処理する。
+- remote採用、upsert、delete、本文自動反映、operation ID生成、通常同期confirmed化は行わない。
