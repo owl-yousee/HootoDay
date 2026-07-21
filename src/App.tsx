@@ -51,6 +51,7 @@ import { useDayMemoSavedRecoveryStateCheck } from './hooks/useDayMemoSavedRecove
 import { useDayMemoRecoveryLocalOnlyPreparation } from './hooks/useDayMemoRecoveryLocalOnlyPreparation'
 import { useDayMemoRecoveryRemoteOnlyAdoption } from './hooks/useDayMemoRecoveryRemoteOnlyAdoption'
 import { useDayMemoRecoveryFinalization } from './hooks/useDayMemoRecoveryFinalization'
+import { useDayMemoNormalMetadataRepair } from './hooks/useDayMemoNormalMetadataRepair'
 import { useDayMemoMetadataV4Migration } from './hooks/useDayMemoMetadataV4Migration'
 import { useDayMemoMetadataV5Migration } from './hooks/useDayMemoMetadataV5Migration'
 import { useDayMemoSyncMetadataMigration } from './hooks/useDayMemoSyncMetadataMigration'
@@ -305,6 +306,12 @@ function App() {
     connection: supabaseWorkspace.connection,
     reactMetadata: dayMemoSyncBaseline.metadata?.version === 5 ? dayMemoSyncBaseline.metadata : null,
     savedResult: dayMemoSavedRecoveryStateCheck.result,
+    adoptVerifiedMetadata: dayMemoSyncBaseline.adoptVerifiedMetadata,
+  })
+  const dayMemoNormalMetadataRepair = useDayMemoNormalMetadataRepair({
+    dayMemos, isConfigured: supabaseAuth.isConfigured, isSignedIn: supabaseAuth.isSignedIn,
+    connection: supabaseWorkspace.connection,
+    reactMetadata: dayMemoSyncBaseline.metadata?.version === 5 ? dayMemoSyncBaseline.metadata : null,
     adoptVerifiedMetadata: dayMemoSyncBaseline.adoptVerifiedMetadata,
   })
   const dayMemoBaselineRebase = useDayMemoBaselineRebase({
@@ -777,6 +784,7 @@ function App() {
           dayMemoRecoveryLocalOnlyPreparation={dayMemoRecoveryLocalOnlyPreparation}
           dayMemoRecoveryRemoteOnlyAdoption={dayMemoRecoveryRemoteOnlyAdoption}
           dayMemoRecoveryFinalization={dayMemoRecoveryFinalization}
+          dayMemoNormalMetadataRepair={dayMemoNormalMetadataRepair}
           dayMemoSyncBaseline={dayMemoSyncBaseline}
           dayMemoBaselineRebase={dayMemoBaselineRebase}
           dayMemoUpdatePreview={dayMemoUpdatePreview}

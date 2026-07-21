@@ -2637,3 +2637,12 @@ cleanup後VERIFY結果：
 - UIは「metadata baselineStatus」と「現在のbaseline比較」を分離し、confirmed中は「同期作業」、recovery_required中だけ「復旧作業」と表示する。
 - 古いrecovery resultはconfirmed経路のstage選択に使用せず、recovery専用saved-state UIもformal `recovery_required`のときだけ表示する。
 - 新しいHookやsafety分類、SQL・RPC・保存形式は追加しない。自動pull、自動送信、自動retryはない。
+## 2026-07-21 Phase B-3f5e8c mismatch metadata baseline repair
+
+- B-3f5e8bでconfirmed通常同期確認がmetadataを`mismatch`・baseline空へ書き換える再発は防止済み。既に誤更新された端末は、別の明示修復経路が必要となった。
+- 実機UIから確認済みの現状はmetadata v5、validator正常、workspace一致、`baselineStatus = mismatch`、baseline 0件、cursor 19、pending・pushBlock・intentなし。Codexは実機localStorageを直接操作していない。
+- 「同期metadataを安全に再確認」の明示操作で、既存完全full pullを1回だけ実行し、current localとremoteのunionを既存正式分類器で再分類する。
+- remote activeとlocalの本文・updatedAtが完全一致する日だけactive baseline候補とする。local-onlyはbaselineから除外し、remote-only、body mismatch、tombstone、lineage/unknownが一つでもあれば候補を作らない。
+- current cursorとfull pull最大sequenceが完全一致する場合だけ、baseline・cursor・`confirmed`・confirmedAtを一つのmetadata v5 candidateとしてReact stateに保持する。
+- 別の明示確認後だけcompare-and-writeで1回保存し、read-back完全一致を必須とする。保存・read-back失敗時は新しい変更を上書きしないverified rollbackを使用し、rollback不能は成功扱いしない。
+- 修復後のlocal-onlyはlocalに維持し、既存の通常`operationMode = normal`経路で別途preview・preflight・明示送信する。このPhaseでoperation ID、pending、RPC送信は発生しない。

@@ -36,6 +36,7 @@ import type { useDayMemoSavedRecoveryStateCheck } from '../hooks/useDayMemoSaved
 import type { useDayMemoRecoveryLocalOnlyPreparation } from '../hooks/useDayMemoRecoveryLocalOnlyPreparation'
 import type { useDayMemoRecoveryRemoteOnlyAdoption } from '../hooks/useDayMemoRecoveryRemoteOnlyAdoption'
 import type { useDayMemoRecoveryFinalization } from '../hooks/useDayMemoRecoveryFinalization'
+import type { useDayMemoNormalMetadataRepair } from '../hooks/useDayMemoNormalMetadataRepair'
 import type { useDayMemoMetadataV4Migration } from '../hooks/useDayMemoMetadataV4Migration'
 import type { useDayMemoMetadataV5Migration } from '../hooks/useDayMemoMetadataV5Migration'
 import type { useDayMemoSyncMetadataMigration } from '../hooks/useDayMemoSyncMetadataMigration'
@@ -96,6 +97,7 @@ interface ThemeSettingsProps {
   dayMemoRecoveryLocalOnlyPreparation: ReturnType<typeof useDayMemoRecoveryLocalOnlyPreparation>
   dayMemoRecoveryRemoteOnlyAdoption: ReturnType<typeof useDayMemoRecoveryRemoteOnlyAdoption>
   dayMemoRecoveryFinalization: ReturnType<typeof useDayMemoRecoveryFinalization>
+  dayMemoNormalMetadataRepair: ReturnType<typeof useDayMemoNormalMetadataRepair>
   dayMemoSyncBaseline: ReturnType<typeof useDayMemoSyncBaseline>
   dayMemoBaselineRebase: ReturnType<typeof useDayMemoBaselineRebase>
   dayMemoUpdatePreview: ReturnType<typeof useDayMemoUpdatePreview>
@@ -132,7 +134,7 @@ type SyncRecoveryUiStage = 'checkpoint_check' | 'body_mismatch_compare' | 'candi
   | 'preflight' | 'send' | 'operation_result_read' | 'post_send_verify'
   | 'metadata_save' | 'saved_state_check' | 'remote_only_check' | 'remote_only_adopt'
   | 'remote_only_post_check' | 'remote_only_metadata_save' | 'final_confirmation' | 'confirmed_save'
-  | 'final_ready_check' | 'normal_state_check' | 'normal_local_only_check' | 'normal_local_only_preflight'
+  | 'final_ready_check' | 'metadata_repair_check' | 'metadata_repair_save' | 'normal_state_check' | 'normal_local_only_check' | 'normal_local_only_preflight'
   | 'normal_local_only_prepare' | 'normal_local_only_send' | 'next_difference' | 'blocked' | 'complete'
 
 interface SyncRecoveryNavigation {
@@ -168,6 +170,7 @@ function deriveSyncRecoveryNavigation(input: {
   normalLocalOnlyUpload: ReturnType<typeof useDayMemoLocalOnlyUpload>['state']
   normalPullState: ReturnType<typeof useDayMemoPullPreview>['previewState']
   normalPullSummary: ReturnType<typeof useDayMemoPullPreview>['summary']
+  metadataRepairStage: ReturnType<typeof useDayMemoNormalMetadataRepair>['stage']
 }): SyncRecoveryNavigation {
   const { safety, pending, savedResult } = input
   const blocked = input.pushBlocked || safety === 'metadata_invalid' || safety === 'conflict' || safety === 'response_unknown'
@@ -204,6 +207,21 @@ function deriveSyncRecoveryNavigation(input: {
     }
     return { stage: 'normal_local_only_check', targetDate: null, classification: 'local_only', title: 'local-only候補を確認',
       description: 'confirmed metadata v5と保存済みbaselineを使い、新規候補だけをread-onlyで確認します。', writesRemote: false, changesPersistentState: false, disabledReason: null }
+  }
+  if (input.metadataBaselineStatus === 'mismatch') {
+    if (input.metadataRepairStage === 'blocked') {
+      return { stage: 'blocked', targetDate: null, classification: 'metadata確認', title: '同期metadataの再確認が必要です',
+        description: '修復候補を安全に構築できなかったため、metadataを変更せず停止しました。', writesRemote: false,
+        changesPersistentState: false, disabledReason: '確認結果を破棄し、状態を確認してから再実行してください。' }
+    }
+    if (input.metadataRepairStage === 'repair_ready') {
+      return { stage: 'metadata_repair_save', targetDate: null, classification: 'metadata確認',
+        title: '確認済みbaselineをmetadataへ保存', description: '同期済みの完全一致分だけをbaselineとし、cursor・status・confirmedAtと一緒に原子的に保存します。',
+        writesRemote: false, changesPersistentState: true, disabledReason: null }
+    }
+    return { stage: 'metadata_repair_check', targetDate: null, classification: 'metadata確認',
+      title: '同期metadataを安全に再確認', description: '完全full pullを1回行い、完全一致baselineとlocal-onlyをread-onlyで再構築します。',
+      writesRemote: false, changesPersistentState: false, disabledReason: null }
   }
   if (input.metadataBaselineStatus !== 'recovery_required') {
     return { stage: 'blocked', targetDate: pending?.date ?? null, classification: null,
@@ -445,6 +463,7 @@ export function ThemeSettings({
   dayMemoRecoveryLocalOnlyPreparation,
   dayMemoRecoveryRemoteOnlyAdoption,
   dayMemoRecoveryFinalization,
+  dayMemoNormalMetadataRepair,
   dayMemoSyncBaseline,
   dayMemoBaselineRebase,
   dayMemoUpdatePreview,
@@ -580,6 +599,7 @@ export function ThemeSettings({
     normalLocalOnlyUpload: dayMemoLocalOnlyUpload.state,
     normalPullState: dayMemoPullPreview.previewState,
     normalPullSummary: dayMemoPullPreview.summary,
+    metadataRepairStage: dayMemoNormalMetadataRepair.stage,
   })
   const navigationCanExecute = recoveryNavigation.stage === 'checkpoint_check' || recoveryNavigation.stage === 'saved_state_check'
     ? dayMemoSavedRecoveryStateCheck.eligible && !dayMemoSavedRecoveryStateCheck.checking
@@ -613,6 +633,10 @@ export function ThemeSettings({
                               ? dayMemoRecoveryFinalization.canSave && !dayMemoRecoveryFinalization.running
                               : recoveryNavigation.stage === 'final_ready_check'
                                 ? dayMemoRecoveryFinalization.canVerify && !dayMemoRecoveryFinalization.running
+                            : recoveryNavigation.stage === 'metadata_repair_check'
+                              ? dayMemoNormalMetadataRepair.eligible && !dayMemoNormalMetadataRepair.running
+                            : recoveryNavigation.stage === 'metadata_repair_save'
+                              ? dayMemoNormalMetadataRepair.canSave && !dayMemoNormalMetadataRepair.running
                             : recoveryNavigation.stage === 'normal_state_check'
                               ? dayMemoPullPreview.memberReady && dayMemoPullPreview.previewState !== 'pulling'
                             : recoveryNavigation.stage === 'normal_local_only_check'
@@ -649,6 +673,8 @@ export function ThemeSettings({
       case 'final_confirmation': void dayMemoRecoveryFinalization.check(); break
       case 'confirmed_save': dayMemoRecoveryFinalization.save(); break
       case 'final_ready_check': void dayMemoRecoveryFinalization.verify(); break
+      case 'metadata_repair_check': void dayMemoNormalMetadataRepair.check(); break
+      case 'metadata_repair_save': dayMemoNormalMetadataRepair.save(); break
       case 'normal_state_check': void dayMemoPullPreview.pullPreview(); break
       case 'normal_local_only_check': void dayMemoLocalOnlyPreview.previewLocalOnly(); break
       case 'normal_local_only_preflight': void dayMemoLocalOnlyUpload.runPreflight(); break
@@ -779,6 +805,12 @@ export function ThemeSettings({
                         <li>Supabase書き込み：{recoveryNavigation.writesRemote ? 'あり（確認後1回）' : 'なし'}</li>
                         <li>永続変更：{recoveryNavigation.changesPersistentState ? 'あり（既存handler内で検証）' : 'なし'}</li>
                         <li>自動retry：なし</li>
+                        {dayMemoNormalMetadataRepair.result ? <>
+                          <li>current metadata status：{dayMemoNormalMetadataRepair.result.currentBaselineStatus ?? '確認不能'}</li>
+                          <li>baseline候補：{dayMemoNormalMetadataRepair.result.baselineCandidateCount}件</li>
+                          <li>local-only候補：{dayMemoNormalMetadataRepair.result.localOnlyCandidateCount}件</li>
+                          <li>cursor：{dayMemoNormalMetadataRepair.result.currentCursor ?? '確認不能'} → {dayMemoNormalMetadataRepair.result.candidateCursor ?? '候補なし'}</li>
+                        </> : null}
                       </ul>
                       <p>{recoveryNavigation.description}</p>
                       <button type="button" className="health-primary-button cloud-sync-button"
@@ -786,6 +818,11 @@ export function ThemeSettings({
                         {recoveryNavigation.title}
                       </button>
                       {!navigationCanExecute && navigationDisabledReason ? <p className="cloud-sync-note">{navigationDisabledReason}</p> : null}
+                      {dayMemoNormalMetadataRepair.safeErrorMessage ? <p className="cloud-pairing-error" role="alert">{dayMemoNormalMetadataRepair.safeErrorMessage}</p> : null}
+                      {dayMemoNormalMetadataRepair.result && dayMemoNormalMetadataRepair.stage !== 'repaired' ? (
+                        <button type="button" className="cloud-sync-button" disabled={dayMemoNormalMetadataRepair.running}
+                          onClick={dayMemoNormalMetadataRepair.discard}>確認結果を破棄</button>
+                      ) : null}
                     </div>
                   ) : null}
 
