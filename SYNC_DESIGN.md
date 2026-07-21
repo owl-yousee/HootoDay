@@ -2007,3 +2007,9 @@ Candidate checking now catches unexpected failures into a `failed` result and co
 - iPhone testing confirmed that a resolved Clipboard API or true execCommand result does not prove a later paste into LINE. The share panel therefore presents the manual text button first and keeps automatic copy as a secondary convenience.
 - Manual sharing opens a titled readonly textarea without attempting clipboard access. The user can long-press the text or use select-all, then close the surface. Automatic failure opens the same surface.
 - A proven browser copy now reports only that the copy operation ran; it does not claim that another application can paste the text. Clipboard result validation and all short-report fields remain unchanged. Sharing stays read-only and does not affect sync stages or persisted state.
+
+## B-3f5eUI2l visible normal-sync checks
+
+- The normal pull Hook already retained its preview state and result correctly; its `pulling` state simply ended as soon as the read-only request completed. The integrated UI had no separate presentation result, so fast checks produced only a brief flash and no durable completion card.
+- A UI-only state distinguishes idle, checking, success, blocked, and failed. It observes the existing Hook, keeps checking visible for at least 700ms, disables repeat clicks, and retains the final presentation until the next explicit navigation action. Synchronous fail-closed returns are also retained as blocked or failed rather than leaving the UI in checking.
+- The share report reads this same presentation snapshot for stage, result state, difference count, readiness, next action, and safe failure reason. No pull behavior, validation, classification, metadata, baseline, cursor, pending, RPC, SQL, or persisted state changes.

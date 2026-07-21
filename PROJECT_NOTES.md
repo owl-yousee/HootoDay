@@ -2787,3 +2787,9 @@ cleanup後VERIFY結果：
 - iPhone実機でclipboard成功表示後もLINEへ貼り付けできないことを確認した。Safari内のAPI成功は別アプリへの貼り付け成功を保証しない。
 - iPhoneの共有導線は「共有用テキストを表示」を先頭にし、長押しまたは全文選択を主手段とした。「共有用にコピー」は補助として維持する。
 - 自動コピーはClipboard API resolveまたはexecCommand trueの場合だけ完了表示するが、文言は外部アプリ貼り付けを断定しない「コピー操作を実行しました」とする。同期処理・永続状態・共有文面の安全対象は変更しない。
+
+## B-3f5eUI2l sync check visibility
+
+- PCの通常同期確認handlerは正常に動作していたが、Hookの`pulling`が通信完了直後に結果stateへ進むため、UIの確認中表示が約0.1秒で消え、完了結果を独立保持していなかった。
+- 統合UIにidle/checking/success/blocked/failedの表示snapshotを追加し、checkingを少なくとも700ms表示して連打を禁止する。完了・安全停止・失敗は次の明示操作まで表示する。
+- 短縮共有は同じUI snapshotかstage、状態、差異数、ready、次操作、停止理由を参照する。full pull・判定・metadata・同期ロジックは変更しない。

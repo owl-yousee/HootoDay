@@ -157,6 +157,22 @@ interface SyncRecoveryNavigation {
   disabledReason: string | null
 }
 
+type NormalSyncCheckUiResult = {
+  status: 'idle' | 'checking' | 'success' | 'blocked' | 'failed'
+  stageId: string | null
+  differenceCount: number | null
+  normalSyncReady: boolean
+  message: string | null
+  nextAction: string | null
+  checkedAt: string | null
+}
+
+const IDLE_NORMAL_SYNC_CHECK_UI: NormalSyncCheckUiResult = {
+  status: 'idle', stageId: null, differenceCount: null, normalSyncReady: false,
+  message: null, nextAction: null, checkedAt: null,
+}
+const NORMAL_SYNC_CHECK_MIN_VISIBLE_MS = 700
+
 const SYNC_STAGE_IDS: Record<SyncRecoveryUiStage, string> = {
   checkpoint_check: 'recovery_difference_check', body_mismatch_compare: 'recovery_body_mismatch_compare',
   candidate_prepare: 'recovery_candidate_prepare', preflight: 'recovery_preflight', send: 'recovery_writing',
@@ -571,6 +587,9 @@ export function ThemeSettings({
   const pendingInternalCloseEventsRef = useRef(0)
   const [recoveryWorkOpen, setRecoveryWorkOpen] = useState(false)
   const [selectedMismatchDate, setSelectedMismatchDate] = useState('')
+  const [normalSyncCheckUi, setNormalSyncCheckUi] = useState<NormalSyncCheckUiResult>(IDLE_NORMAL_SYNC_CHECK_UI)
+  const normalSyncCheckStartedAtRef = useRef(0)
+  const normalSyncCheckTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => { setSelectedMismatchDate('') }, [dayMemoNormalDifferenceRecoveryPlan.result?.checkedAt])
   const supabasePairing = useSupabasePairing({
     isConfigured: supabaseAuth.isConfigured,
@@ -700,6 +719,48 @@ export function ThemeSettings({
     mismatchCheckpointResult: dayMemoNormalDifferenceRecoveryCheckpointCheck.result,
     mismatchCheckpointCanSave: dayMemoNormalDifferenceRecoveryCheckpointSave.canSave,
   })
+  useEffect(() => {
+    if (normalSyncCheckUi.status !== 'checking') return
+    if (dayMemoPullPreview.previewState === 'pulling') {
+      return
+    }
+
+    const finish = () => {
+      const summary = dayMemoPullPreview.summary
+      const differenceCount = summary
+        ? summary.localOnlyCount + summary.remoteOnlyCount + summary.differentCount
+          + summary.remoteTombstoneCount + summary.remoteTombstoneLocalExistsCount
+          + summary.remoteTombstoneLocalMissingCount
+        : null
+      const failed = dayMemoPullPreview.previewState === 'rpc_error'
+        || dayMemoPullPreview.previewState === 'auth_error'
+      const successful = dayMemoPullPreview.previewState === 'preview_ready'
+        || dayMemoPullPreview.previewState === 'empty_remote'
+      setNormalSyncCheckUi({
+        status: failed ? 'failed' : successful ? 'success' : 'blocked',
+        stageId: SYNC_STAGE_IDS[recoveryNavigation.stage],
+        differenceCount,
+        normalSyncReady,
+        message: failed || !successful
+          ? dayMemoPullPreview.safeErrorMessage ?? recoveryNavigation.description
+          : differenceCount === 0 ? '同期状態の一致を確認しました。'
+            : `${differenceCount}件の差異を確認しました。`,
+        nextAction: recoveryNavigation.stage === 'complete' ? '閉じる' : recoveryNavigation.title,
+        checkedAt: new Date().toISOString(),
+      })
+      normalSyncCheckTimerRef.current = null
+    }
+    const elapsed = Date.now() - normalSyncCheckStartedAtRef.current
+    normalSyncCheckTimerRef.current = setTimeout(finish, Math.max(0, NORMAL_SYNC_CHECK_MIN_VISIBLE_MS - elapsed))
+    return () => {
+      if (normalSyncCheckTimerRef.current !== null) clearTimeout(normalSyncCheckTimerRef.current)
+      normalSyncCheckTimerRef.current = null
+    }
+  }, [dayMemoPullPreview.previewState, dayMemoPullPreview.safeErrorMessage, dayMemoPullPreview.summary,
+    normalSyncCheckUi.status, normalSyncReady, recoveryNavigation.description, recoveryNavigation.stage, recoveryNavigation.title])
+  useEffect(() => () => {
+    if (normalSyncCheckTimerRef.current !== null) clearTimeout(normalSyncCheckTimerRef.current)
+  }, [])
   const navigationCanExecute = recoveryNavigation.stage === 'checkpoint_check' || recoveryNavigation.stage === 'saved_state_check'
     ? dayMemoSavedRecoveryStateCheck.eligible && !dayMemoSavedRecoveryStateCheck.checking
     : recoveryNavigation.stage === 'candidate_prepare'
@@ -759,6 +820,9 @@ export function ThemeSettings({
 
   const runRecoveryNavigationAction = () => {
     const date = recoveryNavigation.targetDate
+    if (recoveryNavigation.stage !== 'normal_state_check' && normalSyncCheckUi.status !== 'idle') {
+      setNormalSyncCheckUi(IDLE_NORMAL_SYNC_CHECK_UI)
+    }
     switch (recoveryNavigation.stage) {
       case 'checkpoint_check': case 'saved_state_check':
         if (dayMemoRecoveryRemoteOnlyAdoption.stage !== 'idle') dayMemoRecoveryRemoteOnlyAdoption.discard()
@@ -787,7 +851,12 @@ export function ThemeSettings({
       case 'normal_mismatch_difference_check': void dayMemoNormalDifferenceRecoveryPlan.check(); break
       case 'normal_mismatch_checkpoint_check': void dayMemoNormalDifferenceRecoveryCheckpointCheck.check(); break
       case 'normal_mismatch_checkpoint_save': void dayMemoNormalDifferenceRecoveryCheckpointSave.save(); break
-      case 'normal_state_check': void dayMemoPullPreview.pullPreview({ requireConfirmedMetadata: true }); break
+      case 'normal_state_check':
+        if (normalSyncCheckUi.status === 'checking') break
+        normalSyncCheckStartedAtRef.current = Date.now()
+        setNormalSyncCheckUi({ ...IDLE_NORMAL_SYNC_CHECK_UI, status: 'checking' })
+        void dayMemoPullPreview.pullPreview({ requireConfirmedMetadata: true })
+        break
       case 'normal_local_only_check': void dayMemoLocalOnlyPreview.previewLocalOnly(); break
       case 'normal_local_only_preflight': void dayMemoLocalOnlyUpload.runPreflight(); break
       case 'normal_local_only_prepare': dayMemoLocalOnlyUpload.prepareUpload(); break
@@ -795,13 +864,16 @@ export function ThemeSettings({
       default: break
     }
   }
-  const syncStageId = SYNC_STAGE_IDS[recoveryNavigation.stage]
+  const syncStageId = normalSyncCheckUi.status === 'checking' ? 'normal_sync_check'
+    : normalSyncCheckUi.stageId ?? SYNC_STAGE_IDS[recoveryNavigation.stage]
   const syncStopped = recoveryNavigation.stage === 'blocked'
     || dayMemoRecoveryFinalization.stage === 'failed'
     || dayMemoRecoveryRemoteOnlyAdoption.stage === 'failed'
+    || normalSyncCheckUi.status === 'blocked' || normalSyncCheckUi.status === 'failed'
   const syncStopReason = syncStopped
     ? dayMemoRecoveryFinalization.safeErrorMessage
       ?? dayMemoRecoveryRemoteOnlyAdoption.safeErrorMessage
+      ?? normalSyncCheckUi.message
       ?? recoveryNavigation.disabledReason
       ?? recoveryNavigation.description
     : 'なし'
@@ -809,7 +881,9 @@ export function ThemeSettings({
     ? dayMemoPullPreview.summary.localOnlyCount + dayMemoPullPreview.summary.remoteOnlyCount
       + dayMemoPullPreview.summary.differentCount + dayMemoPullPreview.summary.remoteTombstoneCount
     : null
-  const visibleDifferenceCount = isRecoveryMetadata
+  const visibleDifferenceCount = normalSyncCheckUi.status !== 'idle' && normalSyncCheckUi.status !== 'checking'
+    ? normalSyncCheckUi.differenceCount
+    : isRecoveryMetadata
     ? dayMemoSavedRecoveryStateCheck.result?.unresolvedCount ?? null
     : normalDifferenceCount
   const syncStatusCopyText = () => [
@@ -819,13 +893,20 @@ export function ThemeSettings({
     `stageId：${syncStageId}`,
     `対象：${recoveryNavigation.targetDate ?? '同期状態全体'}`,
     `分類：${recoveryNavigation.classification ?? '状態確認'}`,
-    `安全状態：${dayMemoSyncSafety.state}`,
+    `安全状態：${normalSyncCheckUi.status === 'checking' ? '確認中'
+      : normalSyncCheckUi.status === 'success' ? (normalSyncCheckUi.normalSyncReady ? '完了' : '確認完了')
+        : normalSyncCheckUi.status === 'failed' ? '確認失敗'
+          : normalSyncCheckUi.status === 'blocked' ? '安全停止' : dayMemoSyncSafety.state}`,
     `baselineStatus：${syncMetadata?.baselineStatus ?? '不明'}`,
     `baseline件数：${syncMetadata ? Object.keys(syncMetadata.baselines).length : '不明'}`,
     `cursor：${syncMetadata?.lastPulledChangeSequence ?? '不明'}`,
-    `通常同期ready：${normalSyncReady ? 'はい' : isConfirmedMetadata ? '未確認' : 'いいえ'}`,
-    `現在の主操作：${navigationCanExecute ? recoveryNavigation.title : 'なし'}`,
-    `無効理由：${navigationCanExecute ? 'なし' : navigationDisabledReason ?? '不明'}`,
+    `通常同期ready：${normalSyncCheckUi.status === 'success' ? (normalSyncCheckUi.normalSyncReady ? 'はい' : 'いいえ')
+      : normalSyncReady ? 'はい' : isConfirmedMetadata ? '未確認' : 'いいえ'}`,
+    `現在の主操作：${normalSyncCheckUi.status === 'checking' ? '確認しています…'
+      : normalSyncCheckUi.status !== 'idle' ? normalSyncCheckUi.nextAction ?? 'なし'
+        : navigationCanExecute ? recoveryNavigation.title : 'なし'}`,
+    `無効理由：${normalSyncCheckUi.status !== 'idle' ? 'なし'
+      : navigationCanExecute ? 'なし' : navigationDisabledReason ?? '不明'}`,
     `停止状態：${syncStopped ? 'あり' : 'なし'}`,
     `停止理由：${syncStopReason}`,
     `差異件数：${visibleDifferenceCount ?? '未確認'}`,
@@ -840,15 +921,20 @@ export function ThemeSettings({
   ].join('\n')
   const syncShareText = () => buildSyncShareText({
     stageId: syncStageId,
-    state: syncStopped ? '安全停止' : recoveryNavigation.stage === 'complete' ? '完了' : dayMemoSyncSafety.state,
+    state: normalSyncCheckUi.status === 'checking' ? '確認中'
+      : normalSyncCheckUi.status === 'success' ? (normalSyncCheckUi.normalSyncReady ? '完了' : '確認完了')
+        : normalSyncCheckUi.status === 'failed' ? '確認失敗'
+          : syncStopped ? '安全停止' : recoveryNavigation.stage === 'complete' ? '完了' : '未確認',
     target: recoveryNavigation.targetDate,
     classification: recoveryNavigation.classification,
     differenceCount: visibleDifferenceCount,
     baselineStatus: syncMetadata?.baselineStatus ?? '不明',
     cursor: syncMetadata?.lastPulledChangeSequence ?? null,
-    ready: normalSyncReady,
-    primaryAction: navigationCanExecute ? recoveryNavigation.title : null,
-    disabledReason: navigationCanExecute ? null : navigationDisabledReason,
+    ready: normalSyncCheckUi.status === 'success' ? normalSyncCheckUi.normalSyncReady : normalSyncReady,
+    primaryAction: normalSyncCheckUi.status === 'checking' ? '確認しています…'
+      : normalSyncCheckUi.status !== 'idle' ? normalSyncCheckUi.nextAction
+        : navigationCanExecute ? recoveryNavigation.title : null,
+    disabledReason: normalSyncCheckUi.status !== 'idle' ? null : navigationCanExecute ? null : navigationDisabledReason,
     stopReason: syncStopped ? syncStopReason : null,
   })
   const syncStopCopyText = () => [
@@ -1032,9 +1118,25 @@ export function ThemeSettings({
                         </>
                       ) : <>
                         <button type="button" className="health-primary-button cloud-sync-button"
-                          disabled={!navigationCanExecute} onClick={runRecoveryNavigationAction}>{recoveryNavigation.title}</button>
-                        {!navigationCanExecute && navigationDisabledReason ? <p className="cloud-sync-note">{navigationDisabledReason}</p> : null}
+                          disabled={normalSyncCheckUi.status === 'checking' || !navigationCanExecute} onClick={runRecoveryNavigationAction}>
+                          {normalSyncCheckUi.status === 'checking' ? '確認しています…' : recoveryNavigation.title}</button>
+                        {normalSyncCheckUi.status !== 'checking' && !navigationCanExecute && navigationDisabledReason
+                          ? <p className="cloud-sync-note">{navigationDisabledReason}</p> : null}
                       </>}
+                      {normalSyncCheckUi.status !== 'idle' ? <div className={`cloud-day-memo-preview-result is-${normalSyncCheckUi.status}`} role="status" aria-live="polite">
+                        <h5>{normalSyncCheckUi.status === 'checking' ? '同期状態を確認しています…'
+                          : normalSyncCheckUi.status === 'success' ? '同期確認完了'
+                            : normalSyncCheckUi.status === 'blocked' ? '安全停止' : '確認失敗'}</h5>
+                        {normalSyncCheckUi.status === 'checking' ? <p>結果が確定するまでこの表示を維持します。</p> : <>
+                          <ul className="cloud-day-memo-preview-summary">
+                            <li>差異：{normalSyncCheckUi.differenceCount ?? '未確認'}件</li>
+                            <li>通常同期ready：{normalSyncCheckUi.normalSyncReady ? 'はい' : 'いいえ'}</li>
+                            <li>次の操作：{normalSyncCheckUi.nextAction ?? '再確認'}</li>
+                            <li>自動retry：なし</li>
+                          </ul>
+                          {normalSyncCheckUi.message ? <p>{normalSyncCheckUi.message}</p> : null}
+                        </>}
+                      </div> : null}
                       <p className="sync-stage-id">stageId：<code>{syncStageId}</code></p>
                       <div className="sync-copy-section"><h5>共有</h5>
                         <CopyTextControl buttonLabel="共有用にコピー" manualButtonLabel="共有用テキストを表示"
