@@ -1993,7 +1993,7 @@ export function ThemeSettings({
                     <div className="cloud-day-memo-baseline-panel" role="region"
                       aria-labelledby="day-memo-saved-recovery-state-heading">
                       <h4 id="day-memo-saved-recovery-state-heading">recovery checkpoint保存後の状態を確認</h4>
-                      <p>保存済みmetadataとcurrent remoteを完全full pullで読み取り専用確認し、2026-07-12のbaseline確定と残る差異を再構築します。永続状態の変更、自動再試行、Supabaseへの書き込みは行いません。</p>
+                      <p>保存済みmetadataとcurrent remoteを完全full pullで読み取り専用確認し、現在のbaseline全体と残る差異を再構築します。永続状態の変更、自動再試行、Supabaseへの書き込みは行いません。</p>
                       <button type="button" className="health-secondary-button cloud-sync-button"
                         disabled={!dayMemoSavedRecoveryStateCheck.eligible || dayMemoSavedRecoveryStateCheck.checking}
                         onClick={() => { void dayMemoSavedRecoveryStateCheck.check() }}>
@@ -2011,9 +2011,7 @@ export function ThemeSettings({
                             <li>full pull最大sequence：{dayMemoSavedRecoveryStateCheck.result.fullPullMaxSequence ?? '未確認'}</li>
                             <li>cursor一致：{dayMemoSavedRecoveryStateCheck.result.cursorMatched ? '一致' : '未確認／不一致'}</li>
                             <li>baseline件数：{dayMemoSavedRecoveryStateCheck.result.baselineCount}</li>
-                            <li>2026-07-12 baseline：{dayMemoSavedRecoveryStateCheck.result.targetBaselineVerified ? '確認済み' : '未確認／不一致'}</li>
-                            <li>2026-07-12 local／remote：{dayMemoSavedRecoveryStateCheck.result.targetLocalRemoteMatched ? '一致' : '未確認／不一致'}</li>
-                            <li>2026-07-12差異：{dayMemoSavedRecoveryStateCheck.result.targetResolved ? '解消済み' : '未解決／未確認'}</li>
+                            <li>保存済みbaseline全体：{dayMemoSavedRecoveryStateCheck.result.allBaselinesVerified ? '確認済み' : '未確認／不一致'}</li>
                             <li>baselineStatus：{dayMemoSavedRecoveryStateCheck.result.baselineStatus ?? '未確認／不正'}</li>
                             <li>baselineConfirmedAt：{dayMemoSavedRecoveryStateCheck.result.baselineConfirmedAtNull ? 'null' : '未確認／不正'}</li>
                             <li>未解決差異：{dayMemoSavedRecoveryStateCheck.result.unresolvedCount}件</li>
@@ -2030,7 +2028,7 @@ export function ThemeSettings({
                             <li>確認日時：{new Date(dayMemoSavedRecoveryStateCheck.result.checkedAt).toLocaleString('ja-JP')}</li>
                           </ul>
                           {dayMemoSavedRecoveryStateCheck.result.safety === 'normal_difference_checkpoint_saved_state_ready' ? (
-                            <p className="cloud-day-memo-success">2026-07-12の復旧結果がbaseline・cursorへ保存済みであることを確認しました。残る差異を1件ずつ復旧できます。</p>
+                            <p className="cloud-day-memo-success">現在のcheckpointがbaseline・cursorへ保存済みであることを確認しました。残る差異を1件ずつ復旧できます。</p>
                           ) : <p>{dayMemoSavedRecoveryStateCheck.result.nextAction}</p>}
                           <button type="button" className="health-secondary-button cloud-sync-button"
                             disabled={dayMemoSavedRecoveryStateCheck.checking}

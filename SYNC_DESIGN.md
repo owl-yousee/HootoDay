@@ -1914,3 +1914,13 @@ The first guide action is explicitly a saved-state read-only check, not a differ
 The guide always renders `結果をコピー`, including before any result, after a blocked check, with zero differences, and during later stages. Its summary contains only state, selected date or unselected, safe problem label, current stage, remaining count, next action, baseline status, cursor, pending presence, and the absence of automatic retry. It never includes memo content, payload, identifiers, fingerprints, credentials, or raw metadata. Clipboard failure is UI-only and does not alter sync state.
 
 This correction changes only guide routing and presentation. It does not change saved-state or checkpoint validators, snapshot freshness, confirmation, read-back, rollback, pending/operation lifecycle, full-pull limits, persistence formats, RPC/SQL/RLS, automatic processing, or the PC owner workflow.
+
+## B-3f5eUI2b — saved checkpoint target alignment
+
+The saved recovery state check is checkpoint-wide and must not accept a target date input. Its source of truth is the current validated metadata v5, bound workspace, current local storage/React state, absence of pending/intent/push block, `recovery_required` status, cursor, and one explicit complete full pull. Every persisted baseline date must reclassify as `exact_match_baseline_confirmed`; all other dates are then rebuilt as unresolved classifications.
+
+Only a successful current result may produce `nextRecommendedDate`. The guide may use that date or a date explicitly selected from the same result. Starting a new saved-state check clears React-only selected date, checkpoint comparison, and body-mismatch candidate state, so a historical device-specific target or candidate snapshot cannot be reused. A body mismatch proceeds through explicit checkpoint confirmation and then explicit content comparison.
+
+Clipboard support is progressive: use the secure Clipboard API when available, try a user-gesture legacy copy fallback, and otherwise display the already-safe summary in a selectable textarea. The fallback contains no memo content, payload, raw metadata, identifier, fingerprint, or credential, and clipboard failure never changes sync safety or persistent state.
+
+This phase changes no metadata/checkpoint validator contract, persistence format, pending/operation lifecycle, full-pull limit, confirmation, read-back, rollback, RPC/SQL/RLS, automatic retry, adoption, or send behavior.

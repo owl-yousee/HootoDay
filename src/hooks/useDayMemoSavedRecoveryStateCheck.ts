@@ -19,7 +19,6 @@ export type DayMemoSavedRecoveryStateSafety =
   | 'normal_difference_checkpoint_saved_state_pull_malformed'
   | 'normal_difference_checkpoint_saved_state_cursor_mismatch'
   | 'normal_difference_checkpoint_saved_state_baseline_mismatch'
-  | 'normal_difference_checkpoint_saved_state_target_mismatch'
   | 'normal_difference_checkpoint_saved_state_unresolved_rebuild_failed'
   | 'normal_difference_checkpoint_saved_state_push_blocked'
   | 'normal_difference_checkpoint_saved_state_intent_conflict'
@@ -38,10 +37,7 @@ export interface DayMemoSavedRecoveryStateResult {
   baselineCount: number
   baselineStatus: 'recovery_required' | null
   baselineConfirmedAtNull: boolean
-  targetDate: string
-  targetBaselineVerified: boolean
-  targetLocalRemoteMatched: boolean
-  targetResolved: boolean
+  allBaselinesVerified: boolean
   unresolvedCount: number
   unresolvedClassifications: Record<string, DayMemoNormalDifferenceClassification>
   normalSyncReady: false
@@ -62,7 +58,6 @@ interface Input {
   isSignedIn: boolean
   connection: SyncConnection | null
   reactMetadata: DayMemoSyncMetadataV5 | null
-  targetDate: string
 }
 
 const RECOVERABLE = new Set<DayMemoNormalDifferenceClassification>([
@@ -86,7 +81,7 @@ function nextAction(safety: DayMemoSavedRecoveryStateSafety, nextDate: string | 
 }
 
 export function useDayMemoSavedRecoveryStateCheck(input: Input) {
-  const { dayMemos, isConfigured, isSignedIn, connection, reactMetadata, targetDate } = input
+  const { dayMemos, isConfigured, isSignedIn, connection, reactMetadata } = input
   const [checking, setChecking] = useState(false)
   const [result, setResult] = useState<DayMemoSavedRecoveryStateResult | null>(null)
   const runIdRef = useRef(0)
@@ -101,12 +96,12 @@ export function useDayMemoSavedRecoveryStateCheck(input: Input) {
     setResult({ safety, metadataVersion: null, metadataValid: false, workspaceBound: false,
       pendingAbsent: false, cursor: null, fullPullMaxSequence: null, cursorMatched: false,
       baselineCount: 0, baselineStatus: null, baselineConfirmedAtNull: false,
-      targetDate, targetBaselineVerified: false, targetLocalRemoteMatched: false, targetResolved: false,
+      allBaselinesVerified: false,
       unresolvedCount: 0, unresolvedClassifications: {}, normalSyncReady: false,
       oneByOneRecoveryPossible: false, nextRecommendedDate: null, nextRecommendedClassification: null,
       persistentStateChanged: false, rpcSent: false, fullPullCount: 0, automaticRetry: false,
       checkedAt: new Date().toISOString(), ...values, nextAction: nextAction(safety, nextDate) })
-  }, [targetDate])
+  }, [])
 
   const check = useCallback(async () => {
     if (inFlightRef.current || checking) return
@@ -151,11 +146,6 @@ export function useDayMemoSavedRecoveryStateCheck(input: Input) {
         || Object.keys(metadata.baselines).length === 0) {
         finish('normal_difference_checkpoint_saved_state_metadata_invalid', common); return
       }
-      const targetLocals = stored.memos.filter((memo) => memo.date === targetDate)
-      if (targetLocals.length !== 1 || !metadata.baselines[targetDate]) {
-        finish('normal_difference_checkpoint_saved_state_target_mismatch', common); return
-      }
-
       const pulled = await pullAllDayMemoSyncRecords(supabaseClient, connection.workspaceId,
         () => runIdRef.current === runId).catch(() => null)
       if (!pulled) {
@@ -190,43 +180,27 @@ export function useDayMemoSavedRecoveryStateCheck(input: Input) {
       }
 
       const localByDate = new Map(stored.memos.map((memo) => [memo.date, memo]))
-      const targetLocal = targetLocals[0]
-      const targetRemote = remoteByDate.get(targetDate) ?? null
-      const targetBaseline = metadata.baselines[targetDate]
-      const targetClassification = classifyDayMemoNormalDifference(targetLocal, targetRemote, targetBaseline)
-      if (!targetRemote || targetRemote.deletedAt !== null || !targetRemote.payload
-        || targetBaseline.deletedAt !== null
-        || targetBaseline.remoteRevision !== targetRemote.revision
-        || targetBaseline.remoteChangeSequence !== targetRemote.changeSequence
-        || targetBaseline.remoteUpdatedAt !== targetRemote.payload.updatedAt
-        || targetBaseline.baselineLocalUpdatedAt !== targetLocal.updatedAt) {
-        finish('normal_difference_checkpoint_saved_state_baseline_mismatch', remoteCommon); return
-      }
-      if (targetClassification !== 'exact_match_baseline_confirmed') {
-        finish('normal_difference_checkpoint_saved_state_target_mismatch', remoteCommon); return
-      }
-
       const dates = [...new Set([...localByDate.keys(), ...remoteByDate.keys(), ...Object.keys(metadata.baselines)])].sort()
       const classifications = Object.fromEntries(dates.map((date) => [date, classifyDayMemoNormalDifference(
         localByDate.get(date) ?? null, remoteByDate.get(date) ?? null, metadata.baselines[date] ?? null,
       )])) as Record<string, DayMemoNormalDifferenceClassification>
-      if (classifications[targetDate] !== 'exact_match_baseline_confirmed') {
-        finish('normal_difference_checkpoint_saved_state_target_mismatch', remoteCommon); return
+      if (Object.keys(metadata.baselines).some((date) => classifications[date] !== 'exact_match_baseline_confirmed')) {
+        finish('normal_difference_checkpoint_saved_state_baseline_mismatch', remoteCommon); return
       }
       const unresolvedClassifications = Object.fromEntries(Object.entries(classifications)
         .filter(([, classification]) => classification !== 'exact_match_baseline_confirmed'))
       const unresolvedEntries = Object.entries(unresolvedClassifications)
       if (unresolvedEntries.some(([, classification]) => !RECOVERABLE.has(classification))) {
         finish('normal_difference_checkpoint_saved_state_unresolved_rebuild_failed', {
-          ...remoteCommon, targetBaselineVerified: true, targetLocalRemoteMatched: true,
-          targetResolved: true, unresolvedCount: unresolvedEntries.length, unresolvedClassifications,
+          ...remoteCommon, allBaselinesVerified: true,
+          unresolvedCount: unresolvedEntries.length, unresolvedClassifications,
         }); return
       }
       const next = unresolvedEntries.find(([, classification]) => classification === 'body_mismatch')
         ?? unresolvedEntries[0] ?? null
       finish('normal_difference_checkpoint_saved_state_ready', {
-        ...remoteCommon, targetBaselineVerified: true, targetLocalRemoteMatched: true,
-        targetResolved: true, unresolvedCount: unresolvedEntries.length, unresolvedClassifications,
+        ...remoteCommon, allBaselinesVerified: true,
+        unresolvedCount: unresolvedEntries.length, unresolvedClassifications,
         oneByOneRecoveryPossible: unresolvedEntries.length > 0,
         nextRecommendedDate: next?.[0] ?? null, nextRecommendedClassification: next?.[1] ?? null,
       })
@@ -236,7 +210,7 @@ export function useDayMemoSavedRecoveryStateCheck(input: Input) {
       inFlightRef.current = false
       if (runIdRef.current === runId) setChecking(false)
     }
-  }, [checking, connection, dayMemos, eligible, finish, reactMetadata, targetDate])
+  }, [checking, connection, dayMemos, eligible, finish, reactMetadata])
 
   const discard = useCallback(() => {
     runIdRef.current += 1

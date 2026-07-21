@@ -293,7 +293,6 @@ function App() {
     isSignedIn: supabaseAuth.isSignedIn,
     connection: supabaseWorkspace.connection,
     reactMetadata: dayMemoSyncBaseline.metadata?.version === 5 ? dayMemoSyncBaseline.metadata : null,
-    targetDate: '2026-07-12',
   })
   const dayMemoRecoveryLocalOnlyPreparation = useDayMemoRecoveryLocalOnlyPreparation({
     dayMemos,

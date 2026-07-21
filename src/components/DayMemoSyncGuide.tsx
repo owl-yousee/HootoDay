@@ -36,7 +36,6 @@ const savedStateMessages: Record<string, string> = {
   normal_difference_checkpoint_saved_state_pull_malformed: '同期先の状態を完全に確認できませんでした。',
   normal_difference_checkpoint_saved_state_cursor_mismatch: '保存済みの同期位置と同期先の状態が一致しません。',
   normal_difference_checkpoint_saved_state_baseline_mismatch: '保存済みの同期基準を安全に確認できませんでした。',
-  normal_difference_checkpoint_saved_state_target_mismatch: '保存状態の確認対象が現在の状態と一致しません。',
   normal_difference_checkpoint_saved_state_unresolved_rebuild_failed: '未解決差異の一覧を安全に再構築できませんでした。',
   normal_difference_checkpoint_saved_state_push_blocked: '同期送信が停止されているため、先へ進めません。',
   normal_difference_checkpoint_saved_state_intent_conflict: '未完了の削除候補が残っています。',
@@ -47,7 +46,8 @@ const savedStateMessages: Record<string, string> = {
 export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, bodyLocalPreparation,
   bodyRemoteAdoption, localOnly, remoteOnly }: Props) {
   const [selectedDate, setSelectedDate] = useState('')
-  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'fallback'>('idle')
+  const [copyText, setCopyText] = useState('')
   const items = useMemo(() => Object.entries(saved.result?.unresolvedClassifications ?? {}), [saved.result])
   const recommended = saved.result?.nextRecommendedDate ?? items[0]?.[0] ?? ''
   const activeDate = items.some(([date]) => date === selectedDate) ? selectedDate : recommended
@@ -91,6 +91,15 @@ export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, b
     if (bodyCandidate.selectedDate !== item[0]) bodyCandidate.setSelectedDate(item[0])
   }
 
+  const startSavedStateCheck = () => {
+    setSelectedDate('')
+    setCopyState('idle')
+    setCopyText('')
+    bodyCandidate.discard()
+    checkpoint.discard()
+    void saved.check()
+  }
+
   const copyResult = async () => {
     const state = !savedReady && saved.result ? '安全停止'
       : bodyRemoteAdoption.stage === 'completed' ? '成功'
@@ -100,7 +109,26 @@ export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, b
       `残り：${savedReady ? `${remaining}件` : '未確認'}`, `metadata：${metadata.baselineStatus}`,
       `cursor：${metadata.lastPulledChangeSequence}`, `pending：${metadata.pendingOperation ? 'あり' : 'なし'}`,
       '自動retry：なし'].join('\n')
-    try { await navigator.clipboard.writeText(text); setCopyState('copied') } catch { setCopyState('failed') }
+    setCopyText(text)
+    if (window.isSecureContext && navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(text)
+        setCopyState('copied')
+        return
+      } catch { /* LAN HTTPや権限拒否時は選択式fallbackへ進む */ }
+    }
+    const textarea = document.createElement('textarea')
+    textarea.value = text
+    textarea.setAttribute('readonly', '')
+    textarea.style.position = 'fixed'
+    textarea.style.opacity = '0'
+    document.body.appendChild(textarea)
+    textarea.select()
+    textarea.setSelectionRange(0, textarea.value.length)
+    let copied = false
+    try { copied = document.execCommand('copy') } catch { copied = false }
+    textarea.remove()
+    setCopyState(copied ? 'copied' : 'fallback')
   }
 
   return (
@@ -118,7 +146,7 @@ export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, b
           <p>{saved.result ? currentProblem : '現在のiPhoneと同期先を読み取り専用で確認し、次の1件を決めます。'}</p>
           <p className="cloud-sync-note">iPhoneのデータ変更：なし／同期先への書き込み：なし／metadata変更：なし／自動retry：なし</p>
           <button type="button" className="health-primary-button cloud-sync-button" disabled={!saved.eligible || saved.checking}
-            onClick={() => { void saved.check() }}>{saved.checking ? '保存状態を確認中…' : saved.result ? '保存状態を再確認' : '保存状態を確認'}</button>
+            onClick={startSavedStateCheck}>{saved.checking ? '保存状態を確認中…' : saved.result ? '保存状態を再確認' : '保存状態を確認'}</button>
           {!saved.eligible ? <p className="cloud-sync-note">現在は確認を実行できません。接続・認証状態を確認してください。</p> : null}
         </div>
       ) : !activeDate || !activeClassification ? (
@@ -212,7 +240,11 @@ export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, b
       <div className="iphone-sync-guide-copy">
         <button type="button" className="health-secondary-button cloud-sync-button" onClick={() => { void copyResult() }}>結果をコピー</button>
         {copyState === 'copied' ? <p className="cloud-day-memo-success">結果をコピーしました。</p> : null}
-        {copyState === 'failed' ? <p className="cloud-sync-note">コピーできませんでした。同期状態には影響ありません。</p> : null}
+        {copyState === 'fallback' ? <div className="cloud-sync-note">
+          <p>自動コピーできませんでした。下の内容を長押ししてコピーしてください。同期状態には影響ありません。</p>
+          <textarea readOnly rows={10} value={copyText} aria-label="同期チェック結果のコピー用テキスト"
+            onFocus={(event) => event.currentTarget.select()} />
+        </div> : null}
       </div>
     </section>
   )

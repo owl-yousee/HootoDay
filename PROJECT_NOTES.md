@@ -2692,3 +2692,13 @@ cleanup後VERIFY結果：
 - 「結果をコピー」は保存状態resultの成否や現在stageにかかわらず同期チェック内へ常時表示する。対象未選択も含め、状態、対象、問題、stage、残件数、次操作、metadata status、cursor、pending、自動retryなしだけをコピーする。
 - 本文、payload、UUID、operation ID、fingerprint、認証情報はコピーしない。clipboard失敗は短い画面表示だけで、同期状態へ影響させない。
 - 詳細・診断を開かず1件の差異処理へ進める表示接続だけを修正した。saved-state/checkpoint/body mismatchのvalidator、snapshot鮮度、full pull回数、confirm、read-back、rollback、pending lifecycleは変更していない。
+
+## 2026-07-21 B-3f5eUI2b saved-state対象整合修正
+
+- UI2a後のiPhone実機では、保存状態確認が`normal_difference_checkpoint_saved_state_target_mismatch`で停止した。直接原因はAppが過去の復旧対象日を固定入力し、saved-state Hookが現在checkpoint全体の確認前にその日付のlocal・baseline存在を要求し、full pull後も同日だけのactive系譜と一致を必須にしていたこと。
+- saved-state確認は特定日付を入力に取らず、現在のvalidator済みmetadata v5、workspace binding、React/storage一致、pending・intent・pushBlockなし、`recovery_required`、cursorと完全full pull最大sequence、全保存済みbaselineの正式分類を検証する。
+- 全baselineが`exact_match_baseline_confirmed`である場合だけ、local・remote・baselineの全日付unionから未解決差異を再構築する。対象日は成功resultの`nextRecommendedDate`または同result内のユーザー選択日からのみ決める。
+- 保存状態の再確認開始時に、古いcheckpoint比較result、body mismatch比較・候補、選択日をReact stateから破棄する。過去の候補snapshotや別端末resultは復元・再利用しない。
+- body mismatchが推奨対象なら、最新checkpoint resultがない間は「本文比較の準備を確認」、ready後は「内容を比較」を表示する。自動比較・自動採用・自動送信は行わない。
+- LAN HTTP上のiPhone Safariではsecure-context制約によりClipboard APIを利用できない場合がある。Clipboard API、legacy copyの順に試し、両方失敗時は安全な要約だけを選択可能textareaへ表示する。コピー失敗は同期safetyへ影響させない。
+- metadata/checkpoint validator、full pull上限、confirm、read-back、rollback、pending lifecycle、operation ID、SQL/RPC/RLS、保存形式は変更していない。
