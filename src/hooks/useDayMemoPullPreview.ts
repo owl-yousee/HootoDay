@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabaseClient } from '../lib/supabaseClient'
 import type { DayMemo } from '../types/dayMemo'
+import type { DayMemoSyncMetadataV5 } from '../types/dayMemoSync'
 import type {
   DayMemoPullComparison,
   DayMemoPullApplyResult,
@@ -11,7 +12,7 @@ import type {
 } from '../types/dayMemoSync'
 import type { SyncConnection } from '../types/sync'
 import { fromDateKey } from '../utils/date'
-import { loadDayMemoSyncMetadata } from '../utils/dayMemoSyncStorage'
+import { isDayMemoSyncMetadataV5, loadDayMemoSyncMetadata, loadDayMemoSyncMetadataAny } from '../utils/dayMemoSyncStorage'
 import { saveDayMemoPullApplyBackup } from '../utils/dayMemoPullApplyBackupStorage'
 import { readDayMemoStorageSnapshot, replaceStoredDayMemosVerified } from '../utils/dayMemoStorage'
 import {
@@ -28,6 +29,7 @@ interface UseDayMemoPullPreviewInput {
   isConfigured: boolean
   isSignedIn: boolean
   connection: SyncConnection | null
+  reactMetadata: DayMemoSyncMetadataV5 | null
   adoptVerifiedStoredDayMemos: (memos: DayMemo[]) => void
 }
 
@@ -146,6 +148,7 @@ export function useDayMemoPullPreview({
   isConfigured,
   isSignedIn,
   connection,
+  reactMetadata,
   adoptVerifiedStoredDayMemos,
 }: UseDayMemoPullPreviewInput) {
   const [previewState, setPreviewState] = useState<DayMemoPullPreviewState>('unavailable')
@@ -166,6 +169,42 @@ export function useDayMemoPullPreview({
     && connection.workspaceRole === 'member'
     && connection.pairingStatus === 'member',
   )
+  const pullReady = Boolean(
+    isConfigured && isSignedIn && supabaseClient && connection
+    && isUuid(connection.workspaceId) && isUuid(connection.deviceId)
+    && ((connection.deviceRole === 'parent' && connection.workspaceRole === 'owner' && connection.pairingStatus === 'owner')
+      || (connection.deviceRole === 'child' && connection.workspaceRole === 'member' && connection.pairingStatus === 'member')),
+  )
+  const currentMetadata = connection?.workspaceId ? loadDayMemoSyncMetadataAny(window.localStorage) : null
+  const currentStoredMemos = connection?.workspaceId ? readDayMemoStorageSnapshot(window.localStorage) : null
+  const canStartNormalStateCheck = Boolean(pullReady
+    && currentMetadata?.status === 'ready' && isDayMemoSyncMetadataV5(currentMetadata.metadata)
+    && reactMetadata !== null && JSON.stringify(currentMetadata.metadata) === JSON.stringify(reactMetadata)
+    && currentMetadata.metadata.workspaceId === connection?.workspaceId
+    && currentMetadata.metadata.baselineStatus === 'confirmed'
+    && currentMetadata.metadata.baselineConfirmedAt !== null
+    && currentMetadata.metadata.pendingOperation === null
+    && currentMetadata.metadata.pushBlock === null
+    && Object.keys(currentMetadata.metadata.localDeleteIntents).length === 0
+    && currentStoredMemos?.status === 'ready'
+    && localSignature(currentStoredMemos.memos) === currentLocalSignature
+    && previewState !== 'pulling')
+  const normalStateCheckDisabledReason = canStartNormalStateCheck ? null
+    : !isConfigured || !isSignedIn ? '認証が必要です。'
+      : !pullReady ? 'workspace接続の確認が必要です。'
+        : currentMetadata?.status !== 'ready' || !isDayMemoSyncMetadataV5(currentMetadata.metadata)
+          ? '同期metadataの確認が必要です。'
+          : !reactMetadata || JSON.stringify(currentMetadata.metadata) !== JSON.stringify(reactMetadata)
+            ? '画面と保存済みmetadataの確認が必要です。'
+          : currentMetadata.metadata.workspaceId !== connection?.workspaceId ? 'workspaceが一致しません。'
+            : currentMetadata.metadata.pendingOperation !== null ? '未完了の同期処理を先に確認してください。'
+              : currentMetadata.metadata.pushBlock !== null || Object.keys(currentMetadata.metadata.localDeleteIntents).length > 0
+                ? '同期操作を開始できない状態です。'
+                : currentMetadata.metadata.baselineStatus !== 'confirmed' || currentMetadata.metadata.baselineConfirmedAt === null
+                  ? 'confirmed metadataの確認が必要です。'
+                  : currentStoredMemos?.status !== 'ready' || localSignature(currentStoredMemos.memos) !== currentLocalSignature
+                    ? '画面と保存済みDayMemoの確認が必要です。'
+                    : previewState === 'pulling' ? '同期状態を確認中です。' : '同期状態を確認できません。'
 
   useEffect(() => {
     requestGeneration.current += 1
@@ -174,8 +213,8 @@ export function useDayMemoPullPreview({
     setSafeErrorMessage(null)
     setApplyState('idle')
     setApplyResult(null)
-    setPreviewState(memberReady ? 'idle' : 'unavailable')
-  }, [connection?.workspaceId, memberReady])
+    setPreviewState(pullReady ? 'idle' : 'unavailable')
+  }, [connection?.workspaceId, pullReady])
 
   useEffect(() => {
     if (previewLocalSignature.current !== null && previewLocalSignature.current !== currentLocalSignature) {
@@ -186,8 +225,8 @@ export function useDayMemoPullPreview({
     }
   }, [currentLocalSignature])
 
-  const pullPreview = useCallback(async () => {
-    if (!memberReady || !connection?.workspaceId || !supabaseClient || previewState === 'pulling') return
+  const pullPreview = useCallback(async (options?: { requireConfirmedMetadata?: boolean }) => {
+    if (!pullReady || !connection?.workspaceId || !supabaseClient || previewState === 'pulling') return
     setPreview(null)
     previewLocalSignature.current = null
     setSafeErrorMessage(null)
@@ -195,6 +234,19 @@ export function useDayMemoPullPreview({
     const generation = ++requestGeneration.current
     const requestLocalSignature = currentLocalSignature
 
+    if (options?.requireConfirmedMetadata) {
+      const formal = loadDayMemoSyncMetadataAny(window.localStorage)
+      if (formal.status !== 'ready' || !isDayMemoSyncMetadataV5(formal.metadata)
+        || !reactMetadata || JSON.stringify(formal.metadata) !== JSON.stringify(reactMetadata)
+        || formal.metadata.workspaceId !== connection.workspaceId
+        || formal.metadata.baselineStatus !== 'confirmed' || formal.metadata.baselineConfirmedAt === null
+        || formal.metadata.pendingOperation !== null || formal.metadata.pushBlock !== null
+        || Object.keys(formal.metadata.localDeleteIntents).length !== 0) {
+        setPreviewState('recovery_required')
+        setSafeErrorMessage(messageForState('recovery_required'))
+        return
+      }
+    }
     const metadata = loadDayMemoSyncMetadata(window.localStorage)
     if (metadata.status === 'storage_unavailable' || metadata.status === 'metadata_invalid') {
       setPreviewState('recovery_required')
@@ -285,7 +337,7 @@ export function useDayMemoPullPreview({
 
     setPreviewState('limit_reached')
     setSafeErrorMessage(messageForState('limit_reached'))
-  }, [connection?.workspaceId, currentLocalSignature, dayMemos, memberReady, previewState])
+  }, [connection?.workspaceId, currentLocalSignature, dayMemos, previewState, pullReady, reactMetadata])
 
   const clearPreview = useCallback(() => {
     requestGeneration.current += 1
@@ -294,8 +346,8 @@ export function useDayMemoPullPreview({
     setSafeErrorMessage(null)
     setApplyState('idle')
     setApplyResult(null)
-    setPreviewState(memberReady ? 'idle' : 'unavailable')
-  }, [memberReady])
+    setPreviewState(pullReady ? 'idle' : 'unavailable')
+  }, [pullReady])
 
   const canApplyPreview = Boolean(
     memberReady
@@ -403,6 +455,9 @@ export function useDayMemoPullPreview({
     items: preview?.items ?? [],
     summary: preview?.summary ?? null,
     memberReady,
+    pullReady,
+    canStartNormalStateCheck,
+    normalStateCheckDisabledReason,
     safeErrorMessage,
     pageLimit: PAGE_LIMIT,
     maxRecords: MAX_RECORDS,

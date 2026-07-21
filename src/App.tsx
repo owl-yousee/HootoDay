@@ -174,13 +174,6 @@ function App() {
     isSignedIn: supabaseAuth.isSignedIn,
     connection: supabaseWorkspace.connection,
   })
-  const dayMemoPullPreview = useDayMemoPullPreview({
-    dayMemos,
-    isConfigured: supabaseAuth.isConfigured,
-    isSignedIn: supabaseAuth.isSignedIn,
-    connection: supabaseWorkspace.connection,
-    adoptVerifiedStoredDayMemos,
-  })
   const dayMemoNormalDifferenceRecoveryPlan = useDayMemoNormalDifferenceRecoveryPlan({
     dayMemos,
     isConfigured: supabaseAuth.isConfigured,
@@ -198,6 +191,14 @@ function App() {
     isConfigured: supabaseAuth.isConfigured,
     isSignedIn: supabaseAuth.isSignedIn,
     connection: supabaseWorkspace.connection,
+  })
+  const dayMemoPullPreview = useDayMemoPullPreview({
+    dayMemos,
+    isConfigured: supabaseAuth.isConfigured,
+    isSignedIn: supabaseAuth.isSignedIn,
+    connection: supabaseWorkspace.connection,
+    reactMetadata: dayMemoSyncBaseline.metadata?.version === 5 ? dayMemoSyncBaseline.metadata : null,
+    adoptVerifiedStoredDayMemos,
   })
   const dayMemoNormalDifferenceRecoveryCheckpointSave = useDayMemoNormalDifferenceRecoveryCheckpointSave({
     dayMemos,

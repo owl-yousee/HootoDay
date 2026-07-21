@@ -2646,3 +2646,12 @@ cleanup後VERIFY結果：
 - current cursorとfull pull最大sequenceが完全一致する場合だけ、baseline・cursor・`confirmed`・confirmedAtを一つのmetadata v5 candidateとしてReact stateに保持する。
 - 別の明示確認後だけcompare-and-writeで1回保存し、read-back完全一致を必須とする。保存・read-back失敗時は新しい変更を上書きしないverified rollbackを使用し、rollback不能は成功扱いしない。
 - 修復後のlocal-onlyはlocalに維持し、既存の通常`operationMode = normal`経路で別途preview・preflight・明示送信する。このPhaseでoperation ID、pending、RPC送信は発生しない。
+## 2026-07-21 Phase B-3f5e8d normal state check availability
+
+- B-3f5e8cのmetadata修復は実機で成功し、metadata v5、`confirmed`、baseline 9件、cursor 19、local-only 1件、pending・pushBlock・intentなしを確認済み。
+- 修復後の`normal_state_check`が無効だった直接原因は、統合UIが`useDayMemoPullPreview.memberReady`を開始条件に使用し、その値がiPhone子機/memberだけを許可しPC親機/ownerを常に拒否していたこと。snapshotやmetadata repair resultは要求されていなかったが、共通無効文言がsnapshot不足と誤解させていた。
+- 既存pull preview Hook内で「pullを開始できるowner/member接続」と「子機だけが使えるlocal反映」を分離した。新しいHookは追加していない。
+- `canStartNormalStateCheck`は、設定・認証・workspace、validator済みmetadata v5、`confirmed`、confirmedAt、pending/pushBlock/intentなし、React/storage DayMemo一致、非実行中だけを事前条件とする。過去result・snapshotは不要。
+- 統合UIからは既存`pullPreview({ requireConfirmedMetadata: true })`を1回だけ明示実行する。確認成功後のresult/snapshotだけが通常local-only後続stageに利用される。
+- normal state checkの無効理由は認証、workspace、metadata、pending、block/intent、confirmed、React/storage不一致、実行中を分け、実行前に「snapshotがない」と表示しない。
+- metadata、DayMemo、snapshot lifecycle、`operationMode = normal`、SQL/RPC/RLS/保存形式は変更しない。自動pull・送信・retryはない。

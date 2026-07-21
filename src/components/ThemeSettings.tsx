@@ -638,7 +638,7 @@ export function ThemeSettings({
                             : recoveryNavigation.stage === 'metadata_repair_save'
                               ? dayMemoNormalMetadataRepair.canSave && !dayMemoNormalMetadataRepair.running
                             : recoveryNavigation.stage === 'normal_state_check'
-                              ? dayMemoPullPreview.memberReady && dayMemoPullPreview.previewState !== 'pulling'
+                              ? dayMemoPullPreview.canStartNormalStateCheck
                             : recoveryNavigation.stage === 'normal_local_only_check'
                                   ? dayMemoLocalOnlyPreview.eligible && dayMemoLocalOnlyPreview.previewState !== 'checking'
                                   : recoveryNavigation.stage === 'normal_local_only_preflight'
@@ -649,6 +649,7 @@ export function ThemeSettings({
                                         ? dayMemoLocalOnlyUpload.state === 'prepared'
                   : false
   const navigationDisabledReason = recoveryNavigation.disabledReason
+    ?? (recoveryNavigation.stage === 'normal_state_check' ? dayMemoPullPreview.normalStateCheckDisabledReason : null)
     ?? (navigationCanExecute ? null : '現在のsnapshotまたは前提条件を安全に確認できないため実行できません。')
 
   const runRecoveryNavigationAction = () => {
@@ -675,7 +676,7 @@ export function ThemeSettings({
       case 'final_ready_check': void dayMemoRecoveryFinalization.verify(); break
       case 'metadata_repair_check': void dayMemoNormalMetadataRepair.check(); break
       case 'metadata_repair_save': dayMemoNormalMetadataRepair.save(); break
-      case 'normal_state_check': void dayMemoPullPreview.pullPreview(); break
+      case 'normal_state_check': void dayMemoPullPreview.pullPreview({ requireConfirmedMetadata: true }); break
       case 'normal_local_only_check': void dayMemoLocalOnlyPreview.previewLocalOnly(); break
       case 'normal_local_only_preflight': void dayMemoLocalOnlyUpload.runPreflight(); break
       case 'normal_local_only_prepare': dayMemoLocalOnlyUpload.prepareUpload(); break
