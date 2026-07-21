@@ -134,7 +134,8 @@ type SyncRecoveryUiStage = 'checkpoint_check' | 'body_mismatch_compare' | 'candi
   | 'preflight' | 'send' | 'operation_result_read' | 'post_send_verify'
   | 'metadata_save' | 'saved_state_check' | 'remote_only_check' | 'remote_only_adopt'
   | 'remote_only_post_check' | 'remote_only_metadata_save' | 'final_confirmation' | 'confirmed_save'
-  | 'final_ready_check' | 'metadata_repair_check' | 'metadata_repair_save' | 'normal_state_check' | 'normal_local_only_check' | 'normal_local_only_preflight'
+  | 'final_ready_check' | 'metadata_repair_check' | 'metadata_repair_save' | 'normal_mismatch_difference_check'
+  | 'normal_mismatch_difference_review' | 'normal_state_check' | 'normal_local_only_check' | 'normal_local_only_preflight'
   | 'normal_local_only_prepare' | 'normal_local_only_send' | 'next_difference' | 'blocked' | 'complete'
 
 interface SyncRecoveryNavigation {
@@ -171,6 +172,7 @@ function deriveSyncRecoveryNavigation(input: {
   normalPullState: ReturnType<typeof useDayMemoPullPreview>['previewState']
   normalPullSummary: ReturnType<typeof useDayMemoPullPreview>['summary']
   metadataRepairStage: ReturnType<typeof useDayMemoNormalMetadataRepair>['stage']
+  mismatchDifferenceResult: ReturnType<typeof useDayMemoNormalDifferenceRecoveryPlan>['result']
 }): SyncRecoveryNavigation {
   const { safety, pending, savedResult } = input
   const blocked = input.pushBlocked || safety === 'metadata_invalid' || safety === 'conflict' || safety === 'response_unknown'
@@ -210,9 +212,12 @@ function deriveSyncRecoveryNavigation(input: {
   }
   if (input.metadataBaselineStatus === 'mismatch') {
     if (input.metadataRepairStage === 'blocked') {
-      return { stage: 'blocked', targetDate: null, classification: 'metadata確認', title: '同期metadataの再確認が必要です',
-        description: '修復候補を安全に構築できなかったため、metadataを変更せず停止しました。', writesRemote: false,
-        changesPersistentState: false, disabledReason: '確認結果を破棄し、状態を確認してから再実行してください。' }
+      if (input.mismatchDifferenceResult) return { stage: 'normal_mismatch_difference_review', targetDate: null, classification: '複数差異確認',
+        title: '差異を1件選択', description: '分類結果から対象を1件選択します。このPhaseでは送信・採用・metadata保存は行いません。',
+        writesRemote: false, changesPersistentState: false, disabledReason: '一覧から対象日を選択してください。' }
+      return { stage: 'normal_mismatch_difference_check', targetDate: null, classification: '複数差異確認',
+        title: '端末と同期先の差異を確認', description: 'validなmismatch metadataを維持したまま、全日付をread-onlyで正式分類します。',
+        writesRemote: false, changesPersistentState: false, disabledReason: null }
     }
     if (input.metadataRepairStage === 'repair_ready') {
       return { stage: 'metadata_repair_save', targetDate: null, classification: 'metadata確認',
@@ -498,6 +503,8 @@ export function ThemeSettings({
   const dialogRef = useRef<HTMLDialogElement>(null)
   const pendingInternalCloseEventsRef = useRef(0)
   const [recoveryWorkOpen, setRecoveryWorkOpen] = useState(false)
+  const [selectedMismatchDate, setSelectedMismatchDate] = useState('')
+  useEffect(() => { setSelectedMismatchDate('') }, [dayMemoNormalDifferenceRecoveryPlan.result?.checkedAt])
   const supabasePairing = useSupabasePairing({
     isConfigured: supabaseAuth.isConfigured,
     isSignedIn: supabaseAuth.isSignedIn,
@@ -600,6 +607,11 @@ export function ThemeSettings({
     normalPullState: dayMemoPullPreview.previewState,
     normalPullSummary: dayMemoPullPreview.summary,
     metadataRepairStage: dayMemoNormalMetadataRepair.stage,
+    mismatchDifferenceResult: dayMemoNormalDifferenceRecoveryPlan.resultCurrent
+      && dayMemoNormalDifferenceRecoveryPlan.result?.metadataValid
+      && dayMemoNormalDifferenceRecoveryPlan.result.workspaceBound
+      && dayMemoNormalDifferenceRecoveryPlan.result.items.length > 0
+      ? dayMemoNormalDifferenceRecoveryPlan.result : null,
   })
   const navigationCanExecute = recoveryNavigation.stage === 'checkpoint_check' || recoveryNavigation.stage === 'saved_state_check'
     ? dayMemoSavedRecoveryStateCheck.eligible && !dayMemoSavedRecoveryStateCheck.checking
@@ -637,6 +649,8 @@ export function ThemeSettings({
                               ? dayMemoNormalMetadataRepair.eligible && !dayMemoNormalMetadataRepair.running
                             : recoveryNavigation.stage === 'metadata_repair_save'
                               ? dayMemoNormalMetadataRepair.canSave && !dayMemoNormalMetadataRepair.running
+                            : recoveryNavigation.stage === 'normal_mismatch_difference_check'
+                              ? dayMemoNormalDifferenceRecoveryPlan.eligible && !dayMemoNormalDifferenceRecoveryPlan.checking
                             : recoveryNavigation.stage === 'normal_state_check'
                               ? dayMemoPullPreview.canStartNormalStateCheck
                             : recoveryNavigation.stage === 'normal_local_only_check'
@@ -676,6 +690,7 @@ export function ThemeSettings({
       case 'final_ready_check': void dayMemoRecoveryFinalization.verify(); break
       case 'metadata_repair_check': void dayMemoNormalMetadataRepair.check(); break
       case 'metadata_repair_save': dayMemoNormalMetadataRepair.save(); break
+      case 'normal_mismatch_difference_check': void dayMemoNormalDifferenceRecoveryPlan.check(); break
       case 'normal_state_check': void dayMemoPullPreview.pullPreview({ requireConfirmedMetadata: true }); break
       case 'normal_local_only_check': void dayMemoLocalOnlyPreview.previewLocalOnly(); break
       case 'normal_local_only_preflight': void dayMemoLocalOnlyUpload.runPreflight(); break
@@ -812,13 +827,33 @@ export function ThemeSettings({
                           <li>local-only候補：{dayMemoNormalMetadataRepair.result.localOnlyCandidateCount}件</li>
                           <li>cursor：{dayMemoNormalMetadataRepair.result.currentCursor ?? '確認不能'} → {dayMemoNormalMetadataRepair.result.candidateCursor ?? '候補なし'}</li>
                         </> : null}
+                        {dayMemoNormalDifferenceRecoveryPlan.result ? <>
+                          <li>exact match / baseline missing：{dayMemoNormalDifferenceRecoveryPlan.result.counts.exact_match_baseline_missing}件</li>
+                          <li>body mismatch：{dayMemoNormalDifferenceRecoveryPlan.result.counts.body_mismatch}件</li>
+                          <li>local-only：{dayMemoNormalDifferenceRecoveryPlan.result.counts.local_only}件</li>
+                          <li>remote-only active：{dayMemoNormalDifferenceRecoveryPlan.result.counts.remote_only_active}件</li>
+                          <li>remote-only tombstone：{dayMemoNormalDifferenceRecoveryPlan.result.counts.remote_only_tombstone}件</li>
+                          <li>cursor / full pull最大sequence：{dayMemoNormalDifferenceRecoveryPlan.result.cursor ?? '確認不能'} / {dayMemoNormalDifferenceRecoveryPlan.result.fullPullMaxSequence ?? '確認不能'}（{dayMemoNormalDifferenceRecoveryPlan.result.cursorValid ? '一致' : '不一致'}）</li>
+                        </> : null}
                       </ul>
                       <p>{recoveryNavigation.description}</p>
-                      <button type="button" className="health-primary-button cloud-sync-button"
-                        disabled={!navigationCanExecute} onClick={runRecoveryNavigationAction}>
-                        {recoveryNavigation.title}
-                      </button>
-                      {!navigationCanExecute && navigationDisabledReason ? <p className="cloud-sync-note">{navigationDisabledReason}</p> : null}
+                      {recoveryNavigation.stage === 'normal_mismatch_difference_review' && dayMemoNormalDifferenceRecoveryPlan.result ? (
+                        <>
+                          <label className="cloud-sync-field">確認する1件
+                            <select value={selectedMismatchDate} onChange={(event) => setSelectedMismatchDate(event.target.value)}>
+                              <option value="">日付を選択</option>
+                              {dayMemoNormalDifferenceRecoveryPlan.result.items.map((item) => (
+                                <option key={item.date} value={item.date}>{item.date} / {item.classification}</option>
+                              ))}
+                            </select>
+                          </label>
+                          {selectedMismatchDate ? <p className="cloud-sync-note">選択済み：{selectedMismatchDate} / {dayMemoNormalDifferenceRecoveryPlan.result.items.find((item) => item.date === selectedMismatchDate)?.classification}。永続変更は行っていません。</p> : null}
+                        </>
+                      ) : <>
+                        <button type="button" className="health-primary-button cloud-sync-button"
+                          disabled={!navigationCanExecute} onClick={runRecoveryNavigationAction}>{recoveryNavigation.title}</button>
+                        {!navigationCanExecute && navigationDisabledReason ? <p className="cloud-sync-note">{navigationDisabledReason}</p> : null}
+                      </>}
                       {dayMemoNormalMetadataRepair.safeErrorMessage ? <p className="cloud-pairing-error" role="alert">{dayMemoNormalMetadataRepair.safeErrorMessage}</p> : null}
                       {dayMemoNormalMetadataRepair.result && dayMemoNormalMetadataRepair.stage !== 'repaired' ? (
                         <button type="button" className="cloud-sync-button" disabled={dayMemoNormalMetadataRepair.running}

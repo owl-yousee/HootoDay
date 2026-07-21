@@ -2655,3 +2655,13 @@ cleanup後VERIFY結果：
 - 統合UIからは既存`pullPreview({ requireConfirmedMetadata: true })`を1回だけ明示実行する。確認成功後のresult/snapshotだけが通常local-only後続stageに利用される。
 - normal state checkの無効理由は認証、workspace、metadata、pending、block/intent、confirmed、React/storage不一致、実行中を分け、実行前に「snapshotがない」と表示しない。
 - metadata、DayMemo、snapshot lifecycle、`operationMode = normal`、SQL/RPC/RLS/保存形式は変更しない。自動pull・送信・retryはない。
+## 2026-07-21 Phase B-3f5e9 iPhone mismatch difference review
+
+- iPhone子機でV3→V4→V5 migrationは成功し、metadata v5 `mismatch`・pendingなしとなった。migration前read-only確認では完全一致、remote-only、local-only、body mismatchが混在していたが、現在件数は次のfull pullを正本とする。
+- B-3f5e8c metadata repairは「exact match + local-only 1件だけ」の限定条件を満たさず候補なしで安全停止した。その後の統合UIが`blocked`で終了し、複数差異のread-only入口がなかった。
+- 既存`useDayMemoNormalDifferenceRecoveryPlan`の完全full pullと正式分類を、validator済みmetadata v5 `mismatch`にもread-only利用可能とした。metadata invalidとvalid mismatchは区別する。
+- metadata repairがblockedの場合、統合UIは`normal_mismatch_difference_check`へ進み、明示操作1回につきfull pullを1回だけ行う。iPhone child/memberのread-only pullは許可するが、owner権限やlocal反映権限は拡大しない。
+- baseline 0件では完全一致も`exact_match_baseline_missing`とし、confirmed扱いしない。body mismatch、local-only、remote-only active/tombstone、timestamp/state/lineage/unknownを全日付unionで分類する。
+- 結果はReact stateだけに保持し、日付・分類の1件選択UIまでを提供する。自動で先頭を選択・送信・採用・baseline保存しない。
+- 既存body mismatch/local-only/remote-onlyのhandlerは`recovery_required` checkpointまたは`confirmed`を前提とするため、mismatch・baseline未確定から推測で接続せず、今回はread-only選択で停止する。
+- metadata/local/workspaceが変化したら旧resultを破棄し、V3/V4・migration前resultをstage判定に使用しない。SQL/RPC/RLS/保存形式の変更はない。

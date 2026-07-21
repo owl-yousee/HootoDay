@@ -1872,3 +1872,15 @@ HootoDay同期は本人一人がPC親機とiPhone子機で利用する個人用�
 - Result and snapshot requirements remain post-execution concerns: a successful result drives the existing local-only candidate stage; reload or relevant metadata/local/workspace changes require a new explicit check.
 - Disabled messages for the entry stage describe the actual prerequisite category instead of the generic snapshot message.
 - No new Hook, automatic pull, retry, send, metadata/DayMemo mutation, SQL/RPC/RLS change, storage-format change, or operation ID is introduced.
+## Phase B-3f5e9: read-only review after an unrepairable valid mismatch
+
+- An iPhone child successfully migrated V3→V4→V5 and remained in valid persistent `mismatch`. Its restricted B-3f5e8c repair correctly produced no candidate because multiple difference classes were present.
+- The missing transition was caused by integrated routing treating `metadataRepairStage = blocked` as terminal while `useDayMemoNormalDifferenceRecoveryPlan` accepted only `recovery_required` metadata.
+- The existing recovery-plan classifier is reused read-only for validated metadata v5 `mismatch`; no new Hook or persistence format is introduced. Eligibility still requires a valid bound parent/owner or child/member connection, and the check fails closed on metadata/local/workspace/pending/intent/push-block changes.
+- After a failed restricted repair, the integrated stage becomes `normal_mismatch_difference_check`. One explicit click performs at most one complete pull and classifies the union of current local and remote dates.
+- With no baseline, exact local/remote payload and timestamp matches remain `exact_match_baseline_missing`, never `exact_match_baseline_confirmed`. Other classes retain the existing body mismatch, local-only, remote-only active/tombstone, timestamp mismatch, state/lineage mismatch, and unknown semantics.
+- The React-only result includes all classified items, current cursor, observed full-pull maximum sequence, checked time, and the Hook's current metadata/local generation. A metadata raw, local signature, or eligibility change discards the result; V3/V4 and pre-migration results are not reused.
+- The integrated UI displays summary counts and permits an explicit one-date selection. Selection does not invoke any adoption, upload, merge, checkpoint save, or metadata mutation.
+- Existing body-mismatch, recovery local-only, and recovery remote-only handlers require confirmed or recovery checkpoint prerequisites that are absent in a baseline-empty mismatch. They are intentionally not called from this phase; minimal adapters or a safe checkpoint decision remain follow-up work.
+- Cursor mismatch may be displayed for diagnosis but makes one-by-one continuation unsafe. No cursor update occurs automatically.
+- Child/member read-only pull is allowed without granting owner management or broader local-apply permissions. No automatic pull/retry, SQL/RPC/RLS change, write RPC, operation ID, pending, or storage mutation is added.

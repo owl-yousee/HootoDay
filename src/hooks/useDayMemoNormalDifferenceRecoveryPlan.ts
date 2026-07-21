@@ -53,6 +53,7 @@ export interface DayMemoNormalDifferenceRecoveryPlan {
   localCount: number
   baselineCount: number
   cursor: number | null
+  fullPullMaxSequence: number | null
   cursorValid: boolean
   items: DayMemoNormalDifferenceRecoveryItem[]
   counts: Record<DayMemoNormalDifferenceClassification, number>
@@ -138,18 +139,22 @@ export function useDayMemoNormalDifferenceRecoveryPlan({ dayMemos, isConfigured,
   const [checking, setChecking] = useState(false)
   const [result, setResult] = useState<DayMemoNormalDifferenceRecoveryPlan | null>(null)
   const runIdRef = useRef(0)
+  const resultMetadataRawRef = useRef<string | null>(null)
+  const resultLocalSignatureRef = useRef<string | null>(null)
   const signature = useMemo(() => localSignature(dayMemos), [dayMemos])
   const current = connection?.workspaceId ? loadDayMemoSyncMetadataAny(window.localStorage) : null
   const eligible = Boolean(isConfigured && isSignedIn && supabaseClient && connectionIsEligible(connection)
     && current?.status === 'ready' && current.metadata.version === 5
-    && current.metadata.baselineStatus === 'recovery_required')
+    && (current.metadata.baselineStatus === 'recovery_required' || current.metadata.baselineStatus === 'mismatch'))
 
   const discard = useCallback(() => {
     runIdRef.current += 1
+    resultMetadataRawRef.current = null
+    resultLocalSignatureRef.current = null
     setResult(null)
     setChecking(false)
   }, [])
-  useEffect(() => { if (!eligible) discard() }, [discard, eligible])
+  useEffect(() => { discard() }, [current?.raw, discard, eligible, signature])
 
   const check = useCallback(async () => {
     if (!eligible || !supabaseClient || !connectionIsEligible(connection) || checking) return
@@ -163,7 +168,7 @@ export function useDayMemoNormalDifferenceRecoveryPlan({ dayMemos, isConfigured,
       setResult({
         metadataVersion: loaded.status === 'ready' ? loaded.metadata.version : null,
         workspaceBound: false, metadataValid: false, pushBlocked: false, pendingCount: 0, intentCount: 0,
-        remoteCount: 0, localCount: dayMemos.length, baselineCount: 0, cursor: null, cursorValid: false,
+        remoteCount: 0, localCount: dayMemos.length, baselineCount: 0, cursor: null, fullPullMaxSequence: null, cursorValid: false,
         items: [], counts: Object.fromEntries(DAY_MEMO_NORMAL_DIFFERENCE_CLASSIFICATIONS.map((value) => [value, 0])) as Record<DayMemoNormalDifferenceClassification, number>,
         exactBaselineCandidateDates: [], bodyMismatchDates: [], localOnlyDates: [], remoteOnlyDates: [],
         lineageOrStateMismatchCount: 0, partialBaselineSupported: false, oneByOneRecoveryPossible: false,
@@ -183,7 +188,7 @@ export function useDayMemoNormalDifferenceRecoveryPlan({ dayMemos, isConfigured,
         metadataVersion: metadata.version, workspaceBound, metadataValid: true, pushBlocked: metadata.pushBlock !== null,
         pendingCount: metadata.pendingOperation ? 1 : 0, intentCount: Object.keys(metadata.localDeleteIntents).length,
         remoteCount: 0, localCount: dayMemos.length, baselineCount: Object.keys(metadata.baselines).length,
-        cursor: metadata.lastPulledChangeSequence, cursorValid: false, items: [],
+        cursor: metadata.lastPulledChangeSequence, fullPullMaxSequence: null, cursorValid: false, items: [],
         counts: Object.fromEntries(DAY_MEMO_NORMAL_DIFFERENCE_CLASSIFICATIONS.map((value) => [value, 0])) as Record<DayMemoNormalDifferenceClassification, number>,
         exactBaselineCandidateDates: [], bodyMismatchDates: [], localOnlyDates: [], remoteOnlyDates: [],
         lineageOrStateMismatchCount: 0, partialBaselineSupported: false, oneByOneRecoveryPossible: false,
@@ -192,6 +197,8 @@ export function useDayMemoNormalDifferenceRecoveryPlan({ dayMemos, isConfigured,
       setChecking(false)
       return
     }
+    resultMetadataRawRef.current = loaded.raw
+    resultLocalSignatureRef.current = signature
     const pulled = await pullAllDayMemoSyncRecords(supabaseClient, connection.workspaceId, () => runIdRef.current === runId)
       .catch(() => null)
     if (!pulled || pulled.status !== 'complete') {
@@ -200,7 +207,7 @@ export function useDayMemoNormalDifferenceRecoveryPlan({ dayMemos, isConfigured,
         metadataVersion: metadata.version, workspaceBound: true, metadataValid: true, pushBlocked: metadata.pushBlock !== null,
         pendingCount: metadata.pendingOperation ? 1 : 0, intentCount: Object.keys(metadata.localDeleteIntents).length,
         remoteCount: 0, localCount: stored.memos.length, baselineCount: Object.keys(metadata.baselines).length,
-        cursor: metadata.lastPulledChangeSequence, cursorValid: false, items: [],
+        cursor: metadata.lastPulledChangeSequence, fullPullMaxSequence: null, cursorValid: false, items: [],
         counts: Object.fromEntries(DAY_MEMO_NORMAL_DIFFERENCE_CLASSIFICATIONS.map((value) => [value, 0])) as Record<DayMemoNormalDifferenceClassification, number>,
         exactBaselineCandidateDates: [], bodyMismatchDates: [], localOnlyDates: [], remoteOnlyDates: [],
         lineageOrStateMismatchCount: 0, partialBaselineSupported: false, oneByOneRecoveryPossible: false,
@@ -277,7 +284,7 @@ export function useDayMemoNormalDifferenceRecoveryPlan({ dayMemos, isConfigured,
       metadataVersion: metadata.version, workspaceBound: true, metadataValid: true, pushBlocked: metadata.pushBlock !== null,
       pendingCount: metadata.pendingOperation ? 1 : 0, intentCount: Object.keys(metadata.localDeleteIntents).length,
       remoteCount: pulled.records.length, localCount: stored.memos.length, baselineCount: Object.keys(metadata.baselines).length,
-      cursor: metadata.lastPulledChangeSequence, cursorValid, items, counts, exactBaselineCandidateDates,
+      cursor: metadata.lastPulledChangeSequence, fullPullMaxSequence: pulled.maxChangeSequence, cursorValid, items, counts, exactBaselineCandidateDates,
       bodyMismatchDates: items.filter((item) => item.classification === 'body_mismatch').map((item) => item.date),
       localOnlyDates: items.filter((item) => item.classification === 'local_only').map((item) => item.date),
       remoteOnlyDates: items.filter((item) => item.classification === 'remote_only_active' || item.classification === 'remote_only_tombstone').map((item) => item.date),
@@ -289,5 +296,7 @@ export function useDayMemoNormalDifferenceRecoveryPlan({ dayMemos, isConfigured,
     setChecking(false)
   }, [checking, connection, dayMemos, eligible, signature])
 
-  return { eligible, checking, result, check, discard }
+  const resultCurrent = Boolean(result && current?.status === 'ready'
+    && resultMetadataRawRef.current === current.raw && resultLocalSignatureRef.current === signature)
+  return { eligible, checking, result, resultCurrent, check, discard }
 }
