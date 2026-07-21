@@ -50,6 +50,7 @@ import { useDayMemoBodyMismatchRecoveryCheckpointSave } from './hooks/useDayMemo
 import { useDayMemoSavedRecoveryStateCheck } from './hooks/useDayMemoSavedRecoveryStateCheck'
 import { useDayMemoRecoveryLocalOnlyPreparation } from './hooks/useDayMemoRecoveryLocalOnlyPreparation'
 import { useDayMemoRecoveryRemoteOnlyAdoption } from './hooks/useDayMemoRecoveryRemoteOnlyAdoption'
+import { useDayMemoRecoveryFinalization } from './hooks/useDayMemoRecoveryFinalization'
 import { useDayMemoMetadataV4Migration } from './hooks/useDayMemoMetadataV4Migration'
 import { useDayMemoMetadataV5Migration } from './hooks/useDayMemoMetadataV5Migration'
 import { useDayMemoSyncMetadataMigration } from './hooks/useDayMemoSyncMetadataMigration'
@@ -297,6 +298,13 @@ function App() {
     reactMetadata: dayMemoSyncBaseline.metadata?.version === 5 ? dayMemoSyncBaseline.metadata : null,
     savedResult: dayMemoSavedRecoveryStateCheck.result,
     adoptVerifiedStoredDayMemos,
+    adoptVerifiedMetadata: dayMemoSyncBaseline.adoptVerifiedMetadata,
+  })
+  const dayMemoRecoveryFinalization = useDayMemoRecoveryFinalization({
+    dayMemos, isConfigured: supabaseAuth.isConfigured, isSignedIn: supabaseAuth.isSignedIn,
+    connection: supabaseWorkspace.connection,
+    reactMetadata: dayMemoSyncBaseline.metadata?.version === 5 ? dayMemoSyncBaseline.metadata : null,
+    savedResult: dayMemoSavedRecoveryStateCheck.result,
     adoptVerifiedMetadata: dayMemoSyncBaseline.adoptVerifiedMetadata,
   })
   const dayMemoBaselineRebase = useDayMemoBaselineRebase({
@@ -768,6 +776,7 @@ function App() {
           dayMemoSavedRecoveryStateCheck={dayMemoSavedRecoveryStateCheck}
           dayMemoRecoveryLocalOnlyPreparation={dayMemoRecoveryLocalOnlyPreparation}
           dayMemoRecoveryRemoteOnlyAdoption={dayMemoRecoveryRemoteOnlyAdoption}
+          dayMemoRecoveryFinalization={dayMemoRecoveryFinalization}
           dayMemoSyncBaseline={dayMemoSyncBaseline}
           dayMemoBaselineRebase={dayMemoBaselineRebase}
           dayMemoUpdatePreview={dayMemoUpdatePreview}

@@ -2612,3 +2612,11 @@ cleanup後VERIFY結果：
 - Existing complete full pull, canonical remote validation, DayMemo verified replacement/read-back, pull-apply backup, rollback behavior, normal-difference classifier, metadata validator, compare-and-write, and read-back utilities are reused.
 - No operation ID, pending mode, metadata version, SQL, RPC, or remote write is added. The target date comes from the fresh saved recovery result and is never hard-coded.
 - Local content is saved before metadata. Post-adoption verification must prove unchanged remote and matching local before the active baseline and cursor are saved together. `recovery_required` and null confirmation time remain even when no differences remain.
+
+## B-3f5e7 final recovery confirmation and confirmed restoration
+
+- The final recovery phase accepts only a fresh saved-state result with zero unresolved differences while metadata v5 remains `recovery_required`, has a null confirmation time, and has no pending operation, delete intent, or push block.
+- One explicit complete full pull verifies cursor equality and classifies the union of every local, remote, and baseline date. A confirmed candidate exists only when every date is `exact_match_baseline_confirmed`.
+- The React-only candidate preserves all metadata and changes only the confirmed baseline status, final-pull confirmation time, verified cursor, and null pending state. It is saved separately after explicit confirmation with compare-and-write, full read-back, and verified rollback.
+- A third explicit read-only check verifies the saved confirmed metadata, cursor, and all-date equality before reporting normal sync ready. No automatic pull, save, retry, send, or remote write is introduced.
+- This completes the difference-recovery state transition. Representative PC/iPhone regression checks for normal update/delete, authentication/workspace failure, conflict/unknown recovery, tombstone/resurrection, and backup/restore guards remain before the overall sync foundation is declared complete.

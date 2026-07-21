@@ -29,6 +29,14 @@
 - A separate explicit post-adoption full pull proves the remote snapshot is unchanged, reclassifies every date, and builds a validated metadata v5 candidate. A final explicit save writes the active baseline and cursor together using compare-and-write/read-back while retaining null pending, `recovery_required`, and null confirmation time.
 - No remote write RPC, operation ID, pending operation, metadata version, SQL, RLS, automatic retry, automatic pull, automatic adoption, batching, or automatic transition to `confirmed` is introduced.
 
+## B-3f5e7 final confirmation and normal-sync readiness
+
+- Finalization is available only from a fresh zero-difference saved recovery result. Before its one explicit full pull it revalidates metadata v5, workspace and React/storage equality, `recovery_required`, null confirmation time, null pending, no intent, no push block, valid baselines, and valid cursor.
+- The same complete pull validates remote records, proves cursor equality, and classifies the union of local, remote, and baseline dates. Every date must be `exact_match_baseline_confirmed`; no expected count or sequence is hard-coded.
+- The candidate snapshot is React-only and binds source metadata/local raw values, workspace, verified baselines/cursor, final full-pull sequence, confirmation time, and the whole validated metadata candidate. UI inspection does not consume it.
+- After separate explicit confirmation, source state and candidate validity are rechecked without another pull. The snapshot is consumed immediately before compare-and-write. Baselines, cursor, `confirmed`, confirmation time, and null pending are written as one metadata v5 object, followed by strict read-back or verified rollback.
+- Successful save updates React metadata only from verified storage. A separate explicit complete pull is required to report `normal_sync_ready`; saving does not automatically pull, send, retry, merge, repair, or start normal synchronization.
+
 ## 1. 文書の位置付け
 
 この文書は、HootoDayのPC親機とiPhone子機の間で保存データを安全に同期するための正式設計である。同期実装は段階的に導入し、既存のlocalStorage単体動作、localStorageの各`version: 1`形式、JSONバックアップ`formatVersion: 2`および旧`formatVersion: 1`の復元互換を維持する。
