@@ -136,6 +136,7 @@ export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, b
     setCopyState('idle')
     setCopyText('')
     bodyRemoteAdoption.discard()
+    remoteOnly.discard()
     bodyCandidate.discard()
     checkpoint.discard()
     void saved.check()

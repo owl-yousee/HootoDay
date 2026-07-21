@@ -186,8 +186,17 @@ export function useDayMemoRecoveryRemoteOnlyAdoption(input: Input) {
     finish('metadata_saved', 'remote_only_metadata_saved', snapshot.date, result?.unresolvedCount ?? 0, true, 'saved')
   }, [input, result?.unresolvedCount, stage])
 
+  const inspectSnapshotAvailability = useCallback((expectedDate?: string | null) => {
+    const snapshot = snapshotRef.current
+    if (!snapshot) return 'missing' as const
+    if (snapshot.consumed) return 'consumed' as const
+    if (expectedDate && snapshot.date !== expectedDate) return 'stale' as const
+    if (result?.date !== snapshot.date || !['candidate_ready', 'local_saved', 'post_adoption_ready'].includes(stage)) return 'stale' as const
+    return 'ready' as const
+  }, [result?.date, stage])
+
   const discard = useCallback(() => { if (running) return; runRef.current += 1; snapshotRef.current = null; setStage('idle'); setResult(null); setSafeErrorMessage(null) }, [running])
   return { stage, result, running, safeErrorMessage, targetDate: result?.date ?? null, candidateDates, eligible,
     canAdopt: stage === 'candidate_ready', canPostCheck: stage === 'local_saved', canSave: stage === 'post_adoption_ready',
-    checkCandidate, adoptLocal, checkPostAdoption, saveMetadata, discard }
+    checkCandidate, adoptLocal, checkPostAdoption, saveMetadata, inspectSnapshotAvailability, discard }
 }

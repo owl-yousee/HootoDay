@@ -169,6 +169,8 @@ function deriveSyncRecoveryNavigation(input: {
   postSendSnapshot: string
   checkpointSavedAt: string | null
   remoteOnlyStage: ReturnType<typeof useDayMemoRecoveryRemoteOnlyAdoption>['stage']
+  remoteOnlyTargetDate: string | null
+  remoteOnlySnapshot: 'missing' | 'consumed' | 'stale' | 'ready'
   finalizationStage: ReturnType<typeof useDayMemoRecoveryFinalization>['stage']
   normalLocalOnlyPreview: ReturnType<typeof useDayMemoLocalOnlyPreview>['previewState']
   normalLocalOnlyCandidateCount: number
@@ -247,6 +249,11 @@ function deriveSyncRecoveryNavigation(input: {
       title: '同期metadataの確認が必要です', description: '正式なmetadataがconfirmedまたはrecovery_requiredではないため、通常同期と復旧のどちらにも進みません。',
       writesRemote: false, changesPersistentState: false, disabledReason: '同期metadataを安全に確認してください。' }
   }
+  if (input.remoteOnlyStage === 'blocked') {
+    return { stage: 'saved_state_check', targetDate: input.remoteOnlyTargetDate, classification: 'remote_only_active',
+      title: '保存状態から再確認', description: 'remote-only候補の前提条件が変化したため、候補を破棄して現在差異をread-onlyで再構築します。',
+      writesRemote: false, changesPersistentState: false, disabledReason: null }
+  }
   if (pending?.status === 'prepared') {
     if (input.preflightCanSend) return { stage: 'send', targetDate: pending.date, classification: pending.operationMode ?? null,
       title: '確認済みの1件を明示送信', description: '有効なpreflight snapshotを使い、既存operation IDで1回だけ送信します。',
@@ -295,17 +302,22 @@ function deriveSyncRecoveryNavigation(input: {
     title: 'localとremoteを比較', description: '本文相違の1件をread-onlyで比較し、後続候補を選択します。',
     writesRemote: false, changesPersistentState: false, disabledReason: null }
   if (classification === 'remote_only_active') {
-    if (input.remoteOnlyStage === 'candidate_ready') return { stage: 'remote_only_adopt', targetDate: date, classification,
+    if (input.remoteOnlyStage === 'candidate_ready' && input.remoteOnlyTargetDate === date && input.remoteOnlySnapshot === 'ready') {
+      return { stage: 'remote_only_adopt', targetDate: date, classification,
       title: '同期先の内容をこの端末へ反映', description: '確認済みremote activeを1件だけlocalへ保存します。',
       writesRemote: false, changesPersistentState: true, disabledReason: null }
-    if (input.remoteOnlyStage === 'local_saved') return { stage: 'remote_only_post_check', targetDate: date, classification,
+    }
+    if (input.remoteOnlyStage === 'local_saved' && input.remoteOnlyTargetDate === date && input.remoteOnlySnapshot === 'ready') return { stage: 'remote_only_post_check', targetDate: date, classification,
       title: '採用後のremoteと差異を確認', description: 'local保存後のremoteと全差異をread-onlyで再確認します。',
       writesRemote: false, changesPersistentState: false, disabledReason: null }
-    if (input.remoteOnlyStage === 'post_adoption_ready') return { stage: 'remote_only_metadata_save', targetDate: date, classification,
+    if (input.remoteOnlyStage === 'post_adoption_ready' && input.remoteOnlyTargetDate === date && input.remoteOnlySnapshot === 'ready') return { stage: 'remote_only_metadata_save', targetDate: date, classification,
       title: 'baselineとcursorをmetadataへ保存', description: '検証済み候補を原子的に保存し、recovery_requiredを維持します。',
       writesRemote: false, changesPersistentState: true, disabledReason: null }
     if (input.remoteOnlyStage === 'metadata_saved') return { stage: 'saved_state_check', targetDate: date, classification,
       title: '保存後の同期状態を確認', description: '未解決差異をread-onlyで再構築します。',
+      writesRemote: false, changesPersistentState: false, disabledReason: null }
+    if (input.remoteOnlyStage !== 'idle') return { stage: 'saved_state_check', targetDate: date, classification,
+      title: '保存状態から再確認', description: '候補snapshotと現在対象の対応を確認できないため、候補を破棄して差異を再構築します。',
       writesRemote: false, changesPersistentState: false, disabledReason: null }
     return { stage: 'remote_only_check', targetDate: date, classification,
       title: '同期先のDayMemoを採用候補として確認', description: 'local不在とremote activeを完全full pullで確認します。',
@@ -616,6 +628,9 @@ export function ThemeSettings({
     postSendSnapshot: postSendSnapshotAvailability,
     checkpointSavedAt,
     remoteOnlyStage: dayMemoRecoveryRemoteOnlyAdoption.stage,
+    remoteOnlyTargetDate: dayMemoRecoveryRemoteOnlyAdoption.targetDate,
+    remoteOnlySnapshot: dayMemoRecoveryRemoteOnlyAdoption.inspectSnapshotAvailability(
+      dayMemoRecoveryRemoteOnlyAdoption.targetDate),
     finalizationStage: dayMemoRecoveryFinalization.stage,
     normalLocalOnlyPreview: dayMemoLocalOnlyPreview.previewState,
     normalLocalOnlyCandidateCount: dayMemoLocalOnlyPreview.summary?.candidateCount ?? 0,
@@ -693,7 +708,10 @@ export function ThemeSettings({
   const runRecoveryNavigationAction = () => {
     const date = recoveryNavigation.targetDate
     switch (recoveryNavigation.stage) {
-      case 'checkpoint_check': case 'saved_state_check': void dayMemoSavedRecoveryStateCheck.check(); break
+      case 'checkpoint_check': case 'saved_state_check':
+        if (dayMemoRecoveryRemoteOnlyAdoption.stage !== 'idle') dayMemoRecoveryRemoteOnlyAdoption.discard()
+        void dayMemoSavedRecoveryStateCheck.check()
+        break
       case 'candidate_prepare': if (date) void dayMemoRecoveryLocalOnlyPreparation.prepare(date); break
       case 'body_mismatch_compare':
         if (!date) break

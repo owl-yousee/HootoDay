@@ -2729,3 +2729,12 @@ cleanup後VERIFY結果：
 - local保存は対象日だけを追加し、backup、verified write/read-back、rollbackを維持する。成功後のmetadata candidateは対象active baselineだけを追加し、他差異、`recovery_required`、`baselineConfirmedAt = null`を維持する。自動confirmed化は行わない。
 - iPhone同期チェックはcandidate確認、明示反映、反映後確認、metadata保存、次の差異確認を段階表示する。blocked結果ではlocal状態と停止理由を表示し、無言で元画面へ戻らない。
 - remote write、operation ID、pending、自動retry、一括採用、他差異の自動処理は追加していない。
+
+## 2026-07-21 Phase B-3f5eUI2f remote-only snapshot lifecycle接続
+
+- remote-only候補が一度`blocked`になると、統合navigationは未対応stageを`remote_only_check`へ戻していた。一方Hookの再実行条件は`idle`だけだったため、同じ採用候補確認ボタンが無効になり、汎用の「snapshotまたは前提条件」案内から復帰できなかった。
+- candidate snapshotはHookの`useRef`に保持され、通常rerenderでは失われない。問題はsnapshot消失ではなく、`blocked` result/snapshotを保存状態再確認時に明示破棄せず、navigationが`blocked` lifecycleを表現していなかった接続不備だった。
+- Hookへsnapshot availability確認を追加し、対象日、result、stage、consume状態の対応を検査する。`candidate_ready`、`local_saved`、`post_adoption_ready`は対象日とready snapshotが一致する場合だけ次handlerへ接続する。
+- `blocked`、missing、stale、consumed、対象日不一致では採用handlerへ進めず、「保存状態から再確認」へ切り替える。この明示操作はremote-only result/snapshotを破棄してから現在差異をread-onlyで再構築する。
+- iPhone同期チェック側の保存状態確認も同じremote-only lifecycleを破棄する。対象1件のremote確認、local保存、read-back、rollback、反映後確認、metadata保存という既存順序は変更しない。
+- 他差異、`recovery_required`、remote writeなし、pending/operation IDなし、自動retry/confirmed化なしを維持する。
