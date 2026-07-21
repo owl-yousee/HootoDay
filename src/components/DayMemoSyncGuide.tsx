@@ -72,11 +72,14 @@ export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, b
     && ['normal_body_mismatch_candidate_local', 'normal_body_mismatch_candidate_remote'].includes(bodyCandidate.result.safety)
   const remoteCurrent = bodyRemoteAdoption.result?.date === activeDate
   const remoteBlocked = remoteCurrent && bodyRemoteAdoption.stage === 'blocked'
-  const remaining = bodyRemoteAdoption.result?.remainingCount ?? saved.result?.unresolvedCount ?? items.length
+  const remoteOnlyCurrent = remoteOnly.result?.date === activeDate
+  const remaining = remoteOnlyCurrent ? remoteOnly.result?.unresolvedCount ?? items.length
+    : bodyRemoteAdoption.result?.remainingCount ?? saved.result?.unresolvedCount ?? items.length
   const localDiscardCurrent = localOnlyDiscard.result?.date === activeDate
 
   const savedReady = saved.result?.safety === 'normal_difference_checkpoint_saved_state_ready'
-  const currentStage = localDiscardCurrent && localOnlyDiscard.result?.safety === 'recovery_local_only_discarded'
+  const currentStage = remoteOnlyCurrent ? `同期先のみデータ：${remoteOnly.stage}`
+    : localDiscardCurrent && localOnlyDiscard.result?.safety === 'recovery_local_only_discarded'
     ? 'このiPhoneから削除完了'
     : !saved.result ? '保存状態の確認'
     : !savedReady ? '保存状態の安全停止'
@@ -91,7 +94,9 @@ export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, b
                       : !candidateCurrent ? 'local／remote比較と候補選択'
                         : bodyCandidate.result?.candidate === 'local' ? 'local候補の送信準備'
                           : 'remote候補の明示反映'
-  const currentProblem = localDiscardCurrent && localOnlyDiscard.result
+  const currentProblem = remoteOnlyCurrent && remoteOnly.stage === 'blocked'
+    ? remoteOnly.safeErrorMessage ?? '対象データの反映を安全に完了できませんでした。'
+    : localDiscardCurrent && localOnlyDiscard.result
     ? localOnlyDiscard.result.safety === 'recovery_local_only_discarded'
       ? 'このiPhoneだけにあったデータを削除しました。同期先は変更していません。'
       : 'このiPhoneからの削除を安全に完了できませんでした。'
@@ -102,7 +107,13 @@ export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, b
     : saved.result && !savedReady
       ? savedStateMessages[saved.result.safety] ?? '保存状態を安全に確認できませんでした。'
       : savedReady ? '差異はありません' : '未解決差異の一覧はまだ準備されていません'
-  const nextOperation = localDiscardCurrent ? '保存状態を再確認'
+  const nextOperation = remoteOnlyCurrent
+    ? remoteOnly.stage === 'candidate_ready' ? '対象1件をこのiPhoneへ反映'
+      : remoteOnly.stage === 'local_saved' ? '反映後の状態を確認'
+        : remoteOnly.stage === 'post_adoption_ready' ? '確認済み同期情報を保存'
+          : remoteOnly.stage === 'metadata_saved' ? '次の差異を確認'
+            : remoteOnly.stage === 'blocked' ? '保存状態から再確認' : '対象データだけ確認'
+    : localDiscardCurrent ? '保存状態を再確認'
     : !savedReady ? '保存状態を読み取り専用で確認'
     : !activeDate ? '最終同期確認'
       : activeClassification === 'body_mismatch' && !checkpointReady ? '本文比較の準備を確認'
@@ -302,11 +313,54 @@ export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, b
                 onClick={() => chooseDate(Math.min(index + 1, items.length - 1))}>保留</button>
             </>}
           </> : activeClassification === 'remote_only_active' ? <>
-            <h5>同期先の内容をこのiPhoneへ反映しますか？</h5>
-            <p>iPhoneにはこの日付のデータがありません。対象外差異を安全に維持できるか確認します。</p>
-            <button type="button" className="health-primary-button cloud-sync-button" disabled={!remoteOnly.eligible || remoteOnly.running}
-              onClick={() => { void remoteOnly.checkCandidate() }}>このiPhoneへ反映する</button>
-            {!remoteOnly.eligible ? <p className="cloud-sync-note">現在の既存処理では、ほかの差異が残る間は安全確認を完了できません。</p> : null}
+            {remoteOnlyCurrent && remoteOnly.stage === 'blocked' ? <>
+              <h5>反映を安全に完了できませんでした</h5>
+              <p>{remoteOnly.safeErrorMessage ?? '保存状態が変化したため停止しました。'}</p>
+              <ul className="cloud-day-memo-preview-summary">
+                <li>対象日：{remoteOnly.result?.date ?? activeDate}</li>
+                <li>iPhoneのデータ：{remoteOnly.result?.localState === 'rolled_back' ? '元の状態へ復元済み'
+                  : remoteOnly.result?.localState === 'uncertain' ? '確認が必要'
+                    : remoteOnly.result?.localState === 'saved' ? '保存済み・同期情報未確定' : '変更なし'}</li>
+                <li>同期先への書き込み：なし</li><li>自動retry：なし</li>
+              </ul>
+              <button type="button" className="health-primary-button cloud-sync-button" onClick={() => {
+                remoteOnly.discard(); setSelectedDate(''); checkpoint.discard(); bodyCandidate.discard(); saved.discard(); void saved.check()
+              }}>保存状態から再確認</button>
+            </> : remoteOnlyCurrent && remoteOnly.stage === 'candidate_ready' ? <>
+              <h5>対象データだけ確認しました</h5>
+              <p>対象日：{activeDate}</p>
+              <p>このiPhoneへ1件だけ反映します。他の未解決差異はそのまま残り、同期先は変更しません。</p>
+              <button type="button" className="health-primary-button cloud-sync-button" disabled={!remoteOnly.canAdopt || remoteOnly.running}
+                onClick={() => { void remoteOnly.adoptLocal() }}>{remoteOnly.running ? '反映しています…' : '反映する'}</button>
+            </> : remoteOnlyCurrent && remoteOnly.stage === 'local_saved' ? <>
+              <h5>iPhoneへの反映が完了しました</h5>
+              <ul className="cloud-day-memo-preview-summary">
+                <li>対象日：{remoteOnly.result?.date ?? activeDate}</li><li>採用：同期先</li>
+                <li>iPhone変更：あり</li><li>同期先変更：なし</li>
+                <li>残り差異：{remoteOnly.result?.unresolvedCount ?? '確認待ち'}件</li>
+              </ul>
+              <button type="button" className="health-primary-button cloud-sync-button" disabled={!remoteOnly.canPostCheck || remoteOnly.running}
+                onClick={() => { void remoteOnly.checkPostAdoption() }}>反映後の状態を確認</button>
+            </> : remoteOnlyCurrent && remoteOnly.stage === 'post_adoption_ready' ? <>
+              <h5>反映後の状態を確認しました</h5>
+              <p>対象日のbaselineだけを追加し、他の未解決差異とrecovery_requiredを維持します。</p>
+              <button type="button" className="health-primary-button cloud-sync-button" disabled={!remoteOnly.canSave || remoteOnly.running}
+                onClick={remoteOnly.saveMetadata}>同期情報を保存</button>
+            </> : remoteOnlyCurrent && remoteOnly.stage === 'metadata_saved' ? <>
+              <h5>同期情報を保存しました</h5>
+              <p>対象1件の反映が完了しました。残り差異：{remoteOnly.result?.unresolvedCount ?? 0}件</p>
+              <button type="button" className="health-primary-button cloud-sync-button" onClick={() => {
+                remoteOnly.discard(); setSelectedDate(''); checkpoint.discard(); bodyCandidate.discard(); saved.discard(); void saved.check()
+              }}>次の差異を確認</button>
+            </> : <>
+              <h5>同期先にだけデータがあります</h5>
+              <p>対象日：{activeDate}</p>
+              <p>対象データだけ確認します。他の未解決差異は変更しません。</p>
+              <button type="button" className="health-primary-button cloud-sync-button" disabled={!remoteOnly.eligible || remoteOnly.running}
+                onClick={() => { void remoteOnly.checkCandidate(activeDate) }}>
+                {remoteOnly.running ? '確認しています…' : '対象データだけ確認'}</button>
+              {!remoteOnly.eligible ? <p className="cloud-sync-note">現在の保存状態では確認を開始できません。保存状態を再確認してください。</p> : null}
+            </>}
           </> : <><h5>この項目は専用の安全確認が必要です</h5><p>自動で削除・復活せず、安全側で停止します。</p></>}
 
         </div>

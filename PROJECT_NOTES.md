@@ -2720,3 +2720,12 @@ cleanup後VERIFY結果：
 - 保存・read-back失敗を成功扱いせず、変更なし、verified rollback済み、rollback確認不能を区別する。自動削除、一括削除、自動retryは行わない。
 - local discardは同期deleteではない。remote write、delete RPC、tombstone、operation ID、pending、localDeleteIntentを作らず、metadata、baseline、cursorも変更しない。成功後は明示的な保存状態再確認で未解決差異を再構築し、`recovery_required`を維持する。
 - 本文、payload、UUID、operation ID実値、秘密情報はUI・log・文書へ記録しない。
+
+## 2026-07-21 Phase B-3f5eUI2e remote-only activeの1件採用
+
+- 既存`useDayMemoRecoveryRemoteOnlyAdoption`は、対象日以外がすべて`exact_match_baseline_confirmed`であることを候補条件にしていた。この条件は、複数種類の未解決差異を1件ずつ復旧する現在のiPhone同期チェック方針と一致せず、候補確認後も処理を進められなかった。
+- 候補日は保存状態確認result内の`remote_only_active`から選び、日付を固定しない。対象日のremote active、local不存在、baseline不存在、payload validator、workspace、metadata v5、cursor、pending/intent/pushBlockを再確認する。
+- 対象外差異は無視せず、全未解決分類と完全full pull record fingerprintをcandidate snapshotへ保持する。confirm後の保存直前と反映後確認でも完全full pullを再実行し、対象外分類とremote fingerprintが不変の場合だけ対象1件を進める。変化時はfail-closedで停止する。
+- local保存は対象日だけを追加し、backup、verified write/read-back、rollbackを維持する。成功後のmetadata candidateは対象active baselineだけを追加し、他差異、`recovery_required`、`baselineConfirmedAt = null`を維持する。自動confirmed化は行わない。
+- iPhone同期チェックはcandidate確認、明示反映、反映後確認、metadata保存、次の差異確認を段階表示する。blocked結果ではlocal状態と停止理由を表示し、無言で元画面へ戻らない。
+- remote write、operation ID、pending、自動retry、一括採用、他差異の自動処理は追加していない。

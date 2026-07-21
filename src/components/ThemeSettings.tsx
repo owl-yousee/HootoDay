@@ -705,8 +705,8 @@ export function ThemeSettings({
       case 'operation_result_read': void dayMemoSavedOperationResultRead.read(); break
       case 'post_send_verify': void dayMemoBodyMismatchRecoveryPostSendVerification.check(); break
       case 'metadata_save': dayMemoBodyMismatchRecoveryCheckpointSave.save(); break
-      case 'remote_only_check': void dayMemoRecoveryRemoteOnlyAdoption.checkCandidate(); break
-      case 'remote_only_adopt': dayMemoRecoveryRemoteOnlyAdoption.adoptLocal(); break
+      case 'remote_only_check': if (date) void dayMemoRecoveryRemoteOnlyAdoption.checkCandidate(date); break
+      case 'remote_only_adopt': void dayMemoRecoveryRemoteOnlyAdoption.adoptLocal(); break
       case 'remote_only_post_check': void dayMemoRecoveryRemoteOnlyAdoption.checkPostAdoption(); break
       case 'remote_only_metadata_save': dayMemoRecoveryRemoteOnlyAdoption.saveMetadata(); break
       case 'final_confirmation': void dayMemoRecoveryFinalization.check(); break
