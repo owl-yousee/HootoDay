@@ -2712,3 +2712,11 @@ cleanup後VERIFY結果：
 - 成功後はReact DayMemoをverified read-backへ合わせ、候補snapshotを消費し、同期チェックを「反映後の状態を確認」へ進める。この時点ではmetadataを変更しない。
 - 保存・read-back失敗は変更なし、rollback済み、確認必要を区別してblocked resultへ残し、同期チェックで停止理由と永続状態を表示する。無言で反映前画面へ戻さず、stale候補を再利用しない。
 - 反映後のread-only確認、metadata保存、validator、pending lifecycle、SQL/RPC/RLS、保存形式、自動retry禁止は変更していない。本文・payload・識別子は文書や結果表示へ含めない。
+
+## 2026-07-21 Phase B-3f5eUI2d local-onlyの明示破棄
+
+- recovery中の`local_only`にはuploadだけでなく、不要な端末内データを同期先へ送らず破棄する用途が必要だった。iPhone同期チェックへ「同期先へ送る」「このiPhoneから削除」「保留」を分離して表示する。
+- 破棄は選択中の1日付だけを対象とする明示操作で、確認ダイアログを必須とする。read-only remote preflight、削除前backup、対象日だけを除いたstorage保存、完全read-backを順に行い、検証済み結果だけをReact stateへ反映する。
+- 保存・read-back失敗を成功扱いせず、変更なし、verified rollback済み、rollback確認不能を区別する。自動削除、一括削除、自動retryは行わない。
+- local discardは同期deleteではない。remote write、delete RPC、tombstone、operation ID、pending、localDeleteIntentを作らず、metadata、baseline、cursorも変更しない。成功後は明示的な保存状態再確認で未解決差異を再構築し、`recovery_required`を維持する。
+- 本文、payload、UUID、operation ID実値、秘密情報はUI・log・文書へ記録しない。

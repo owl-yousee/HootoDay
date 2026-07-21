@@ -6,6 +6,7 @@ import type { useDayMemoNormalBodyMismatchCandidate } from '../hooks/useDayMemoN
 import type { useDayMemoNormalBodyMismatchLocalPreparation } from '../hooks/useDayMemoNormalBodyMismatchLocalPreparation'
 import type { useDayMemoBodyMismatchRemoteAdoption } from '../hooks/useDayMemoBodyMismatchRemoteAdoption'
 import type { useDayMemoRecoveryLocalOnlyPreparation } from '../hooks/useDayMemoRecoveryLocalOnlyPreparation'
+import type { useDayMemoRecoveryLocalOnlyDiscard } from '../hooks/useDayMemoRecoveryLocalOnlyDiscard'
 import type { useDayMemoRecoveryRemoteOnlyAdoption } from '../hooks/useDayMemoRecoveryRemoteOnlyAdoption'
 
 type Props = {
@@ -16,6 +17,7 @@ type Props = {
   bodyLocalPreparation: ReturnType<typeof useDayMemoNormalBodyMismatchLocalPreparation>
   bodyRemoteAdoption: ReturnType<typeof useDayMemoBodyMismatchRemoteAdoption>
   localOnly: ReturnType<typeof useDayMemoRecoveryLocalOnlyPreparation>
+  localOnlyDiscard: ReturnType<typeof useDayMemoRecoveryLocalOnlyDiscard>
   remoteOnly: ReturnType<typeof useDayMemoRecoveryRemoteOnlyAdoption>
 }
 
@@ -55,7 +57,7 @@ const remoteAdoptionMessages: Record<string, string> = {
 }
 
 export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, bodyLocalPreparation,
-  bodyRemoteAdoption, localOnly, remoteOnly }: Props) {
+  bodyRemoteAdoption, localOnly, localOnlyDiscard, remoteOnly }: Props) {
   const [selectedDate, setSelectedDate] = useState('')
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'fallback'>('idle')
   const [copyText, setCopyText] = useState('')
@@ -71,9 +73,12 @@ export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, b
   const remoteCurrent = bodyRemoteAdoption.result?.date === activeDate
   const remoteBlocked = remoteCurrent && bodyRemoteAdoption.stage === 'blocked'
   const remaining = bodyRemoteAdoption.result?.remainingCount ?? saved.result?.unresolvedCount ?? items.length
+  const localDiscardCurrent = localOnlyDiscard.result?.date === activeDate
 
   const savedReady = saved.result?.safety === 'normal_difference_checkpoint_saved_state_ready'
-  const currentStage = !saved.result ? '保存状態の確認'
+  const currentStage = localDiscardCurrent && localOnlyDiscard.result?.safety === 'recovery_local_only_discarded'
+    ? 'このiPhoneから削除完了'
+    : !saved.result ? '保存状態の確認'
     : !savedReady ? '保存状態の安全停止'
       : !activeDate || !activeClassification ? '差異なし'
         : activeClassification !== 'body_mismatch' ? '差異1件の確認'
@@ -86,14 +91,19 @@ export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, b
                       : !candidateCurrent ? 'local／remote比較と候補選択'
                         : bodyCandidate.result?.candidate === 'local' ? 'local候補の送信準備'
                           : 'remote候補の明示反映'
-  const currentProblem = remoteBlocked && bodyRemoteAdoption.result
+  const currentProblem = localDiscardCurrent && localOnlyDiscard.result
+    ? localOnlyDiscard.result.safety === 'recovery_local_only_discarded'
+      ? 'このiPhoneだけにあったデータを削除しました。同期先は変更していません。'
+      : 'このiPhoneからの削除を安全に完了できませんでした。'
+    : remoteBlocked && bodyRemoteAdoption.result
     ? remoteAdoptionMessages[bodyRemoteAdoption.result.safety] ?? 'iPhoneへの反映を安全に完了できませんでした。'
     : activeClassification
     ? labels[activeClassification] ?? '安全な確認が必要です'
     : saved.result && !savedReady
       ? savedStateMessages[saved.result.safety] ?? '保存状態を安全に確認できませんでした。'
       : savedReady ? '差異はありません' : '未解決差異の一覧はまだ準備されていません'
-  const nextOperation = !savedReady ? '保存状態を読み取り専用で確認'
+  const nextOperation = localDiscardCurrent ? '保存状態を再確認'
+    : !savedReady ? '保存状態を読み取り専用で確認'
     : !activeDate ? '最終同期確認'
       : activeClassification === 'body_mismatch' && !checkpointReady ? '本文比較の準備を確認'
         : remoteBlocked ? '保存状態からやり直す'
@@ -260,11 +270,37 @@ export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, b
               </>}
             </>
           ) : activeClassification === 'local_only' ? <>
-            <h5>このiPhoneの内容を同期先へ送りますか？</h5>
-            <p>同期先に同日データと削除済み記録がないことを再確認してから準備します。</p>
-            <button type="button" className="health-primary-button cloud-sync-button"
-              disabled={!localOnly.eligible || localOnly.preparing} onClick={() => { void localOnly.prepare(activeDate) }}>同期先へ送る</button>
-            <button type="button" className="health-secondary-button cloud-sync-button" onClick={() => chooseDate(Math.min(index + 1, items.length - 1))}>今は保留する</button>
+            {localDiscardCurrent ? <>
+              <h5>{localOnlyDiscard.result?.safety === 'recovery_local_only_discarded'
+                ? 'このiPhoneから削除しました' : '削除を完了できませんでした'}</h5>
+              <ul className="cloud-day-memo-preview-summary">
+                <li>対象日：{localOnlyDiscard.result?.date ?? activeDate}</li>
+                <li>iPhoneのデータ：{localOnlyDiscard.result?.localState === 'discarded' ? '削除済み'
+                  : localOnlyDiscard.result?.localState === 'rolled_back' ? '元の状態へ復元済み'
+                    : localOnlyDiscard.result?.localState === 'uncertain' ? '確認が必要' : '変更なし'}</li>
+                <li>同期先への書き込み：なし</li><li>metadata変更：なし</li>
+                <li>pending作成：なし</li><li>自動retry：なし</li>
+              </ul>
+              <button type="button" className="health-primary-button cloud-sync-button" onClick={() => {
+                localOnlyDiscard.discardResult(); localOnly.discard(); setSelectedDate('')
+                checkpoint.discard(); bodyCandidate.discard(); saved.discard(); void saved.check()
+              }}>保存状態を再確認</button>
+            </> : <>
+              <h5>このiPhoneにだけデータがあります</h5>
+              <p>対象日：{activeDate}</p>
+              <p>同期先へ送るか、このiPhoneからだけ削除するかを選んでください。</p>
+              <button type="button" className="health-primary-button cloud-sync-button"
+                disabled={!localOnly.eligible || localOnly.preparing || localOnlyDiscard.discarding}
+                onClick={() => { void localOnly.prepare(activeDate) }}>同期先へ送る</button>
+              <button type="button" className="health-secondary-button cloud-sync-button"
+                disabled={!localOnlyDiscard.eligible || localOnlyDiscard.discarding || localOnly.preparing}
+                onClick={() => { void localOnlyDiscard.discardLocalOnly(activeDate) }}>
+                {localOnlyDiscard.discarding ? '削除しています…' : 'このiPhoneから削除'}
+              </button>
+              {!localOnlyDiscard.eligible ? <p className="cloud-sync-note">現在の保存状態では安全に削除できません。保存状態を再確認してください。</p> : null}
+              <button type="button" className="health-secondary-button cloud-sync-button"
+                onClick={() => chooseDate(Math.min(index + 1, items.length - 1))}>保留</button>
+            </>}
           </> : activeClassification === 'remote_only_active' ? <>
             <h5>同期先の内容をこのiPhoneへ反映しますか？</h5>
             <p>iPhoneにはこの日付のデータがありません。対象外差異を安全に維持できるか確認します。</p>

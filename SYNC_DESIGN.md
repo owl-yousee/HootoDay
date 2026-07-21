@@ -1934,3 +1934,11 @@ The pre-apply backup keeps its existing version and key. For this path only, an 
 The local write replaces only the target date with the canonical remote DayMemo and preserves every other date. Verified storage replacement and complete read-back are mandatory. Success updates React state from the verified value, consumes the candidate snapshot, records `local_saved`, and exposes only the explicit post-adoption read-only check. Metadata is not changed until that later verification and separate explicit metadata save.
 
 Every blocked result is rendered ahead of the candidate UI. The result distinguishes unchanged, rolled-back, saved, and uncertain local state; it never silently returns to the apply button. A stale or blocked candidate is consumed and must be rebuilt from the saved-state/checkpoint flow. There is no automatic retry, remote write, operation ID, pending creation, SQL/RPC/RLS change, or persistence-format change.
+
+## B-3f5eUI2d — local-only discard contract
+
+`local_only` means the selected date has exactly one valid local DayMemo and no active or tombstone remote record or baseline. The iPhone guide may offer an explicit local discard alongside the existing upload and hold choices. Discard is never automatic or batched.
+
+Before the local write, the handler revalidates metadata v5 and workspace binding, `recovery_required`, null pending/push block, empty delete intents, React/storage equality, baseline absence, the current saved unresolved-classification snapshot, cursor equality, and one complete read-only full pull with no remote record for the target. It then stores a verified backup and replaces the DayMemo array once with only the target date removed. Storage read-back must exactly match; otherwise verified rollback is required and rollback uncertainty remains fail-closed.
+
+The discard is a local data decision, not a synchronized delete. It creates no tombstone, operation ID, pending operation, or local-delete intent and performs no remote write. Metadata, baselines, and cursor remain unchanged. After success, the user explicitly reruns the saved-state read-only check; the removed date disappears from the union classification while other unresolved differences remain. Normal readiness and confirmed restoration remain in their existing later phases.

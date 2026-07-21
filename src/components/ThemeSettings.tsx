@@ -36,6 +36,7 @@ import type { useDayMemoBodyMismatchRecoveryPostSendVerification } from '../hook
 import type { useDayMemoBodyMismatchRecoveryCheckpointSave } from '../hooks/useDayMemoBodyMismatchRecoveryCheckpointSave'
 import type { useDayMemoSavedRecoveryStateCheck } from '../hooks/useDayMemoSavedRecoveryStateCheck'
 import type { useDayMemoRecoveryLocalOnlyPreparation } from '../hooks/useDayMemoRecoveryLocalOnlyPreparation'
+import type { useDayMemoRecoveryLocalOnlyDiscard } from '../hooks/useDayMemoRecoveryLocalOnlyDiscard'
 import type { useDayMemoRecoveryRemoteOnlyAdoption } from '../hooks/useDayMemoRecoveryRemoteOnlyAdoption'
 import type { useDayMemoRecoveryFinalization } from '../hooks/useDayMemoRecoveryFinalization'
 import type { useDayMemoNormalMetadataRepair } from '../hooks/useDayMemoNormalMetadataRepair'
@@ -98,6 +99,7 @@ interface ThemeSettingsProps {
   dayMemoBodyMismatchRecoveryCheckpointSave: ReturnType<typeof useDayMemoBodyMismatchRecoveryCheckpointSave>
   dayMemoSavedRecoveryStateCheck: ReturnType<typeof useDayMemoSavedRecoveryStateCheck>
   dayMemoRecoveryLocalOnlyPreparation: ReturnType<typeof useDayMemoRecoveryLocalOnlyPreparation>
+  dayMemoRecoveryLocalOnlyDiscard: ReturnType<typeof useDayMemoRecoveryLocalOnlyDiscard>
   dayMemoRecoveryRemoteOnlyAdoption: ReturnType<typeof useDayMemoRecoveryRemoteOnlyAdoption>
   dayMemoRecoveryFinalization: ReturnType<typeof useDayMemoRecoveryFinalization>
   dayMemoNormalMetadataRepair: ReturnType<typeof useDayMemoNormalMetadataRepair>
@@ -479,6 +481,7 @@ export function ThemeSettings({
   dayMemoBodyMismatchRecoveryCheckpointSave,
   dayMemoSavedRecoveryStateCheck,
   dayMemoRecoveryLocalOnlyPreparation,
+  dayMemoRecoveryLocalOnlyDiscard,
   dayMemoRecoveryRemoteOnlyAdoption,
   dayMemoRecoveryFinalization,
   dayMemoNormalMetadataRepair,
@@ -811,6 +814,7 @@ export function ThemeSettings({
                       bodyLocalPreparation={dayMemoNormalBodyMismatchLocalPreparation}
                       bodyRemoteAdoption={dayMemoBodyMismatchRemoteAdoption}
                       localOnly={dayMemoRecoveryLocalOnlyPreparation}
+                      localOnlyDiscard={dayMemoRecoveryLocalOnlyDiscard}
                       remoteOnly={dayMemoRecoveryRemoteOnlyAdoption} />
                   ) : null}
                   <div className={`cloud-day-memo-safety-panel is-${dayMemoSyncSafety.state}`} role={dayMemoSyncSafety.state === 'normal' ? 'status' : 'alert'}>
