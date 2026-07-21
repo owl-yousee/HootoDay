@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { CopyTextControl } from './CopyTextControl'
-import { DayMemoSyncDifferenceCards } from './DayMemoSyncDifferenceCards'
+import { DayMemoSyncDifferenceCards, type SyncDifferenceActionSelection } from './DayMemoSyncDifferenceCards'
 import { buildSyncShareText } from '../utils/syncShareText'
 import { presentSyncDifference, withCurrentDifferenceAction } from '../utils/syncDifferencePresentation'
 import type { DayMemoSyncMetadataV5 } from '../types/dayMemoSync'
@@ -73,6 +73,7 @@ const remoteOnlyMessages: Record<string, string> = {
 export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, bodyLocalPreparation,
   bodyRemoteAdoption, localOnly, localOnlyDiscard, remoteOnly }: Props) {
   const [selectedDate, setSelectedDate] = useState('')
+  const [remoteOnlyPreparation, setRemoteOnlyPreparation] = useState<SyncDifferenceActionSelection | null>(null)
   const items = useMemo(() => Object.entries(saved.result?.unresolvedClassifications ?? {}), [saved.result])
   const recommended = saved.result?.nextRecommendedDate ?? items[0]?.[0] ?? ''
   const activeDate = items.some(([date]) => date === selectedDate) ? selectedDate : recommended
@@ -146,11 +147,19 @@ export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, b
     const item = items[nextIndex]
     if (!item) return
     setSelectedDate(item[0])
+    if (remoteOnlyPreparation?.date !== item[0]) setRemoteOnlyPreparation(null)
     if (bodyCandidate.selectedDate !== item[0]) bodyCandidate.setSelectedDate(item[0])
+  }
+
+  const prepareDifferenceAction = (selection: SyncDifferenceActionSelection) => {
+    if (selection.classification !== 'remote_only_active' || selection.action !== 'adopt_remote') return
+    setSelectedDate(selection.date)
+    setRemoteOnlyPreparation(selection)
   }
 
   const startSavedStateCheck = () => {
     setSelectedDate('')
+    setRemoteOnlyPreparation(null)
     bodyRemoteAdoption.discard()
     remoteOnly.discard()
     bodyCandidate.discard()
@@ -205,7 +214,20 @@ export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, b
 
       <p className="cloud-sync-note">現在の工程：{currentStage}</p>
       <p className="sync-stage-id">stageId：<code>{guideStageId}</code></p>
-      <DayMemoSyncDifferenceCards items={differenceItems} stopReason={guideState === '安全停止' ? currentProblem : null} />
+      <DayMemoSyncDifferenceCards items={differenceItems} stopReason={guideState === '安全停止' ? currentProblem : null}
+        onActionPrepared={prepareDifferenceAction} />
+      {remoteOnlyPreparation
+        && remoteOnlyPreparation.classification === 'remote_only_active'
+        && remoteOnlyPreparation.action === 'adopt_remote'
+        && items.some(([date, classification]) => date === remoteOnlyPreparation.date && classification === 'remote_only_active')
+        ? <div className="iphone-sync-guide-step" role="status" aria-live="polite">
+          <h5>remote-only反映準備中</h5>
+          <p>対象：{remoteOnlyPreparation.date}</p>
+          <p>分類：同期先にだけデータがあります</p>
+          <p className="cloud-sync-note">実行前確認が必要です。この段階ではpreflight、反映、保存、送信を実行していません。</p>
+          <p className="cloud-sync-note">preflight入口：{remoteOnly.candidateDates.includes(remoteOnlyPreparation.date) && remoteOnly.eligible
+            ? '準備可能' : '現在の保存状態を再確認してください'}</p>
+        </div> : null}
 
       {!savedReady ? (
         <div className="iphone-sync-guide-step">
