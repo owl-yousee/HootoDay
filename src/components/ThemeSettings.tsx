@@ -169,6 +169,8 @@ interface NormalDifferenceRecoveryBridgeSnapshot {
     date: string
     classification: string
   } | null
+  checkpointRequested: boolean
+  checkpointBlockReason: string | null
 }
 
 type NormalSyncCheckUiResult = {
@@ -940,7 +942,41 @@ export function ThemeSettings({
     setNormalDifferenceRecoveryBridge({
       differences: syncDifferenceItems.map((item) => ({ date: item.date, classification: item.classification })),
       currentTarget: selected,
+      checkpointRequested: false,
+      checkpointBlockReason: null,
     })
+    dayMemoNormalDifferenceRecoveryCheckpointCheck.discard()
+  }
+  const checkNormalDifferenceRecoveryBridgeCheckpoint = () => {
+    if (!normalDifferenceRecoveryBridge || !syncDifferenceItems) return
+    const currentDifferences = syncDifferenceItems.map((item) => ({
+      date: item.date,
+      classification: item.classification,
+    }))
+    if (JSON.stringify(currentDifferences) !== JSON.stringify(normalDifferenceRecoveryBridge.differences)) {
+      setNormalDifferenceRecoveryBridge((current) => current ? {
+        ...current,
+        checkpointRequested: false,
+        checkpointBlockReason: '開始時点から差異一覧が変化したため、復旧準備を最初から確認してください。',
+      } : null)
+      return
+    }
+    if (!dayMemoNormalDifferenceRecoveryCheckpointCheck.eligible) {
+      setNormalDifferenceRecoveryBridge((current) => current ? {
+        ...current,
+        checkpointRequested: false,
+        checkpointBlockReason: 'checkpoint確認の認証・workspace前提を確認できません。',
+      } : null)
+      return
+    }
+    setNormalDifferenceRecoveryBridge((current) => current ? {
+      ...current,
+      checkpointRequested: true,
+      checkpointBlockReason: null,
+    } : null)
+    void dayMemoNormalDifferenceRecoveryCheckpointCheck.checkStatusOnlyCandidate(
+      normalDifferenceRecoveryBridge.differences,
+    )
   }
   const syncDifferenceDetailLines = syncDifferenceItems === null
     ? ['差異一覧：未確認']
@@ -1189,8 +1225,79 @@ export function ThemeSettings({
                                 ? `${normalDifferenceRecoveryBridge.currentTarget.date}／${normalDifferenceRecoveryBridge.currentTarget.classification}`
                                 : '個別選択なし（全差異）'}</p>
                               <p className="cloud-sync-note">この段階では同期・反映・削除・checkpoint保存を実行しません。Bridge状態はこの画面のReact stateだけに保持しています。</p>
+                              <button type="button" className="health-primary-button cloud-sync-button"
+                                disabled={dayMemoNormalDifferenceRecoveryCheckpointCheck.checking}
+                                onClick={checkNormalDifferenceRecoveryBridgeCheckpoint}>
+                                {dayMemoNormalDifferenceRecoveryCheckpointCheck.checking
+                                  ? 'checkpoint候補を確認中…' : 'checkpoint候補を確認'}
+                              </button>
+                              {normalDifferenceRecoveryBridge.checkpointBlockReason ? (
+                                <p className="cloud-pairing-error" role="alert">
+                                  {normalDifferenceRecoveryBridge.checkpointBlockReason}
+                                </p>
+                              ) : null}
+                              {normalDifferenceRecoveryBridge.checkpointRequested
+                                && dayMemoNormalDifferenceRecoveryCheckpointCheck.result ? (() => {
+                                  const checkpointResult = dayMemoNormalDifferenceRecoveryCheckpointCheck.result
+                                  const ready = checkpointResult.safety === 'normal_difference_checkpoint_ready'
+                                    || checkpointResult.safety === 'normal_difference_checkpoint_unresolved_ready'
+                                    || checkpointResult.safety === 'normal_difference_status_only_checkpoint_ready'
+                                  const diagnosticStageLabel = checkpointResult.diagnosticStopStage === 'prerequisite_check'
+                                    ? '開始条件確認中'
+                                    : checkpointResult.diagnosticStopStage === 'full_pull'
+                                      ? 'full pull確認中'
+                                      : checkpointResult.diagnosticStopStage === 'snapshot_revalidation'
+                                        ? 'snapshot再確認中'
+                                        : checkpointResult.diagnosticStopStage === 'cursor_validation'
+                                          ? 'cursor確認中（差異分類前）'
+                                          : checkpointResult.diagnosticStopStage === 'difference_classification'
+                                            ? '差異分類中'
+                                            : checkpointResult.diagnosticStopStage === 'validator_validation'
+                                              ? 'validator確認中'
+                                              : checkpointResult.diagnosticStopStage === 'complete'
+                                                ? '確認完了' : '確認不能'
+                                  return <div className={`cloud-day-memo-preview-result ${ready ? '' : 'is-blocked'}`}>
+                                    <h6>{ready ? 'checkpoint候補を確認しました' : 'checkpoint候補を安全に確認できませんでした'}</h6>
+                                    <ul className="cloud-day-memo-preview-summary">
+                                      <li>判定：{ready ? 'ready' : 'blocked'}</li>
+                                      <li>候補状態：{checkpointResult.candidateBaselineStatus ?? '候補なし'}</li>
+                                      <li>未解決差異：{checkpointResult.differenceClassificationReached
+                                        ? `${checkpointResult.unresolvedCount}件` : '差異分類前に停止（未分類）'}</li>
+                                      {checkpointResult.safety === 'normal_difference_status_only_checkpoint_ready' ? <>
+                                        <li>baseline変更：なし</li>
+                                        <li>cursor変更：なし</li>
+                                        <li>変更候補：状態遷移のみ</li>
+                                        <li>次の状態：recovery_required保存待ち</li>
+                                      </> : null}
+                                      <li>safety分類：{checkpointResult.safety}</li>
+                                      <li>永続変更：なし</li>
+                                    </ul>
+                                    {!ready ? <>
+                                      <h6>安全停止診断</h6>
+                                      <ul className="cloud-day-memo-preview-summary">
+                                        <li>停止段階：{diagnosticStageLabel}</li>
+                                        <li>metadata cursor：{checkpointResult.metadataCursor ?? '確認不能'}</li>
+                                        <li>full pull max sequence：{checkpointResult.fullPullMaxSequence ?? '確認不能'}</li>
+                                        <li>cursor差分：{checkpointResult.cursorDifference ?? '確認不能'}</li>
+                                        <li>remote record件数：{checkpointResult.remoteCount}</li>
+                                        <li>unique date件数：{checkpointResult.remoteUniqueDateCount ?? '未確認'}</li>
+                                        <li>sequence validation：{checkpointResult.sequenceValidationPassed === null
+                                          ? '未確認' : checkpointResult.sequenceValidationPassed ? '正常' : '不正'}</li>
+                                        <li>差異分類：{checkpointResult.differenceClassificationReached ? '到達済み' : '未到達'}</li>
+                                      </ul>
+                                    </> : null}
+                                    {checkpointResult.unresolvedDates.length > 0 ? <ul>
+                                      {checkpointResult.unresolvedDates.map((date) => <li key={date}>{date}：{checkpointResult.unresolvedClassifications[date]}</li>)}
+                                    </ul> : null}
+                                    {!ready ? <p className="cloud-pairing-error">安全停止理由：{checkpointResult.nextAction}</p> : null}
+                                  </div>
+                                })() : null}
                               <button type="button" className="health-secondary-button cloud-sync-button"
-                                onClick={() => setNormalDifferenceRecoveryBridge(null)}>復旧準備確認を閉じる</button>
+                                disabled={dayMemoNormalDifferenceRecoveryCheckpointCheck.checking}
+                                onClick={() => {
+                                  dayMemoNormalDifferenceRecoveryCheckpointCheck.discard()
+                                  setNormalDifferenceRecoveryBridge(null)
+                                }}>復旧準備確認を閉じる</button>
                             </div>
                           ) : <p className="cloud-sync-note">通常差異をcandidateへ直接変換せず、まず全差異の復旧準備対象を確認します。</p>}
                         </div>
