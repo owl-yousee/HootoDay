@@ -2683,3 +2683,12 @@ cleanup後VERIFY結果：
 - local候補とlocal-onlyは既存recovery準備handlerへ接続する。remote-onlyは既存handlerの安全条件を維持し、他差異がある場合は案内上で安全停止する。
 - 結果コピーは日付、状態、操作、残件数、metadata状態、cursor、pending有無だけを含み、本文・UUID・operation ID・fingerprint・認証情報を含めない。
 - 自動pull、自動採用、自動送信、自動retry、自動mergeは追加していない。PC ownerの既存統合UIは維持する。
+
+## 2026-07-21 B-3f5eUI2 iPhone同期チェック接続修正
+
+- iPhone実機では「次の差異を確認」が保存済み状態のread-only checkを呼んでいたが、結果未準備・安全停止時も同じ見出しとボタンへ戻るためno-opに見えた。差異選択handlerではなく、保存状態確認handlerであることが画面から判別できなかった。
+- 保存状態確認の成功時は`unresolvedClassifications`と`nextRecommendedDate`から推奨1件を表示し、body mismatchなら「本文比較の準備を確認」または「内容を比較」へ明示的に切り替える。日付を固定せず、React state内の前後選択だけを使用する。
+- result未準備時は「保存状態を確認」、安全停止resultがある場合は日本語の理由と「保存状態を再確認」を表示する。`canExecute = false`でも同期チェックを隠さず、接続・認証確認の案内を残す。
+- 「結果をコピー」は保存状態resultの成否や現在stageにかかわらず同期チェック内へ常時表示する。対象未選択も含め、状態、対象、問題、stage、残件数、次操作、metadata status、cursor、pending、自動retryなしだけをコピーする。
+- 本文、payload、UUID、operation ID、fingerprint、認証情報はコピーしない。clipboard失敗は短い画面表示だけで、同期状態へ影響させない。
+- 詳細・診断を開かず1件の差異処理へ進める表示接続だけを修正した。saved-state/checkpoint/body mismatchのvalidator、snapshot鮮度、full pull回数、confirm、read-back、rollback、pending lifecycleは変更していない。

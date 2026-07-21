@@ -27,6 +27,23 @@ const labels: Record<string, string> = {
   exact_match_baseline_missing: '内容は一致しています。同期情報の確認が必要です',
 }
 
+const savedStateMessages: Record<string, string> = {
+  normal_difference_checkpoint_saved_state_prerequisite_missing: '保存状態を確認する前提が整っていません。',
+  normal_difference_checkpoint_saved_state_metadata_invalid: '同期情報を安全に読み取れませんでした。',
+  normal_difference_checkpoint_saved_state_pending_remaining: '未完了の同期操作が残っています。',
+  normal_difference_checkpoint_saved_state_workspace_mismatch: '同期先との接続状態を確認できませんでした。',
+  normal_difference_checkpoint_saved_state_pull_failed: '同期先の状態を確認できませんでした。',
+  normal_difference_checkpoint_saved_state_pull_malformed: '同期先の状態を完全に確認できませんでした。',
+  normal_difference_checkpoint_saved_state_cursor_mismatch: '保存済みの同期位置と同期先の状態が一致しません。',
+  normal_difference_checkpoint_saved_state_baseline_mismatch: '保存済みの同期基準を安全に確認できませんでした。',
+  normal_difference_checkpoint_saved_state_target_mismatch: '保存状態の確認対象が現在の状態と一致しません。',
+  normal_difference_checkpoint_saved_state_unresolved_rebuild_failed: '未解決差異の一覧を安全に再構築できませんでした。',
+  normal_difference_checkpoint_saved_state_push_blocked: '同期送信が停止されているため、先へ進めません。',
+  normal_difference_checkpoint_saved_state_intent_conflict: '未完了の削除候補が残っています。',
+  normal_difference_checkpoint_saved_state_state_changed: '確認中に端末の状態が変わりました。',
+  normal_difference_checkpoint_saved_state_unknown: '保存状態を安全に判定できませんでした。',
+}
+
 export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, bodyLocalPreparation,
   bodyRemoteAdoption, localOnly, remoteOnly }: Props) {
   const [selectedDate, setSelectedDate] = useState('')
@@ -43,6 +60,30 @@ export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, b
   const remoteCurrent = bodyRemoteAdoption.result?.date === activeDate
   const remaining = bodyRemoteAdoption.result?.remainingCount ?? saved.result?.unresolvedCount ?? items.length
 
+  const savedReady = saved.result?.safety === 'normal_difference_checkpoint_saved_state_ready'
+  const currentStage = !saved.result ? '保存状態の確認'
+    : !savedReady ? '保存状態の安全停止'
+      : !activeDate || !activeClassification ? '差異なし'
+        : activeClassification !== 'body_mismatch' ? '差異1件の確認'
+          : !checkpointReady ? '本文比較の準備確認'
+            : !comparisonCurrent ? '本文比較の対象選択'
+              : !candidateCurrent ? 'local／remote比較と候補選択'
+                : bodyRemoteAdoption.stage === 'completed' ? '反映完了'
+                  : bodyCandidate.result?.candidate === 'local' ? 'local候補の送信準備'
+                    : 'remote候補の明示反映'
+  const currentProblem = activeClassification
+    ? labels[activeClassification] ?? '安全な確認が必要です'
+    : saved.result && !savedReady
+      ? savedStateMessages[saved.result.safety] ?? '保存状態を安全に確認できませんでした。'
+      : savedReady ? '差異はありません' : '未解決差異の一覧はまだ準備されていません'
+  const nextOperation = !savedReady ? '保存状態を読み取り専用で確認'
+    : !activeDate ? '最終同期確認'
+      : activeClassification === 'body_mismatch' && !checkpointReady ? '本文比較の準備を確認'
+        : activeClassification === 'body_mismatch' && !comparisonCurrent ? '内容を比較'
+          : bodyCandidate.result?.candidate === 'remote' ? '同期先の内容を使う候補を確認'
+            : bodyCandidate.result?.candidate === 'local' ? 'iPhoneの内容を残す候補を確認'
+              : '選択中の差異を確認'
+
   const chooseDate = (nextIndex: number) => {
     const item = items[nextIndex]
     if (!item) return
@@ -51,14 +92,12 @@ export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, b
   }
 
   const copyResult = async () => {
-    const state = bodyRemoteAdoption.stage === 'completed' ? '成功'
-      : bodyRemoteAdoption.stage === 'blocked' ? '安全停止' : '確認中'
-    const operation = bodyRemoteAdoption.stage === 'completed' ? '同期先の内容をiPhoneへ反映'
-      : bodyCandidate.result?.candidate === 'remote' ? '同期先の内容を使用する候補を確認'
-        : bodyCandidate.result?.candidate === 'local' ? 'iPhoneの内容を残す候補を確認' : '差異を確認'
-    const text = ['同期チェック結果', `状態：${state}`, `対象：${activeDate || '未確認'}`,
-      `問題：${activeClassification ? labels[activeClassification] ?? '安全な確認が必要です' : '未確認'}`,
-      `操作：${operation}`, `残り：${remaining}件`, `metadata：${metadata.baselineStatus}`,
+    const state = !savedReady && saved.result ? '安全停止'
+      : bodyRemoteAdoption.stage === 'completed' ? '成功'
+        : bodyRemoteAdoption.stage === 'blocked' ? '安全停止' : '確認中'
+    const text = ['同期チェック結果', `状態：${state}`, `対象：${activeDate || '未選択'}`,
+      `問題：${currentProblem}`, `現在stage：${currentStage}`, `次の操作：${nextOperation}`,
+      `残り：${savedReady ? `${remaining}件` : '未確認'}`, `metadata：${metadata.baselineStatus}`,
       `cursor：${metadata.lastPulledChangeSequence}`, `pending：${metadata.pendingOperation ? 'あり' : 'なし'}`,
       '自動retry：なし'].join('\n')
     try { await navigator.clipboard.writeText(text); setCopyState('copied') } catch { setCopyState('failed') }
@@ -71,13 +110,16 @@ export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, b
         <strong>残り：{saved.result?.unresolvedCount ?? '未確認'}件</strong>
       </div>
 
-      {!saved.result || saved.result.safety !== 'normal_difference_checkpoint_saved_state_ready' ? (
+      <p className="cloud-sync-note">現在の工程：{currentStage}</p>
+
+      {!savedReady ? (
         <div className="iphone-sync-guide-step">
-          <h5>保存後の状態を確認します</h5>
-          <p>現在のiPhoneと同期先を読み取り専用で確認し、次の1件を決めます。</p>
+          <h5>{saved.result ? '保存状態を安全に確認できませんでした' : '保存後の状態を確認します'}</h5>
+          <p>{saved.result ? currentProblem : '現在のiPhoneと同期先を読み取り専用で確認し、次の1件を決めます。'}</p>
           <p className="cloud-sync-note">iPhoneのデータ変更：なし／同期先への書き込み：なし／metadata変更：なし／自動retry：なし</p>
           <button type="button" className="health-primary-button cloud-sync-button" disabled={!saved.eligible || saved.checking}
-            onClick={() => { void saved.check() }}>{saved.checking ? '状態を確認中…' : '次の差異を確認'}</button>
+            onClick={() => { void saved.check() }}>{saved.checking ? '保存状態を確認中…' : saved.result ? '保存状態を再確認' : '保存状態を確認'}</button>
+          {!saved.eligible ? <p className="cloud-sync-note">現在は確認を実行できません。接続・認証状態を確認してください。</p> : null}
         </div>
       ) : !activeDate || !activeClassification ? (
         <div className="iphone-sync-guide-step"><h5>未解決差異はありません</h5><p>最終同期確認へ進めます。</p></div>
@@ -165,11 +207,13 @@ export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, b
             {!remoteOnly.eligible ? <p className="cloud-sync-note">現在の既存処理では、ほかの差異が残る間は安全確認を完了できません。</p> : null}
           </> : <><h5>この項目は専用の安全確認が必要です</h5><p>自動で削除・復活せず、安全側で停止します。</p></>}
 
-          <button type="button" className="health-secondary-button cloud-sync-button" onClick={() => { void copyResult() }}>結果をコピー</button>
-          {copyState === 'copied' ? <p className="cloud-day-memo-success">結果をコピーしました。</p> : null}
-          {copyState === 'failed' ? <p className="cloud-sync-note">コピーできませんでした。同期状態には影響ありません。</p> : null}
         </div>
       )}
+      <div className="iphone-sync-guide-copy">
+        <button type="button" className="health-secondary-button cloud-sync-button" onClick={() => { void copyResult() }}>結果をコピー</button>
+        {copyState === 'copied' ? <p className="cloud-day-memo-success">結果をコピーしました。</p> : null}
+        {copyState === 'failed' ? <p className="cloud-sync-note">コピーできませんでした。同期状態には影響ありません。</p> : null}
+      </div>
     </section>
   )
 }
