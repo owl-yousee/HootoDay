@@ -2586,3 +2586,12 @@ cleanup後VERIFY結果：
 - After every difference is resolved, run one complete verification and explicitly persist `confirmed` only when all dates, baselines, cursor, pending, intents, push block, workspace, and metadata v5 are consistent.
 - Complete representative PC/iPhone normal, conflict/unknown, authentication/workspace, tombstone/resurrection, and backup/restore guard checks, then reconcile these notes and the design. Extra labels, rare-condition screens, shorter procedures, batching, and visual polish remain post-completion improvements.
 - A new Hook, classification, or confirmation step is justified before completion only when it prevents data loss, stale overwrite, duplicate application, unintended resurrection, treating unknown/failure as success, or loss of recovery evidence. Existing fail-closed coverage must otherwise be reused.
+
+## B-3f5e5 recovery local-only upload
+
+- One `local_only` difference in a saved `recovery_required` checkpoint can be explicitly prepared and uploaded; dates are selected from the verified classification rather than hard-coded.
+- A thin adapter proves metadata v5, workspace/local freshness, no pending/intent/push block/baseline, and a complete read-only pull with neither active remote nor tombstone.
+- Metadata v5 adds the backward-compatible `local_only_recovery` pending discriminator with revision/sequence zero and explicit `missing` remote state. No metadata v6 or backend change is needed.
+- Existing recovery preflight, one-shot upsert, saved-operation-result read, post-send full-pull verification, and atomic checkpoint save are reused. The stored operation ID is not regenerated.
+- RPC success alone does not change baseline/cursor. Verified history and current remote must agree before the target baseline, cursor, and pending lifecycle are saved together.
+- Remaining `remote_only_active` stays unresolved; `recovery_required`, null confirmation time, and normal-sync-not-ready are retained. No automatic pull, retry, merge, repair, or resolution is added.

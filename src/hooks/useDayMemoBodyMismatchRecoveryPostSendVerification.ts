@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from 'react'
 import { supabaseClient } from '../lib/supabaseClient'
 import type { DayMemo } from '../types/dayMemo'
-import type { DayMemoBodyMismatchRecoveryPendingOperationV5, DayMemoSyncMetadataV5 } from '../types/dayMemoSync'
+import type { DayMemoBodyMismatchRecoveryPendingOperationV5, DayMemoLocalOnlyRecoveryPendingOperationV5, DayMemoSyncMetadataV5 } from '../types/dayMemoSync'
 import type { SyncConnection } from '../types/sync'
 import { isStoredDayMemo, readDayMemoStorageSnapshot } from '../utils/dayMemoStorage'
 import { canonicalDayMemoPayloadFingerprint } from '../utils/dayMemoSyncOperationResult'
@@ -67,7 +67,7 @@ export type DayMemoBodyMismatchRecoveryPostSendSafety =
 export interface DayMemoBodyMismatchRecoveryPostSendResult {
   safety: DayMemoBodyMismatchRecoveryPostSendSafety
   date: string | null
-  operationMode: 'body_mismatch_recovery' | null
+  operationMode: 'body_mismatch_recovery' | 'local_only_recovery' | null
   pendingStatus: 'recovery_required' | null
   operationResultSnapshotVerified: boolean
   operationResultSnapshotState: 'missing' | 'stale' | 'consumed' | 'verified'
@@ -102,7 +102,7 @@ export interface DayMemoBodyMismatchRecoveryPostSendResult {
 
 export interface DayMemoBodyMismatchRecoveryPostSendSnapshot {
   date: string
-  operationMode: 'body_mismatch_recovery'
+  operationMode: 'body_mismatch_recovery' | 'local_only_recovery'
   operationId: string
   pendingFingerprint: string
   pendingStatus: 'recovery_required'
@@ -186,15 +186,17 @@ function connectionEligible(connection: SyncConnection | null): connection is Sy
     && ((connection.deviceRole === 'parent' && connection.workspaceRole === 'owner' && connection.pairingStatus === 'owner')
       || (connection.deviceRole === 'child' && connection.workspaceRole === 'member' && connection.pairingStatus === 'member')))
 }
-function validPending(value: unknown): value is DayMemoBodyMismatchRecoveryPendingOperationV5 {
+function validPending(value: unknown): value is DayMemoBodyMismatchRecoveryPendingOperationV5 | DayMemoLocalOnlyRecoveryPendingOperationV5 {
   if (!value || typeof value !== 'object') return false
-  const pending = value as Partial<DayMemoBodyMismatchRecoveryPendingOperationV5>
-  return pending.kind === 'upsert' && pending.operationMode === 'body_mismatch_recovery'
+  const pending = value as Partial<DayMemoBodyMismatchRecoveryPendingOperationV5 | DayMemoLocalOnlyRecoveryPendingOperationV5>
+  const baseValid = pending.operationMode === 'body_mismatch_recovery'
+    ? Number(pending.baseRevision) >= 1 && Number(pending.baseChangeSequence) >= 1
+      && pending.baseRemoteState === 'active' && typeof pending.baseRemoteUpdatedAt === 'string'
+    : pending.operationMode === 'local_only_recovery' && pending.baseRevision === 0
+      && pending.baseChangeSequence === 0 && pending.baseRemoteState === 'missing' && pending.baseRemoteUpdatedAt === null
+  return pending.kind === 'upsert' && baseValid
     && pending.status === 'recovery_required' && typeof pending.date === 'string' && isUuid(pending.operationId ?? '')
-    && Number.isSafeInteger(pending.baseRevision) && Number(pending.baseRevision) >= 1
-    && Number.isSafeInteger(pending.baseChangeSequence) && Number(pending.baseChangeSequence) >= 1
-    && pending.baseRemoteState === 'active'
-    && typeof pending.baseRemoteUpdatedAt === 'string' && !Number.isNaN(Date.parse(pending.baseRemoteUpdatedAt))
+    && Number.isSafeInteger(pending.baseRevision) && Number.isSafeInteger(pending.baseChangeSequence)
     && typeof pending.preparedLocalUpdatedAt === 'string' && !Number.isNaN(Date.parse(pending.preparedLocalUpdatedAt))
 }
 function remoteFingerprint(record: RemoteDayMemoRecord): string {
@@ -266,7 +268,7 @@ export function useDayMemoBodyMismatchRecoveryPostSendVerification(input: Input)
       } else finish('normal_body_mismatch_recovery_post_send_no_operation_result_snapshot')
       return
     }
-    if (operationSnapshot.operationMode !== 'body_mismatch_recovery'
+    if (!['body_mismatch_recovery', 'local_only_recovery'].includes(operationSnapshot.operationMode)
       || operationSnapshot.resultStatus !== 'applied' || operationSnapshot.conflict
       || operationSnapshot.postSendState !== 'active' || operationSnapshot.resultDeletedAt !== null
       || !isUuid(operationSnapshot.operationId) || !Number.isSafeInteger(operationSnapshot.postSendRevision)
@@ -296,17 +298,18 @@ export function useDayMemoBodyMismatchRecoveryPostSendVerification(input: Input)
     const metadata = loaded.metadata
     const pending = metadata.pendingOperation
     if (!pending) { finish('normal_body_mismatch_recovery_post_send_pending_missing', { pendingState: 'changed' }); return }
-    if (pending.kind !== 'upsert' || pending.operationMode !== 'body_mismatch_recovery') {
+    if (pending.kind !== 'upsert' || !['body_mismatch_recovery', 'local_only_recovery'].includes(pending.operationMode)) {
       finish('normal_body_mismatch_recovery_post_send_wrong_operation_mode', { pendingState: 'changed' }); return
     }
     if (pending.status !== 'recovery_required') {
       finish('normal_body_mismatch_recovery_post_send_wrong_pending_status', { pendingState: 'changed' }); return
     }
     if (!validPending(pending) || fingerprintDayMemoRecoveryPending(pending) !== operationSnapshot.pendingFingerprint
-      || pending.operationId !== operationSnapshot.operationId || pending.date !== operationSnapshot.date) {
+      || pending.operationId !== operationSnapshot.operationId || pending.date !== operationSnapshot.date
+      || pending.operationMode !== operationSnapshot.operationMode) {
       finish('normal_body_mismatch_recovery_post_send_pending_invalid', { pendingState: 'changed' }); return
     }
-    const common = { date: pending.date, operationMode: 'body_mismatch_recovery' as const,
+    const common = { date: pending.date, operationMode: pending.operationMode,
       pendingStatus: 'recovery_required' as const, currentCursor: metadata.lastPulledChangeSequence,
       currentBaselineCount: Object.keys(metadata.baselines).length }
     if (loaded.raw !== operationSnapshot.metadataRaw || metadata.workspaceId !== connection.workspaceId) {
@@ -469,7 +472,7 @@ export function useDayMemoBodyMismatchRecoveryPostSendVerification(input: Input)
         snapshotCreated: true, fullPullCount: 1 as const, checkedAt }
       const ready = finish('normal_body_mismatch_recovery_post_send_ready', values)
       const snapshotToken = `${runId}:${checkedAt}`
-      snapshotRef.current = { date: pending.date, operationMode: 'body_mismatch_recovery',
+      snapshotRef.current = { date: pending.date, operationMode: pending.operationMode,
         operationId: pending.operationId, pendingFingerprint: fingerprintDayMemoRecoveryPending(pending), pendingStatus: 'recovery_required',
         metadataRaw: loaded.raw, sourceMetadataFingerprint: canonicalFingerprint(metadata),
         workspaceId: connection.workspaceId, authUserId,

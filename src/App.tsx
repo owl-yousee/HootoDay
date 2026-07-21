@@ -48,6 +48,7 @@ import { useDayMemoSavedOperationResultRead } from './hooks/useDayMemoSavedOpera
 import { useDayMemoBodyMismatchRecoveryPostSendVerification } from './hooks/useDayMemoBodyMismatchRecoveryPostSendVerification'
 import { useDayMemoBodyMismatchRecoveryCheckpointSave } from './hooks/useDayMemoBodyMismatchRecoveryCheckpointSave'
 import { useDayMemoSavedRecoveryStateCheck } from './hooks/useDayMemoSavedRecoveryStateCheck'
+import { useDayMemoRecoveryLocalOnlyPreparation } from './hooks/useDayMemoRecoveryLocalOnlyPreparation'
 import { useDayMemoMetadataV4Migration } from './hooks/useDayMemoMetadataV4Migration'
 import { useDayMemoMetadataV5Migration } from './hooks/useDayMemoMetadataV5Migration'
 import { useDayMemoSyncMetadataMigration } from './hooks/useDayMemoSyncMetadataMigration'
@@ -277,6 +278,15 @@ function App() {
     connection: supabaseWorkspace.connection,
     reactMetadata: dayMemoSyncBaseline.metadata?.version === 5 ? dayMemoSyncBaseline.metadata : null,
     targetDate: '2026-07-12',
+  })
+  const dayMemoRecoveryLocalOnlyPreparation = useDayMemoRecoveryLocalOnlyPreparation({
+    dayMemos,
+    isConfigured: supabaseAuth.isConfigured,
+    isSignedIn: supabaseAuth.isSignedIn,
+    connection: supabaseWorkspace.connection,
+    reactMetadata: dayMemoSyncBaseline.metadata?.version === 5 ? dayMemoSyncBaseline.metadata : null,
+    savedRecoveryResult: dayMemoSavedRecoveryStateCheck.result,
+    adoptVerifiedMetadata: dayMemoSyncBaseline.adoptVerifiedMetadata,
   })
   const dayMemoBaselineRebase = useDayMemoBaselineRebase({
     dayMemos,
@@ -745,6 +755,7 @@ function App() {
           dayMemoBodyMismatchRecoveryPostSendVerification={dayMemoBodyMismatchRecoveryPostSendVerification}
           dayMemoBodyMismatchRecoveryCheckpointSave={dayMemoBodyMismatchRecoveryCheckpointSave}
           dayMemoSavedRecoveryStateCheck={dayMemoSavedRecoveryStateCheck}
+          dayMemoRecoveryLocalOnlyPreparation={dayMemoRecoveryLocalOnlyPreparation}
           dayMemoSyncBaseline={dayMemoSyncBaseline}
           dayMemoBaselineRebase={dayMemoBaselineRebase}
           dayMemoUpdatePreview={dayMemoUpdatePreview}

@@ -32,7 +32,7 @@ export interface DayMemoBodyMismatchRecoverySendResult {
   date: string | null
   safety: DayMemoBodyMismatchRecoverySendSafety
   succeeded: boolean
-  operationMode: 'body_mismatch_recovery' | null
+  operationMode: 'body_mismatch_recovery' | 'local_only_recovery' | null
   snapshotVerified: boolean
   pendingVerified: boolean
   localFresh: boolean
@@ -102,7 +102,8 @@ export function useDayMemoBodyMismatchRecoverySend({ dayMemos, isConfigured, isS
 
   const persistStatus = useCallback((expectedRaw: string, metadata: DayMemoSyncMetadataV5,
     status: 'response_unknown' | 'conflict' | 'recovery_required') => {
-    if (!metadata.pendingOperation || metadata.pendingOperation.kind !== 'upsert') return false
+    if (!metadata.pendingOperation || metadata.pendingOperation.kind !== 'upsert'
+      || metadata.pendingOperation.operationMode === 'normal') return false
     const next: DayMemoSyncMetadataV5 = { ...metadata, pendingOperation: { ...metadata.pendingOperation, status } }
     if (!isDayMemoSyncMetadataV5(next)) return false
     const saved = replaceDayMemoSyncMetadataV2(window.localStorage, next, expectedRaw)
@@ -126,7 +127,7 @@ export function useDayMemoBodyMismatchRecoverySend({ dayMemos, isConfigured, isS
     try {
       const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
       const stored = readDayMemoStorageSnapshot(window.localStorage)
-      const base = { date: snapshot.result.date, operationMode: 'body_mismatch_recovery' as const,
+      const base = { date: snapshot.result.date, operationMode: snapshot.pendingOperation.operationMode,
         snapshotVerified: true, baselineStatus: 'recovery_required' as const }
       if (loaded.status !== 'ready' || !isDayMemoSyncMetadataV5(loaded.metadata) || stored.status !== 'ready') {
         finish('normal_body_mismatch_recovery_send_metadata_invalid', base); return
@@ -140,7 +141,8 @@ export function useDayMemoBodyMismatchRecoverySend({ dayMemos, isConfigured, isS
       }
       if (metadata.pushBlock) { finish('normal_body_mismatch_recovery_send_push_blocked', base); return }
       if (!pending) { finish('normal_body_mismatch_recovery_send_pending_missing', base); return }
-      if (pending.kind !== 'upsert' || pending.operationMode !== 'body_mismatch_recovery') {
+      if (pending.kind !== 'upsert' || (pending.operationMode !== 'body_mismatch_recovery'
+        && pending.operationMode !== 'local_only_recovery')) {
         finish('normal_body_mismatch_recovery_send_wrong_mode', base); return
       }
       if (pending.status !== 'prepared' || !same(pending, snapshot.pendingOperation)) {
@@ -158,14 +160,19 @@ export function useDayMemoBodyMismatchRecoverySend({ dayMemos, isConfigured, isS
       if (targets.length !== 1 || !memo || !isStoredDayMemo(memo)) {
         finish('normal_body_mismatch_recovery_send_local_missing', base); return
       }
+      const expectedClassification = pending.operationMode === 'body_mismatch_recovery' ? 'body_mismatch' : 'local_only'
       if (memo.updatedAt !== pending.preparedLocalUpdatedAt || JSON.stringify(memo) !== snapshot.localFingerprint
-        || snapshot.remoteRecord.payload === null || classifyDayMemoNormalDifference(memo, snapshot.remoteRecord, null) !== 'body_mismatch') {
+        || (pending.operationMode === 'body_mismatch_recovery' && snapshot.remoteRecord?.payload === null)
+        || classifyDayMemoNormalDifference(memo, snapshot.remoteRecord, null) !== expectedClassification) {
         finish('normal_body_mismatch_recovery_send_local_changed', base); return
       }
-      if (snapshot.remoteRecord.revision !== pending.baseRevision
+      if ((pending.operationMode === 'body_mismatch_recovery' && (!snapshot.remoteRecord
+        || snapshot.remoteRecord.revision !== pending.baseRevision
         || snapshot.remoteRecord.changeSequence !== pending.baseChangeSequence
-        || snapshot.remoteRecord.payload.updatedAt !== pending.baseRemoteUpdatedAt
-        || snapshot.remoteRecord.deletedAt !== null || JSON.stringify(snapshot.remoteRecord) !== snapshot.remoteFingerprint) {
+        || snapshot.remoteRecord.payload?.updatedAt !== pending.baseRemoteUpdatedAt
+        || snapshot.remoteRecord.deletedAt !== null || JSON.stringify(snapshot.remoteRecord) !== snapshot.remoteFingerprint))
+        || (pending.operationMode === 'local_only_recovery' && (snapshot.remoteRecord !== null
+          || pending.baseRevision !== 0 || pending.baseChangeSequence !== 0 || pending.baseRemoteState !== 'missing'))) {
         finish('normal_body_mismatch_recovery_send_snapshot_stale', base); return
       }
       const sendingMetadata: DayMemoSyncMetadataV5 = { ...metadata, pendingOperation: { ...pending, status: 'sending' } }

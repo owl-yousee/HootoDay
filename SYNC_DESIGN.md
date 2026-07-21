@@ -1,5 +1,15 @@
 # HootoDay 同期設計
 
+## B-3f5e5 recovery-required local-only adapter
+
+- Scope is exactly one date classified `local_only` by a fresh saved-recovery check. Preparation repeats a complete read-only pull and rejects remote active/tombstone appearance or any local, metadata, cursor, pending, intent, or push-block drift.
+- `DayMemoPendingOperationV5` adds `operationMode: local_only_recovery` without changing metadata version. Its formal base is revision 0, change sequence 0, remote state `missing`, and remote updated time null; existing v5 data remains valid.
+- An operation ID is generated once after explicit preparation confirmation and persisted/read back before RPC. The existing upsert RPC is called at most once for a valid preflight snapshot.
+- Recovery preflight supports the existing active base for body mismatch and the proved missing base for local-only. A newly appearing active record or tombstone blocks the send.
+- Applied RPC results retain pending as `recovery_required`; conflict, malformed result, or response unknown keep recovery evidence and never retry automatically.
+- Existing operation-result read and post-send verification require applied history, active current remote, exact local payload, revision/sequence/timestamp agreement, and target reclassification to `exact_match_baseline_missing`.
+- Atomic save adds only the target active baseline, advances cursor to the verified complete-pull maximum, and clears pending together. Other differences remain unresolved, so recovery status and null confirmation time continue.
+
 ## 1. 文書の位置付け
 
 この文書は、HootoDayのPC親機とiPhone子機の間で保存データを安全に同期するための正式設計である。同期実装は段階的に導入し、既存のlocalStorage単体動作、localStorageの各`version: 1`形式、JSONバックアップ`formatVersion: 2`および旧`formatVersion: 1`の復元互換を維持する。

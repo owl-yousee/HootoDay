@@ -195,9 +195,24 @@ export interface DayMemoBodyMismatchRecoveryPendingOperationV5 {
   status: 'prepared' | 'sending' | 'response_unknown' | 'conflict' | 'recovery_required'
 }
 
+export interface DayMemoLocalOnlyRecoveryPendingOperationV5 {
+  kind: 'upsert'
+  operationMode: 'local_only_recovery'
+  date: string
+  operationId: string
+  baseRevision: 0
+  baseChangeSequence: 0
+  baseRemoteUpdatedAt: null
+  baseRemoteState: 'missing'
+  preparedLocalUpdatedAt: string
+  preparedAt: string
+  status: 'prepared' | 'sending' | 'response_unknown' | 'conflict' | 'recovery_required'
+}
+
 export type DayMemoPendingOperationV5 =
   | DayMemoNormalUpsertPendingOperationV5
   | DayMemoBodyMismatchRecoveryPendingOperationV5
+  | DayMemoLocalOnlyRecoveryPendingOperationV5
   | Exclude<DayMemoPendingOperationV3, DayMemoPendingOperationV2>
 
 export interface DayMemoSyncMetadataV5 {

@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from 'react'
 import { supabaseClient } from '../lib/supabaseClient'
 import type { DayMemo } from '../types/dayMemo'
-import type { DayMemoBodyMismatchRecoveryPendingOperationV5 } from '../types/dayMemoSync'
+import type { DayMemoBodyMismatchRecoveryPendingOperationV5, DayMemoLocalOnlyRecoveryPendingOperationV5 } from '../types/dayMemoSync'
 import type { SyncConnection } from '../types/sync'
 import { isStoredDayMemo, readDayMemoStorageSnapshot } from '../utils/dayMemoStorage'
 import { pullAllDayMemoSyncRecords, type RemoteDayMemoRecord } from '../utils/dayMemoSyncPull'
@@ -45,7 +45,7 @@ export interface DayMemoBodyMismatchRecoveryPreflightResult {
   date: string | null
   safety: DayMemoBodyMismatchRecoveryPreflightSafety
   ready: boolean
-  operationMode: 'body_mismatch_recovery' | null
+  operationMode: 'body_mismatch_recovery' | 'local_only_recovery' | null
   pendingVerified: boolean
   localFresh: boolean
   remoteActive: boolean
@@ -67,9 +67,9 @@ export interface DayMemoBodyMismatchRecoveryPreflightSnapshot {
   metadataRaw: string
   localStorageSerialized: string
   workspaceId: string
-  pendingOperation: DayMemoBodyMismatchRecoveryPendingOperationV5
+  pendingOperation: DayMemoBodyMismatchRecoveryPendingOperationV5 | DayMemoLocalOnlyRecoveryPendingOperationV5
   localMemo: DayMemo
-  remoteRecord: RemoteDayMemoRecord
+  remoteRecord: RemoteDayMemoRecord | null
   localFingerprint: string
   remoteFingerprint: string
   checkpointFingerprint: string
@@ -92,15 +92,19 @@ function connectionIsEligible(connection: SyncConnection | null): connection is 
       || (connection.deviceRole === 'child' && connection.workspaceRole === 'member' && connection.pairingStatus === 'member')))
 }
 
-function isRecoveryPending(value: unknown): value is DayMemoBodyMismatchRecoveryPendingOperationV5 {
+function isRecoveryPending(value: unknown): value is DayMemoBodyMismatchRecoveryPendingOperationV5 | DayMemoLocalOnlyRecoveryPendingOperationV5 {
   if (!value || typeof value !== 'object') return false
-  const pending = value as Partial<DayMemoBodyMismatchRecoveryPendingOperationV5>
-  return pending.kind === 'upsert' && pending.operationMode === 'body_mismatch_recovery' && pending.status === 'prepared'
+  const pending = value as Partial<DayMemoBodyMismatchRecoveryPendingOperationV5 | DayMemoLocalOnlyRecoveryPendingOperationV5>
+  const modeValid = pending.operationMode === 'body_mismatch_recovery'
+    ? Number(pending.baseRevision) >= 1 && Number(pending.baseChangeSequence) >= 1
+      && pending.baseRemoteState === 'active' && typeof pending.baseRemoteUpdatedAt === 'string'
+      && !Number.isNaN(Date.parse(pending.baseRemoteUpdatedAt))
+    : pending.operationMode === 'local_only_recovery' && pending.baseRevision === 0
+      && pending.baseChangeSequence === 0 && pending.baseRemoteState === 'missing' && pending.baseRemoteUpdatedAt === null
+  return pending.kind === 'upsert' && modeValid && pending.status === 'prepared'
     && typeof pending.date === 'string' && isUuid(pending.operationId ?? '')
-    && Number.isSafeInteger(pending.baseRevision) && Number(pending.baseRevision) >= 1
-    && Number.isSafeInteger(pending.baseChangeSequence) && Number(pending.baseChangeSequence) >= 1
-    && pending.baseRemoteState === 'active' && typeof pending.baseRemoteUpdatedAt === 'string'
-    && !Number.isNaN(Date.parse(pending.baseRemoteUpdatedAt)) && typeof pending.preparedLocalUpdatedAt === 'string'
+    && Number.isSafeInteger(pending.baseRevision) && Number.isSafeInteger(pending.baseChangeSequence)
+    && typeof pending.preparedLocalUpdatedAt === 'string'
     && !Number.isNaN(Date.parse(pending.preparedLocalUpdatedAt))
 }
 
@@ -115,7 +119,7 @@ function message(safety: DayMemoBodyMismatchRecoveryPreflightSafety): string {
   return 'prepared recoveryの前提を安全に確認できなかったため、送信前確認を停止しました。'
 }
 
-function inspectPreparedRecovery(connection: SyncConnection | null): DayMemoBodyMismatchRecoveryPendingOperationV5 | null {
+function inspectPreparedRecovery(connection: SyncConnection | null): DayMemoBodyMismatchRecoveryPendingOperationV5 | DayMemoLocalOnlyRecoveryPendingOperationV5 | null {
   if (!connectionIsEligible(connection)) return null
   const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
   if (loaded.status !== 'ready' || !isDayMemoSyncMetadataV5(loaded.metadata)
@@ -166,12 +170,12 @@ export function useDayMemoBodyMismatchRecoveryPreflight({ dayMemos, isConfigured
       if (metadata.workspaceId !== connection.workspaceId) { finish('normal_body_mismatch_recovery_preflight_workspace_mismatch'); return }
       if (metadata.pushBlock) { finish('normal_body_mismatch_recovery_preflight_push_blocked'); return }
       if (!metadata.pendingOperation) { finish('normal_body_mismatch_recovery_preflight_pending_missing'); return }
-      if (metadata.pendingOperation.kind !== 'upsert' || metadata.pendingOperation.operationMode !== 'body_mismatch_recovery') {
+      if (metadata.pendingOperation.kind !== 'upsert' || !['body_mismatch_recovery', 'local_only_recovery'].includes(metadata.pendingOperation.operationMode)) {
         finish('normal_body_mismatch_recovery_preflight_unexpected_pending'); return
       }
       if (!isRecoveryPending(metadata.pendingOperation)) { finish('normal_body_mismatch_recovery_preflight_pending_invalid'); return }
       const prepared = metadata.pendingOperation
-      const base = { date: prepared.date, operationMode: 'body_mismatch_recovery' as const, pendingVerified: true, workspaceVerified: true }
+      const base = { date: prepared.date, operationMode: prepared.operationMode, pendingVerified: true, workspaceVerified: true }
       if (metadata.baselineStatus !== 'recovery_required' || metadata.baselineConfirmedAt !== null || metadata.baselines[prepared.date]) {
         finish(metadata.baselineStatus !== 'recovery_required' || metadata.baselineConfirmedAt !== null
           ? 'normal_body_mismatch_recovery_preflight_checkpoint_missing'
@@ -210,17 +214,22 @@ export function useDayMemoBodyMismatchRecoveryPreflight({ dayMemos, isConfigured
         finish('normal_body_mismatch_recovery_preflight_stale', { ...base, checkpointVerified: true, localFresh: true }); return
       }
       const targetRecords = pulled.records.filter((record) => record.entityId === prepared.date)
-      if (targetRecords.length === 0) { finish('normal_body_mismatch_recovery_preflight_remote_missing', { ...base, checkpointVerified: true, localFresh: true }); return }
-      if (targetRecords.length !== 1) { finish('normal_body_mismatch_recovery_preflight_unknown', base); return }
-      const remote = targetRecords[0]
-      if (remote.deletedAt !== null || remote.payload === null) {
+      if (prepared.operationMode === 'body_mismatch_recovery' && targetRecords.length === 0) { finish('normal_body_mismatch_recovery_preflight_remote_missing', { ...base, checkpointVerified: true, localFresh: true }); return }
+      if (prepared.operationMode === 'local_only_recovery' && targetRecords.length !== 0) {
+        finish(targetRecords[0]?.deletedAt ? 'normal_body_mismatch_recovery_preflight_remote_tombstone'
+          : 'normal_body_mismatch_recovery_preflight_remote_revision_changed', { ...base, checkpointVerified: true, localFresh: true }); return
+      }
+      if (prepared.operationMode === 'body_mismatch_recovery' && targetRecords.length !== 1) { finish('normal_body_mismatch_recovery_preflight_unknown', base); return }
+      const remote = targetRecords[0] ?? null
+      if (prepared.operationMode === 'body_mismatch_recovery' && (!remote || remote.deletedAt !== null || remote.payload === null)) {
         finish('normal_body_mismatch_recovery_preflight_remote_tombstone', { ...base, checkpointVerified: true, localFresh: true }); return
       }
-      if (remote.revision !== prepared.baseRevision) { finish('normal_body_mismatch_recovery_preflight_remote_revision_changed', base); return }
-      if (remote.changeSequence !== prepared.baseChangeSequence) { finish('normal_body_mismatch_recovery_preflight_remote_sequence_changed', base); return }
-      if (remote.payload.updatedAt !== prepared.baseRemoteUpdatedAt) { finish('normal_body_mismatch_recovery_preflight_remote_updated_at_changed', base); return }
+      if (prepared.operationMode === 'body_mismatch_recovery' && remote!.revision !== prepared.baseRevision) { finish('normal_body_mismatch_recovery_preflight_remote_revision_changed', base); return }
+      if (prepared.operationMode === 'body_mismatch_recovery' && remote!.changeSequence !== prepared.baseChangeSequence) { finish('normal_body_mismatch_recovery_preflight_remote_sequence_changed', base); return }
+      if (prepared.operationMode === 'body_mismatch_recovery' && remote!.payload?.updatedAt !== prepared.baseRemoteUpdatedAt) { finish('normal_body_mismatch_recovery_preflight_remote_updated_at_changed', base); return }
       const remoteByDate = new Map(pulled.records.map((record) => [record.entityId, record]))
-      if (remoteByDate.size !== pulled.records.length || remote.entityId !== prepared.date || remote.payload.date !== prepared.date) {
+      if (remoteByDate.size !== pulled.records.length || (prepared.operationMode === 'body_mismatch_recovery'
+        && (remote!.entityId !== prepared.date || remote!.payload?.date !== prepared.date))) {
         finish('normal_body_mismatch_recovery_preflight_remote_payload_changed', base); return
       }
       const localByDate = new Map(stored.memos.map((memo) => [memo.date, memo]))
@@ -231,7 +240,8 @@ export function useDayMemoBodyMismatchRecoveryPreflight({ dayMemos, isConfigured
       if (!(prepared.date in classifications)) {
         finish('normal_body_mismatch_recovery_preflight_checkpoint_target_missing', base); return
       }
-      if (classifications[prepared.date] !== 'body_mismatch') {
+      const expectedClassification = prepared.operationMode === 'body_mismatch_recovery' ? 'body_mismatch' : 'local_only'
+      if (classifications[prepared.date] !== expectedClassification) {
         finish('normal_body_mismatch_recovery_preflight_checkpoint_target_changed', base); return
       }
       if (Object.values(classifications).some((value) => value === 'revision_lineage_mismatch' || value === 'active_tombstone_mismatch' || value === 'unknown')) {
@@ -239,11 +249,11 @@ export function useDayMemoBodyMismatchRecoveryPreflight({ dayMemos, isConfigured
       }
       const checkpointFingerprint = fingerprint({ persistentCheckpointFingerprint, unresolved })
       const next = finish('normal_body_mismatch_recovery_preflight_ready', { ...base, ready: true, localFresh: true,
-        remoteActive: true, revisionVerified: true, changeSequenceVerified: true, remoteUpdatedAtVerified: true,
+        remoteActive: prepared.operationMode === 'body_mismatch_recovery', revisionVerified: true, changeSequenceVerified: true, remoteUpdatedAtVerified: true,
         payloadVerified: true, checkpointVerified: true, snapshotCreated: true })
       snapshotRef.current = { result: { ...next }, metadataRaw: loaded.raw, localStorageSerialized: stored.serialized,
         workspaceId: connection.workspaceId, pendingOperation: { ...prepared }, localMemo: { ...local },
-        remoteRecord: { ...remote, payload: { ...remote.payload } }, localFingerprint: fingerprint(local),
+        remoteRecord: prepared.operationMode === 'body_mismatch_recovery' && remote ? { ...remote, payload: remote.payload ? { ...remote.payload } : null } : null, localFingerprint: fingerprint(local),
         remoteFingerprint: fingerprint(remote), checkpointFingerprint }
     } finally { if (runIdRef.current === runId) setChecking(false) }
   }, [checking, connection, dayMemos, finish, isConfigured, isSignedIn])
@@ -264,7 +274,7 @@ export function useDayMemoBodyMismatchRecoveryPreflight({ dayMemos, isConfigured
       || !isDayMemoSyncMetadataV5(loaded.metadata)
       || checkpointIdentity(loaded.metadata) === '') return null
     return { ...current, result: { ...current.result }, pendingOperation: { ...current.pendingOperation },
-      localMemo: { ...current.localMemo }, remoteRecord: { ...current.remoteRecord, payload: current.remoteRecord.payload ? { ...current.remoteRecord.payload } : null } }
+      localMemo: { ...current.localMemo }, remoteRecord: current.remoteRecord ? { ...current.remoteRecord, payload: current.remoteRecord.payload ? { ...current.remoteRecord.payload } : null } : null }
   }, [connection, dayMemos, isConfigured, isSignedIn])
 
   return { eligible, checking, result, check, discard, getReadySnapshot, consumeReadySnapshot }

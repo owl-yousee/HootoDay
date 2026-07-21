@@ -110,7 +110,8 @@ export function analyzeDayMemoSyncMetadataV5Migration(metadata: DayMemoSyncMetad
   if (metadata.version === 5) {
     const pendingKind = metadata.pendingOperation?.kind === 'delete' ? 'delete'
       : metadata.pendingOperation?.operationMode === 'normal' ? 'normal_upsert'
-        : metadata.pendingOperation?.operationMode === 'body_mismatch_recovery' ? 'recovery_upsert' : 'none'
+        : metadata.pendingOperation?.operationMode === 'body_mismatch_recovery'
+          || metadata.pendingOperation?.operationMode === 'local_only_recovery' ? 'recovery_upsert' : 'none'
     return { status: 'already_current', source: metadata, next: metadata, pendingKind }
   }
   if (metadata.version !== 4) return { status: 'unsupported', source: null, next: null, pendingKind: 'invalid' }
@@ -458,11 +459,16 @@ function isPendingOperationV5(value: unknown): value is DayMemoPendingOperationV
       'baseRevision', 'date', 'kind', 'operationId', 'operationMode', 'preparedAt', 'preparedLocalUpdatedAt', 'status',
     ])
   }
+  const recoveryShape = JSON.stringify(Object.keys(value).sort()) === JSON.stringify([
+    'baseChangeSequence', 'baseRemoteState', 'baseRemoteUpdatedAt', 'baseRevision', 'date', 'kind',
+    'operationId', 'operationMode', 'preparedAt', 'preparedLocalUpdatedAt', 'status',
+  ])
+  if (!recoveryShape) return false
+  if (value.operationMode === 'local_only_recovery') {
+    return value.baseRevision === 0 && value.baseChangeSequence === 0
+      && value.baseRemoteUpdatedAt === null && value.baseRemoteState === 'missing'
+  }
   return value.operationMode === 'body_mismatch_recovery'
-    && JSON.stringify(Object.keys(value).sort()) === JSON.stringify([
-      'baseChangeSequence', 'baseRemoteState', 'baseRemoteUpdatedAt', 'baseRevision', 'date', 'kind',
-      'operationId', 'operationMode', 'preparedAt', 'preparedLocalUpdatedAt', 'status',
-    ])
     && Number.isSafeInteger(value.baseChangeSequence) && Number(value.baseChangeSequence) >= 1
     && isIsoDateTime(value.baseRemoteUpdatedAt) && value.baseRemoteState === 'active'
 }
@@ -491,7 +497,7 @@ export function isDayMemoSyncMetadataV5(value: unknown): value is DayMemoSyncMet
   const v4Shape = { ...candidate, version: 4, pendingOperation: v4Pending, migration: { ...candidate.migration, sourceVersion: 4 } }
   if (!isDayMemoSyncMetadataV4(v4Shape) || !(candidate.pendingOperation === null || isPendingOperationV5(candidate.pendingOperation))) return false
   if (candidate.pendingOperation?.kind === 'upsert' && candidate.localDeleteIntents[candidate.pendingOperation.date]) return false
-  if (candidate.pendingOperation?.kind === 'upsert' && candidate.pendingOperation.operationMode === 'body_mismatch_recovery') {
+  if (candidate.pendingOperation?.kind === 'upsert' && candidate.pendingOperation.operationMode !== 'normal') {
     if (candidate.baselineStatus !== 'recovery_required' || candidate.baselineConfirmedAt !== null
       || candidate.baselines[candidate.pendingOperation.date] || Object.keys(candidate.localDeleteIntents).length !== 0
       || candidate.pushBlock !== null || candidate.pendingOperation.baseChangeSequence > candidate.lastPulledChangeSequence) return false

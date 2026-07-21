@@ -33,6 +33,7 @@ import type { useDayMemoSavedOperationResultRead } from '../hooks/useDayMemoSave
 import type { useDayMemoBodyMismatchRecoveryPostSendVerification } from '../hooks/useDayMemoBodyMismatchRecoveryPostSendVerification'
 import type { useDayMemoBodyMismatchRecoveryCheckpointSave } from '../hooks/useDayMemoBodyMismatchRecoveryCheckpointSave'
 import type { useDayMemoSavedRecoveryStateCheck } from '../hooks/useDayMemoSavedRecoveryStateCheck'
+import type { useDayMemoRecoveryLocalOnlyPreparation } from '../hooks/useDayMemoRecoveryLocalOnlyPreparation'
 import type { useDayMemoMetadataV4Migration } from '../hooks/useDayMemoMetadataV4Migration'
 import type { useDayMemoMetadataV5Migration } from '../hooks/useDayMemoMetadataV5Migration'
 import type { useDayMemoSyncMetadataMigration } from '../hooks/useDayMemoSyncMetadataMigration'
@@ -89,6 +90,7 @@ interface ThemeSettingsProps {
   dayMemoBodyMismatchRecoveryPostSendVerification: ReturnType<typeof useDayMemoBodyMismatchRecoveryPostSendVerification>
   dayMemoBodyMismatchRecoveryCheckpointSave: ReturnType<typeof useDayMemoBodyMismatchRecoveryCheckpointSave>
   dayMemoSavedRecoveryStateCheck: ReturnType<typeof useDayMemoSavedRecoveryStateCheck>
+  dayMemoRecoveryLocalOnlyPreparation: ReturnType<typeof useDayMemoRecoveryLocalOnlyPreparation>
   dayMemoSyncBaseline: ReturnType<typeof useDayMemoSyncBaseline>
   dayMemoBaselineRebase: ReturnType<typeof useDayMemoBaselineRebase>
   dayMemoUpdatePreview: ReturnType<typeof useDayMemoUpdatePreview>
@@ -284,6 +286,7 @@ export function ThemeSettings({
   dayMemoBodyMismatchRecoveryPostSendVerification,
   dayMemoBodyMismatchRecoveryCheckpointSave,
   dayMemoSavedRecoveryStateCheck,
+  dayMemoRecoveryLocalOnlyPreparation,
   dayMemoSyncBaseline,
   dayMemoBaselineRebase,
   dayMemoUpdatePreview,
@@ -634,6 +637,39 @@ export function ThemeSettings({
                           <button type="button" className="health-secondary-button cloud-sync-button" onClick={dayMemoRemoteAdoptionPreflight.discard} disabled={dayMemoRemoteAdoptionPreflight.state === 'checking' || dayMemoRemoteActiveAdoption.state === 'applying' || dayMemoRemoteTombstoneAdoption.state === 'applying'}>
                             remote採用確認を破棄
                           </button>
+                        </div>
+                      ) : null}
+                      {dayMemoRecoveryLocalOnlyPreparation.candidateDates.length > 0 ? (
+                        <div className="cloud-day-memo-preview-result">
+                          <h4>recovery中のlocal-only</h4>
+                          <p>同期先にactive recordもtombstoneもないことを明示確認し、1件だけ送信準備します。自動送信・自動再試行は行いません。</p>
+                          <ul className="cloud-day-memo-preview-items">
+                            {dayMemoRecoveryLocalOnlyPreparation.candidateDates.map((date) => (
+                              <li key={date}>
+                                <strong>{date}</strong><span>local_only</span>
+                                <button type="button" className="health-secondary-button cloud-sync-button"
+                                  disabled={!dayMemoRecoveryLocalOnlyPreparation.eligible || dayMemoRecoveryLocalOnlyPreparation.preparing}
+                                  onClick={() => { void dayMemoRecoveryLocalOnlyPreparation.prepare(date) }}>
+                                  {dayMemoRecoveryLocalOnlyPreparation.preparing ? '確認・準備中…' : 'このlocalを同期先へuploadする候補にする'}
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null}
+                      {dayMemoRecoveryLocalOnlyPreparation.result ? (
+                        <div className="cloud-day-memo-preview-result">
+                          <p><strong>safety：{dayMemoRecoveryLocalOnlyPreparation.result.safety}</strong></p>
+                          <ul className="cloud-day-memo-preview-summary">
+                            <li>対象日：{dayMemoRecoveryLocalOnlyPreparation.result.date ?? '未確認'}</li>
+                            <li>remote active：{dayMemoRecoveryLocalOnlyPreparation.result.remoteAbsent ? 'なし' : '未確認／出現'}</li>
+                            <li>remote tombstone：{dayMemoRecoveryLocalOnlyPreparation.result.tombstoneAbsent ? 'なし' : '未確認／出現'}</li>
+                            <li>pending：{dayMemoRecoveryLocalOnlyPreparation.result.pendingCreated ? 'prepared' : '未作成'}</li>
+                            <li>operation mode：{dayMemoRecoveryLocalOnlyPreparation.result.operationMode ?? '未作成'}</li>
+                            <li>RPC送信：なし</li><li>自動retry：なし</li>
+                          </ul>
+                          <button type="button" className="health-secondary-button cloud-sync-button"
+                            onClick={dayMemoRecoveryLocalOnlyPreparation.discard}>結果表示を破棄</button>
                         </div>
                       ) : null}
                     </div>
