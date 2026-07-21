@@ -6272,6 +6272,38 @@ body,
   margin: 0;
 }
 
+.sync-difference-card > button {
+  margin-top: 12px;
+}
+
+.sync-difference-action-picker {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-surface-soft);
+}
+
+.sync-difference-action-picker p {
+  margin: 0 0 8px;
+}
+
+.sync-difference-action-buttons {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.sync-difference-action-buttons button {
+  width: 100%;
+  min-height: 44px;
+}
+
+.sync-difference-action-buttons button[aria-pressed='true'] {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 25%, transparent);
+}
+
 @media (max-width: 560px) {
   .sync-difference-panel { padding: 12px; }
   .sync-difference-list { padding-left: 1.25rem; }
