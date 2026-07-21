@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react'
 import { CopyTextControl } from './CopyTextControl'
+import { DayMemoSyncDifferenceCards } from './DayMemoSyncDifferenceCards'
 import { buildSyncShareText } from '../utils/syncShareText'
+import { presentSyncDifference, withCurrentDifferenceAction } from '../utils/syncDifferencePresentation'
 import type { DayMemoSyncMetadataV5 } from '../types/dayMemoSync'
 import type { useDayMemoSavedRecoveryStateCheck } from '../hooks/useDayMemoSavedRecoveryStateCheck'
 import type { useDayMemoNormalDifferenceRecoveryCheckpointCheck } from '../hooks/useDayMemoNormalDifferenceRecoveryCheckpointCheck'
@@ -134,6 +136,11 @@ export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, b
               : bodyCandidate.result?.candidate === 'remote' ? '同期先の内容を使う候補を確認'
             : bodyCandidate.result?.candidate === 'local' ? 'iPhoneの内容を残す候補を確認'
               : '選択中の差異を確認'
+  const differenceItems = savedReady
+    ? withCurrentDifferenceAction(items.map(([date, classification]) => presentSyncDifference(date, classification)), activeDate || null, nextOperation)
+    : null
+  const shareClassification = differenceItems?.find((item) => item.date === activeDate)?.title
+    ?? (differenceItems?.length === 1 ? differenceItems[0].title : differenceItems?.length ? '複数差異' : null)
 
   const chooseDate = (nextIndex: number) => {
     const item = items[nextIndex]
@@ -179,13 +186,14 @@ export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, b
     stageId: guideStageId,
     state: guideState,
     target: activeDate || null,
-    classification: activeClassification ?? null,
+    classification: shareClassification,
     differenceCount: savedReady ? remaining : null,
     baselineStatus: metadata.baselineStatus,
     cursor: metadata.lastPulledChangeSequence,
     ready: saved.result?.normalSyncReady ?? false,
     primaryAction: nextOperation || null,
     stopReason: guideState === '安全停止' ? currentProblem : null,
+    differenceItems: differenceItems ?? undefined,
   })
 
   return (
@@ -197,6 +205,7 @@ export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, b
 
       <p className="cloud-sync-note">現在の工程：{currentStage}</p>
       <p className="sync-stage-id">stageId：<code>{guideStageId}</code></p>
+      <DayMemoSyncDifferenceCards items={differenceItems} stopReason={guideState === '安全停止' ? currentProblem : null} />
 
       {!savedReady ? (
         <div className="iphone-sync-guide-step">

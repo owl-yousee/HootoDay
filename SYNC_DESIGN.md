@@ -2013,3 +2013,9 @@ Candidate checking now catches unexpected failures into a `failed` result and co
 - The normal pull Hook already retained its preview state and result correctly; its `pulling` state simply ended as soon as the read-only request completed. The integrated UI had no separate presentation result, so fast checks produced only a brief flash and no durable completion card.
 - A UI-only state distinguishes idle, checking, success, blocked, and failed. It observes the existing Hook, keeps checking visible for at least 700ms, disables repeat clicks, and retains the final presentation until the next explicit navigation action. Synchronous fail-closed returns are also retained as blocked or failed rather than leaving the UI in checking.
 - The share report reads this same presentation snapshot for stage, result state, difference count, readiness, next action, and safe failure reason. No pull behavior, validation, classification, metadata, baseline, cursor, pending, RPC, SQL, or persisted state changes.
+
+## B-3f5eUI2m difference presentation
+
+- The integrated sync surface renders a read-only difference card before its primary action. Recovery uses saved-state `unresolvedClassifications`, mismatch recovery uses the existing plan `items`, and confirmed normal sync uses existing pull-preview `items`; no classification is recalculated.
+- A shared presentation mapping converts internal classifications into Japanese titles and short type labels. Each vertical card shows date and an action label backed by an existing route; unsupported or unsafe classifications explicitly say that safety confirmation is required.
+- Short sharing includes localized classification counts and per-date action lines. Detailed copy includes the same safe date, title, type, and action data. Content, payloads, identifiers, credentials, and Supabase configuration remain excluded, and all sync and persistence behavior remains unchanged.

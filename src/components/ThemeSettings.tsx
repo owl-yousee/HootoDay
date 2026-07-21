@@ -5,8 +5,10 @@ import { XIcon } from '@phosphor-icons/react/X'
 import { useEffect, useRef, useState, type MouseEvent, type SyntheticEvent } from 'react'
 import { DayMemoBodyMismatchComparison } from './DayMemoBodyMismatchComparison'
 import { DayMemoSyncGuide } from './DayMemoSyncGuide'
+import { DayMemoSyncDifferenceCards } from './DayMemoSyncDifferenceCards'
 import { CopyTextControl } from './CopyTextControl'
 import { buildSyncShareText } from '../utils/syncShareText'
+import { presentPullDifference, presentSyncDifference, withCurrentDifferenceAction } from '../utils/syncDifferencePresentation'
 import type { SupabaseAuthState, SupabaseConfigurationState } from '../hooks/useSupabaseAuth'
 import type { useDayMemoInitialUpload } from '../hooks/useDayMemoInitialUpload'
 import type { useDayMemoLocalOnlyPreview } from '../hooks/useDayMemoLocalOnlyPreview'
@@ -728,10 +730,7 @@ export function ThemeSettings({
     const finish = () => {
       const summary = dayMemoPullPreview.summary
       const differenceCount = summary
-        ? summary.localOnlyCount + summary.remoteOnlyCount + summary.differentCount
-          + summary.remoteTombstoneCount + summary.remoteTombstoneLocalExistsCount
-          + summary.remoteTombstoneLocalMissingCount
-        : null
+        ? summary.localOnlyCount + summary.remoteOnlyCount + summary.differentCount + summary.remoteTombstoneCount : null
       const failed = dayMemoPullPreview.previewState === 'rpc_error'
         || dayMemoPullPreview.previewState === 'auth_error'
       const successful = dayMemoPullPreview.previewState === 'preview_ready'
@@ -881,11 +880,43 @@ export function ThemeSettings({
     ? dayMemoPullPreview.summary.localOnlyCount + dayMemoPullPreview.summary.remoteOnlyCount
       + dayMemoPullPreview.summary.differentCount + dayMemoPullPreview.summary.remoteTombstoneCount
     : null
+  const baseSyncDifferenceItems = isRecoveryMetadata
+    ? dayMemoSavedRecoveryStateCheck.result
+      ? Object.entries(dayMemoSavedRecoveryStateCheck.result.unresolvedClassifications)
+        .map(([date, classification]) => presentSyncDifference(date, classification))
+      : null
+    : syncMetadata?.baselineStatus === 'mismatch' && dayMemoNormalDifferenceRecoveryPlan.result
+      ? dayMemoNormalDifferenceRecoveryPlan.result.items
+        .filter((item) => item.classification !== 'exact_match_baseline_confirmed')
+        .map((item) => ({ ...presentSyncDifference(item.date, item.classification),
+          nextAction: recoveryNavigation.stage === 'normal_mismatch_difference_review' ? '差異を1件選択' : '安全確認が必要' }))
+      : dayMemoPullPreview.summary
+        ? dayMemoPullPreview.items.flatMap((item) => {
+          const presented = presentPullDifference(item.date, item.comparison)
+          if (!presented) return []
+          return [{ ...presented, nextAction: item.comparison === 'local_only'
+            && recoveryNavigation.stage === 'normal_local_only_check'
+            ? recoveryNavigation.title : '安全確認が必要' }]
+        })
+        : null
+  const syncDifferenceItems = normalSyncCheckUi.status === 'checking'
+    || ((normalSyncCheckUi.status === 'blocked' || normalSyncCheckUi.status === 'failed') && !isRecoveryMetadata)
+    ? null
+    : baseSyncDifferenceItems
+      ? withCurrentDifferenceAction(baseSyncDifferenceItems, recoveryNavigation.targetDate, recoveryNavigation.title)
+      : null
   const visibleDifferenceCount = normalSyncCheckUi.status !== 'idle' && normalSyncCheckUi.status !== 'checking'
     ? normalSyncCheckUi.differenceCount
     : isRecoveryMetadata
     ? dayMemoSavedRecoveryStateCheck.result?.unresolvedCount ?? null
-    : normalDifferenceCount
+    : syncDifferenceItems?.length ?? normalDifferenceCount
+  const syncDifferenceDetailLines = syncDifferenceItems === null
+    ? ['差異一覧：未確認']
+    : syncDifferenceItems.length === 0 ? ['差異一覧：なし']
+      : ['差異一覧', ...syncDifferenceItems.map((item) =>
+        `- ${item.date} / ${item.title} / ${item.typeLabel} / 次の操作:${item.nextAction}`)]
+  const shareClassification = syncDifferenceItems?.find((item) => item.date === recoveryNavigation.targetDate)?.title
+    ?? (syncDifferenceItems?.length === 1 ? syncDifferenceItems[0].title : syncDifferenceItems?.length ? '複数差異' : null)
   const syncStatusCopyText = () => [
     'HootoDay同期状態',
     `端末：${supabaseWorkspace.connection?.deviceRole === 'child' ? 'iPhone child/member' : 'PC parent/owner'}`,
@@ -911,6 +942,7 @@ export function ThemeSettings({
     `停止理由：${syncStopReason}`,
     `差異件数：${visibleDifferenceCount ?? '未確認'}`,
     `差異分類：${recoveryNavigation.classification ?? (visibleDifferenceCount === 0 ? 'なし' : '未確認')}`,
+    ...syncDifferenceDetailLines,
     `pending：${syncMetadata?.pendingOperation ? '1' : '0'}`,
     `localDeleteIntent：${syncMetadata ? Object.keys(syncMetadata.localDeleteIntents).length : '不明'}`,
     `同期先書き込み：${recoveryNavigation.writesRemote ? '明示操作時1件' : 'なし'}`,
@@ -926,7 +958,7 @@ export function ThemeSettings({
         : normalSyncCheckUi.status === 'failed' ? '確認失敗'
           : syncStopped ? '安全停止' : recoveryNavigation.stage === 'complete' ? '完了' : '未確認',
     target: recoveryNavigation.targetDate,
-    classification: recoveryNavigation.classification,
+    classification: shareClassification,
     differenceCount: visibleDifferenceCount,
     baselineStatus: syncMetadata?.baselineStatus ?? '不明',
     cursor: syncMetadata?.lastPulledChangeSequence ?? null,
@@ -936,6 +968,7 @@ export function ThemeSettings({
         : navigationCanExecute ? recoveryNavigation.title : null,
     disabledReason: normalSyncCheckUi.status !== 'idle' ? null : navigationCanExecute ? null : navigationDisabledReason,
     stopReason: syncStopped ? syncStopReason : null,
+    differenceItems: syncDifferenceItems ?? undefined,
   })
   const syncStopCopyText = () => [
     'HootoDay同期停止情報', `stageId：${syncStageId}`,
@@ -1103,6 +1136,7 @@ export function ThemeSettings({
                           <li>同期先書き込み：なし</li>
                         </> : null}
                       </ul>
+                      <DayMemoSyncDifferenceCards items={syncDifferenceItems} stopReason={syncStopped ? syncStopReason : null} />
                       <p>{recoveryNavigation.description}</p>
                       {recoveryNavigation.stage === 'normal_mismatch_difference_review' && dayMemoNormalDifferenceRecoveryPlan.result ? (
                         <>

@@ -2793,3 +2793,9 @@ cleanup後VERIFY結果：
 - PCの通常同期確認handlerは正常に動作していたが、Hookの`pulling`が通信完了直後に結果stateへ進むため、UIの確認中表示が約0.1秒で消え、完了結果を独立保持していなかった。
 - 統合UIにidle/checking/success/blocked/failedの表示snapshotを追加し、checkingを少なくとも700ms表示して連打を禁止する。完了・安全停止・失敗は次の明示操作まで表示する。
 - 短縮共有は同じUI snapshotかstage、状態、差異数、ready、次操作、停止理由を参照する。full pull・判定・metadata・同期ロジックは変更しない。
+
+## B-3f5eUI2m difference summary cards
+
+- 実機確認で「差異2件」だけでは分類と対象を探しにくかったため、同期作業の主操作より前に「同期差異」カードを追加した。
+- カードは既存saved-stateの`unresolvedClassifications`、normal difference planの`items`、pull previewの`items`だけを使い、日付、日本語分類、接続済みの次操作を縦並びで表示する。新しい差異判定は行わない。
+- 短縮共有に日本語の差異内訳を、詳細コピーに対象日・分類・次操作を追加した。本文や秘密情報は含めず、同期処理・metadata・保存形式は変更しない。
