@@ -2768,3 +2768,10 @@ cleanup後VERIFY結果：
 - 明示送信は既存upsert RPCを対象1件だけに使用する。base revision 0、workspace/device、payload、revision、change sequence、active状態を厳格検証し、conflict／response unknownではpendingとoperation IDを保持して自動retryしない。
 - RPC applied結果の検証後だけactive baseline、cursor、confirmedAt、成功日時、pending解消をmetadata v5へverified保存する。保存成功後は同じverified metadataをReact stateへ反映し、統合UIを既存の「送信後の状態を確認」read-only full pullへ進める。送信前preflightと送信には個別in-flight guardを置く。
 - SQL、RPC、RLS、metadata・pending・baseline・cursor・DayMemoの保存形式、compare-and-write、read-back、rollback方式は変更しない。
+## B-3f5eUI2k sync status copy
+
+- iPhone実機確認では画面上のstage・主操作と案内がずれ、スクリーンショット依存が大きかったため、現在の同期作業カードへ固定形式の「同期状態をコピー」と固定stage IDを追加した。blocked／failedでは安全な「停止理由をコピー」も表示する。
+- 既存コピーはsecure contextのClipboard API失敗後に一時textareaを使っていたが、focus復元・selection解除・明示focusがなく、execCommand失敗時の手動欄も操作支援が不足していた。LAN内HTTPのiPhone Safariでは成功を保証できなかった。
+- 共通copy utilityはClipboard API成功確認、body上の可視性を失わない画面外textareaによるexecCommand成功確認、全文選択可能な手動copy UIの順にfallbackする。成功結果を確認できた場合だけ「コピーしました」と表示する。
+- コピー内容はstage ID、実際の主ボタンlabel、安全状態、対象・分類・差異件数、baseline status/count、cursor、pending・intent、write／永続変更予定、停止理由、表示時刻に限定する。UUID、operation ID、fingerprint、credential、raw storage、本文、payloadは含めない。
+- コピーはボタン押下時のReact表示snapshotだけを使い、full pull、localStorage書き込み、metadata・DayMemo変更、stage進行、remote write、自動retryを行わない。SQL、RPC、RLS、保存形式に変更はない。

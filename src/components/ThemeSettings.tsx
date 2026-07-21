@@ -5,6 +5,7 @@ import { XIcon } from '@phosphor-icons/react/X'
 import { useEffect, useRef, useState, type MouseEvent, type SyntheticEvent } from 'react'
 import { DayMemoBodyMismatchComparison } from './DayMemoBodyMismatchComparison'
 import { DayMemoSyncGuide } from './DayMemoSyncGuide'
+import { CopyTextControl } from './CopyTextControl'
 import type { SupabaseAuthState, SupabaseConfigurationState } from '../hooks/useSupabaseAuth'
 import type { useDayMemoInitialUpload } from '../hooks/useDayMemoInitialUpload'
 import type { useDayMemoLocalOnlyPreview } from '../hooks/useDayMemoLocalOnlyPreview'
@@ -153,6 +154,23 @@ interface SyncRecoveryNavigation {
   writesRemote: boolean
   changesPersistentState: boolean
   disabledReason: string | null
+}
+
+const SYNC_STAGE_IDS: Record<SyncRecoveryUiStage, string> = {
+  checkpoint_check: 'recovery_difference_check', body_mismatch_compare: 'recovery_body_mismatch_compare',
+  candidate_prepare: 'recovery_candidate_prepare', preflight: 'recovery_preflight', send: 'recovery_writing',
+  operation_result_read: 'recovery_operation_result', post_send_verify: 'recovery_written_verify',
+  metadata_save: 'recovery_metadata_save', saved_state_check: 'recovery_saved_state_check',
+  remote_only_check: 'remote_only_check', remote_only_adopt: 'remote_only_ready',
+  remote_only_post_check: 'remote_only_written', remote_only_metadata_save: 'remote_only_verified',
+  final_confirmation: 'recovery_final_check', confirmed_save: 'recovery_final_ready',
+  final_ready_check: 'recovery_confirmed_saved', metadata_repair_check: 'metadata_repair_check',
+  metadata_repair_save: 'metadata_repair_save', normal_mismatch_difference_check: 'normal_mismatch_check',
+  normal_mismatch_difference_review: 'normal_mismatch_review', normal_mismatch_checkpoint_check: 'normal_mismatch_checkpoint_check',
+  normal_mismatch_checkpoint_save: 'normal_mismatch_checkpoint_save', normal_state_check: 'normal_sync_check',
+  normal_local_only_check: 'normal_sync_local_only', normal_local_only_preflight: 'normal_sync_preflight',
+  normal_local_only_prepare: 'normal_sync_upload_ready', normal_local_only_send: 'normal_sync_writing',
+  next_difference: 'recovery_next_difference', blocked: 'blocked', complete: 'normal_sync_complete',
 }
 
 function deriveSyncRecoveryNavigation(input: {
@@ -776,6 +794,58 @@ export function ThemeSettings({
       default: break
     }
   }
+  const syncStageId = SYNC_STAGE_IDS[recoveryNavigation.stage]
+  const syncStopped = recoveryNavigation.stage === 'blocked'
+    || dayMemoRecoveryFinalization.stage === 'failed'
+    || dayMemoRecoveryRemoteOnlyAdoption.stage === 'failed'
+  const syncStopReason = syncStopped
+    ? dayMemoRecoveryFinalization.safeErrorMessage
+      ?? dayMemoRecoveryRemoteOnlyAdoption.safeErrorMessage
+      ?? recoveryNavigation.disabledReason
+      ?? recoveryNavigation.description
+    : 'なし'
+  const normalDifferenceCount = dayMemoPullPreview.summary
+    ? dayMemoPullPreview.summary.localOnlyCount + dayMemoPullPreview.summary.remoteOnlyCount
+      + dayMemoPullPreview.summary.differentCount + dayMemoPullPreview.summary.remoteTombstoneCount
+    : null
+  const visibleDifferenceCount = isRecoveryMetadata
+    ? dayMemoSavedRecoveryStateCheck.result?.unresolvedCount ?? null
+    : normalDifferenceCount
+  const syncStatusCopyText = () => [
+    'HootoDay同期状態',
+    `端末：${supabaseWorkspace.connection?.deviceRole === 'child' ? 'iPhone child/member' : 'PC parent/owner'}`,
+    `画面：${isRecoveryMetadata ? '復旧同期' : '通常同期'}`,
+    `stageId：${syncStageId}`,
+    `対象：${recoveryNavigation.targetDate ?? '同期状態全体'}`,
+    `分類：${recoveryNavigation.classification ?? '状態確認'}`,
+    `安全状態：${dayMemoSyncSafety.state}`,
+    `baselineStatus：${syncMetadata?.baselineStatus ?? '不明'}`,
+    `baseline件数：${syncMetadata ? Object.keys(syncMetadata.baselines).length : '不明'}`,
+    `cursor：${syncMetadata?.lastPulledChangeSequence ?? '不明'}`,
+    `通常同期ready：${normalSyncReady ? 'はい' : isConfirmedMetadata ? '未確認' : 'いいえ'}`,
+    `現在の主操作：${navigationCanExecute ? recoveryNavigation.title : 'なし'}`,
+    `無効理由：${navigationCanExecute ? 'なし' : navigationDisabledReason ?? '不明'}`,
+    `停止状態：${syncStopped ? 'あり' : 'なし'}`,
+    `停止理由：${syncStopReason}`,
+    `差異件数：${visibleDifferenceCount ?? '未確認'}`,
+    `差異分類：${recoveryNavigation.classification ?? (visibleDifferenceCount === 0 ? 'なし' : '未確認')}`,
+    `pending：${syncMetadata?.pendingOperation ? '1' : '0'}`,
+    `localDeleteIntent：${syncMetadata ? Object.keys(syncMetadata.localDeleteIntents).length : '不明'}`,
+    `同期先書き込み：${recoveryNavigation.writesRemote ? '明示操作時1件' : 'なし'}`,
+    `永続変更：${recoveryNavigation.changesPersistentState ? '明示操作時あり' : 'なし'}`,
+    '自動retry：なし',
+    `最終確認：${dayMemoRecoveryFinalization.result?.checkedAt ? '実施済み' : '未確認'}`,
+    `表示時刻：${new Date().toLocaleString('ja-JP')}`,
+  ].join('\n')
+  const syncStopCopyText = () => [
+    'HootoDay同期停止情報', `stageId：${syncStageId}`,
+    `対象：${recoveryNavigation.targetDate ?? '同期状態全体'}`,
+    `分類：${recoveryNavigation.classification ?? '状態確認'}`,
+    `停止種別：${dayMemoRecoveryFinalization.stage === 'failed' || dayMemoRecoveryRemoteOnlyAdoption.stage === 'failed' ? 'failed' : 'blocked'}`,
+    `停止理由：${syncStopReason}`, '永続変更：なし', '同期先書き込み：なし',
+    `pending：${syncMetadata?.pendingOperation ? '1' : '0'}`, '自動retry：なし',
+    `次の主操作：${navigationCanExecute ? recoveryNavigation.title : 'なし'}`,
+  ].join('\n')
 
   return (
     <dialog
@@ -951,6 +1021,11 @@ export function ThemeSettings({
                           disabled={!navigationCanExecute} onClick={runRecoveryNavigationAction}>{recoveryNavigation.title}</button>
                         {!navigationCanExecute && navigationDisabledReason ? <p className="cloud-sync-note">{navigationDisabledReason}</p> : null}
                       </>}
+                      <p className="sync-stage-id">stageId：<code>{syncStageId}</code></p>
+                      <CopyTextControl buttonLabel="同期状態をコピー" text={syncStatusCopyText}
+                        successMessage="同期状態をコピーしました" />
+                      {syncStopped ? <CopyTextControl buttonLabel="停止理由をコピー" text={syncStopCopyText}
+                        successMessage="停止理由をコピーしました" /> : null}
                       {dayMemoRecoveryFinalization.safeErrorMessage ? <p className="cloud-pairing-error" role="alert">{dayMemoRecoveryFinalization.safeErrorMessage}</p> : null}
                       {dayMemoNormalMetadataRepair.safeErrorMessage ? <p className="cloud-pairing-error" role="alert">{dayMemoNormalMetadataRepair.safeErrorMessage}</p> : null}
                       {dayMemoNormalMetadataRepair.result && dayMemoNormalMetadataRepair.stage !== 'repaired' ? (

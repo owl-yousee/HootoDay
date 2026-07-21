@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { CopyTextControl } from './CopyTextControl'
 import type { DayMemoSyncMetadataV5 } from '../types/dayMemoSync'
 import type { useDayMemoSavedRecoveryStateCheck } from '../hooks/useDayMemoSavedRecoveryStateCheck'
 import type { useDayMemoNormalDifferenceRecoveryCheckpointCheck } from '../hooks/useDayMemoNormalDifferenceRecoveryCheckpointCheck'
@@ -69,8 +70,6 @@ const remoteOnlyMessages: Record<string, string> = {
 export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, bodyLocalPreparation,
   bodyRemoteAdoption, localOnly, localOnlyDiscard, remoteOnly }: Props) {
   const [selectedDate, setSelectedDate] = useState('')
-  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'fallback'>('idle')
-  const [copyText, setCopyText] = useState('')
   const items = useMemo(() => Object.entries(saved.result?.unresolvedClassifications ?? {}), [saved.result])
   const recommended = saved.result?.nextRecommendedDate ?? items[0]?.[0] ?? ''
   const activeDate = items.some(([date]) => date === selectedDate) ? selectedDate : recommended
@@ -138,14 +137,12 @@ export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, b
   const chooseDate = (nextIndex: number) => {
     const item = items[nextIndex]
     if (!item) return
-    setSelectedDate(item[0]); setCopyState('idle')
+    setSelectedDate(item[0])
     if (bodyCandidate.selectedDate !== item[0]) bodyCandidate.setSelectedDate(item[0])
   }
 
   const startSavedStateCheck = () => {
     setSelectedDate('')
-    setCopyState('idle')
-    setCopyText('')
     bodyRemoteAdoption.discard()
     remoteOnly.discard()
     bodyCandidate.discard()
@@ -153,35 +150,24 @@ export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, b
     void saved.check()
   }
 
-  const copyResult = async () => {
+  const copyResultText = () => {
     const state = !savedReady && saved.result ? '安全停止'
       : bodyRemoteAdoption.stage === 'completed' ? '成功'
         : bodyRemoteAdoption.stage === 'blocked' ? '安全停止' : '確認中'
-    const text = ['同期チェック結果', `状態：${state}`, `対象：${activeDate || '未選択'}`,
-      `問題：${currentProblem}`, `現在stage：${currentStage}`, `次の操作：${nextOperation}`,
-      `残り：${savedReady ? `${remaining}件` : '未確認'}`, `metadata：${metadata.baselineStatus}`,
-      `cursor：${metadata.lastPulledChangeSequence}`, `pending：${metadata.pendingOperation ? 'あり' : 'なし'}`,
-      '自動retry：なし'].join('\n')
-    setCopyText(text)
-    if (window.isSecureContext && navigator.clipboard?.writeText) {
-      try {
-        await navigator.clipboard.writeText(text)
-        setCopyState('copied')
-        return
-      } catch { /* LAN HTTPや権限拒否時は選択式fallbackへ進む */ }
-    }
-    const textarea = document.createElement('textarea')
-    textarea.value = text
-    textarea.setAttribute('readonly', '')
-    textarea.style.position = 'fixed'
-    textarea.style.opacity = '0'
-    document.body.appendChild(textarea)
-    textarea.select()
-    textarea.setSelectionRange(0, textarea.value.length)
-    let copied = false
-    try { copied = document.execCommand('copy') } catch { copied = false }
-    textarea.remove()
-    setCopyState(copied ? 'copied' : 'fallback')
+    return ['HootoDay同期状態', '端末：iPhone child/member', '画面：復旧同期',
+      `stageId：${remoteOnlyCurrent ? `remote_only_${remoteOnly.stage}` : !savedReady ? 'recovery_difference_check' : !activeDate ? 'recovery_final_check' : 'recovery_difference_check'}`,
+      `対象：${activeDate || '未選択'}`, `分類：${activeClassification ?? 'なし'}`, `安全状態：${state}`,
+      `baselineStatus：${metadata.baselineStatus}`, `baseline件数：${Object.keys(metadata.baselines).length}`,
+      `通常同期ready：${saved.result?.normalSyncReady ? 'はい' : 'いいえ'}`, `現在の主操作：${nextOperation}`,
+      `停止状態：${state === '安全停止' ? 'あり' : 'なし'}`, `停止理由：${state === '安全停止' ? currentProblem : 'なし'}`,
+      `差異件数：${savedReady ? remaining : '未確認'}`,
+      `差異分類：${items.length ? [...new Set(items.map(([, value]) => value))].join(',') : 'なし'}`,
+      `pending：${metadata.pendingOperation ? '1' : '0'}`, `localDeleteIntent：${Object.keys(metadata.localDeleteIntents).length}`,
+      '同期先書き込み：なし', '永続変更：なし', '自動retry：なし',
+      `最終確認：${saved.result?.checkedAt ? '実施済み' : '未確認'}`, `cursor：${metadata.lastPulledChangeSequence}`,
+      `表示時刻：${new Date().toLocaleString('ja-JP')}`,
+      '', '補足', `現在stage：${currentStage}`, `問題：${currentProblem}`, `次の操作：${nextOperation}`,
+      `残り：${savedReady ? `${remaining}件` : '未確認'}`].join('\n')
   }
 
   return (
@@ -379,13 +365,7 @@ export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, b
         </div>
       )}
       <div className="iphone-sync-guide-copy">
-        <button type="button" className="health-secondary-button cloud-sync-button" onClick={() => { void copyResult() }}>結果をコピー</button>
-        {copyState === 'copied' ? <p className="cloud-day-memo-success">結果をコピーしました。</p> : null}
-        {copyState === 'fallback' ? <div className="cloud-sync-note">
-          <p>自動コピーできませんでした。下の内容を長押ししてコピーしてください。同期状態には影響ありません。</p>
-          <textarea readOnly rows={10} value={copyText} aria-label="同期チェック結果のコピー用テキスト"
-            onFocus={(event) => event.currentTarget.select()} />
-        </div> : null}
+        <CopyTextControl buttonLabel="同期状態をコピー" text={copyResultText} successMessage="同期状態をコピーしました" />
       </div>
     </section>
   )
