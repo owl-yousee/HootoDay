@@ -2747,3 +2747,10 @@ cleanup後VERIFY結果：
 - candidate checkへ明示`failed` stageとcatchを追加し、開始条件不一致は`blocked` result、想定外例外は`failed` resultとして必ず保存する。checking中はボタンを無効化し、成功は`candidate_ready`、停止・失敗は日本語理由と「保存状態から再確認」を表示する。
 - target dateは現在のsaved-state result／同期チェックの選択中`remote_only_active`から動的に渡す。child/member eligibility、in-flight guard、対象外差異、snapshot鮮度、remote validatorは変更しない。
 - candidate確認では永続変更、Supabase write、pending、operation ID、自動retryを行わない。SQL/RPC/RLS/metadata形式も変更しない。
+## B-3f5eUI2h final sync verification UI connection
+
+- iPhone child/memberで未解決差異が0件になった後、「最終同期状態を確認」を押しても表示が変わらない事象を確認した。最終確認snapshotの未使用token生成が`crypto.randomUUID()`へ依存し、LAN内HTTPのSafariで例外になった一方、Hookにcatchとfailed stageがなく、finallyだけでidle相当へ戻っていたことが原因である。
+- snapshotから不要なtokenを除き、確認開始時に`checking`、成功時に`confirmation_ready`、安全条件不成立時に`blocked`、予期しない例外時に`failed`を必ず公開する。blocked／failed後の明示再確認は古いsnapshotとresultを破棄して保存状態から再構築する。
+- AppからThemeSettingsまでの既存finalization Hook接続を維持し、統合UIは実行中、ready、安全停止、失敗を表示する。ready後だけ別の明示操作「同期状態を確認済みにする」へ進む。
+- 最終確認段階はread-onlyであり、metadata、DayMemo、pending、intent、baseline、cursorを変更せず、remote write、自動retry、自動confirmed化を行わない。child/memberとownerの既存eligibility、full pull、validator、保存時read-back／rollbackは変更していない。
+- SQL、RPC、RLS、metadata v5形式、DayMemo・pending・checkpointの保存形式に変更はない。

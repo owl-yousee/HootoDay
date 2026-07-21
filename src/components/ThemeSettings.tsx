@@ -287,13 +287,22 @@ function deriveSyncRecoveryNavigation(input: {
   const date = savedResult.nextRecommendedDate
   const classification = savedResult.nextRecommendedClassification
   if (!date || !classification || savedResult.unresolvedCount === 0) {
+    if (input.finalizationStage === 'checking') return { stage: 'final_confirmation', targetDate: null, classification: '最終確認',
+      title: '最終同期状態を確認しています…', description: '現在のlocal、remote、baseline、cursorをread-onlyで確認中です。',
+      writesRemote: false, changesPersistentState: false, disabledReason: '確認中です。' }
     if (input.finalizationStage === 'confirmation_ready') return { stage: 'confirmed_save', targetDate: null, classification: '最終確認',
-      title: '通常同期へ戻す', description: '確認済みbaseline、cursor、status、confirmedAtをmetadataへ原子的に保存します。',
+      title: '同期状態を確認済みにする', description: '最終同期状態を確認しました。次の明示操作でbaseline、cursor、status、confirmedAtをmetadataへ原子的に保存します。',
       writesRemote: false, changesPersistentState: true, disabledReason: null }
     if (input.finalizationStage === 'confirmed_saved') return { stage: 'final_ready_check', targetDate: null, classification: '最終確認',
       title: '通常同期readyを確認', description: '保存後の全件一致を明示full pullで確認します。', writesRemote: false, changesPersistentState: false, disabledReason: null }
     if (input.finalizationStage === 'normal_sync_ready') return { stage: 'complete', targetDate: null, classification: '最終確認',
       title: '復旧作業は完了しました', description: '全件一致と通常同期readyを確認しました。', writesRemote: false, changesPersistentState: false, disabledReason: null }
+    if (input.finalizationStage === 'blocked') return { stage: 'final_confirmation', targetDate: null, classification: '最終確認',
+      title: '保存状態から再確認', description: '安全確認を完了できません。永続状態と同期先は変更していません。',
+      writesRemote: false, changesPersistentState: false, disabledReason: null }
+    if (input.finalizationStage === 'failed') return { stage: 'final_confirmation', targetDate: null, classification: '最終確認',
+      title: '再確認', description: '最終同期状態の確認に失敗しました。永続状態は変更せず、自動retryも行いません。',
+      writesRemote: false, changesPersistentState: false, disabledReason: null }
     return { stage: 'final_confirmation', targetDate: null, classification: '最終確認', title: '最終同期状態を確認',
       description: '全local、remote、baseline、cursorが一致することをread-onlyで確認します。', writesRemote: false, changesPersistentState: false, disabledReason: null }
   }
@@ -894,6 +903,13 @@ export function ThemeSettings({
                           <li>remote-only tombstone：{dayMemoNormalDifferenceRecoveryPlan.result.counts.remote_only_tombstone}件</li>
                           <li>cursor / full pull最大sequence：{dayMemoNormalDifferenceRecoveryPlan.result.cursor ?? '確認不能'} / {dayMemoNormalDifferenceRecoveryPlan.result.fullPullMaxSequence ?? '確認不能'}（{dayMemoNormalDifferenceRecoveryPlan.result.cursorValid ? '一致' : '不一致'}）</li>
                         </> : null}
+                        {dayMemoRecoveryFinalization.result ? <>
+                          <li>最終同期確認：{dayMemoRecoveryFinalization.result.stage}</li>
+                          <li>差異：{dayMemoRecoveryFinalization.result.stage === 'confirmation_ready' ? 'なし' : '安全確認が必要'}</li>
+                          <li>未送信変更：{syncMetadata?.pendingOperation ? 'あり' : 'なし'}</li>
+                          <li>削除待ち：{syncMetadata ? Object.keys(syncMetadata.localDeleteIntents).length : '確認不能'}件</li>
+                          <li>同期先書き込み：なし</li>
+                        </> : null}
                       </ul>
                       <p>{recoveryNavigation.description}</p>
                       {recoveryNavigation.stage === 'normal_mismatch_difference_review' && dayMemoNormalDifferenceRecoveryPlan.result ? (
@@ -913,6 +929,7 @@ export function ThemeSettings({
                           disabled={!navigationCanExecute} onClick={runRecoveryNavigationAction}>{recoveryNavigation.title}</button>
                         {!navigationCanExecute && navigationDisabledReason ? <p className="cloud-sync-note">{navigationDisabledReason}</p> : null}
                       </>}
+                      {dayMemoRecoveryFinalization.safeErrorMessage ? <p className="cloud-pairing-error" role="alert">{dayMemoRecoveryFinalization.safeErrorMessage}</p> : null}
                       {dayMemoNormalMetadataRepair.safeErrorMessage ? <p className="cloud-pairing-error" role="alert">{dayMemoNormalMetadataRepair.safeErrorMessage}</p> : null}
                       {dayMemoNormalMetadataRepair.result && dayMemoNormalMetadataRepair.stage !== 'repaired' ? (
                         <button type="button" className="cloud-sync-button" disabled={dayMemoNormalMetadataRepair.running}

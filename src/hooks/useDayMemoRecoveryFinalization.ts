@@ -10,9 +10,9 @@ import { isUuid } from '../utils/syncConnectionStorage'
 import { classifyDayMemoNormalDifference } from './useDayMemoNormalDifferenceRecoveryPlan'
 import type { DayMemoSavedRecoveryStateResult } from './useDayMemoSavedRecoveryStateCheck'
 
-export type RecoveryFinalizationStage = 'idle' | 'confirmation_ready' | 'confirmed_saved' | 'normal_sync_ready' | 'blocked'
+export type RecoveryFinalizationStage = 'idle' | 'checking' | 'confirmation_ready' | 'confirmed_saved' | 'normal_sync_ready' | 'blocked' | 'failed'
 export interface RecoveryFinalizationResult { stage: RecoveryFinalizationStage; safety: string; checkedAt: string; baselineCount: number; cursor: number | null; normalSyncReady: boolean; persistentChanged: boolean }
-interface Snapshot { token: string; metadataRaw: string; localRaw: string; workspaceId: string; candidate: DayMemoSyncMetadataV5; consumed: boolean }
+interface Snapshot { metadataRaw: string; localRaw: string; workspaceId: string; candidate: DayMemoSyncMetadataV5; consumed: boolean }
 interface Input { dayMemos: DayMemo[]; isConfigured: boolean; isSignedIn: boolean; connection: SyncConnection | null; reactMetadata: DayMemoSyncMetadataV5 | null
   savedResult: DayMemoSavedRecoveryStateResult | null; adoptVerifiedMetadata: (metadata: DayMemoSyncMetadataV5) => void }
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
@@ -36,6 +36,7 @@ export function useDayMemoRecoveryFinalization(input: Input) {
       cursor: metadata?.lastPulledChangeSequence ?? null, normalSyncReady: ready, persistentChanged: changed })
   }
   const block = (safety: string) => { snapshotRef.current = null; finish('blocked', safety, null); setSafeErrorMessage('最終同期状態を安全に確認できないため停止しました。再確認してください。') }
+  const fail = (safety: string) => { snapshotRef.current = null; finish('failed', safety, null); setSafeErrorMessage('最終同期状態の確認に失敗しました。永続状態は変更していません。') }
   const loadFresh = () => { const metadata = loadDayMemoSyncMetadataAny(window.localStorage); const local = readDayMemoStorageSnapshot(window.localStorage)
     return metadata.status === 'ready' && isDayMemoSyncMetadataV5(metadata.metadata) && local.status === 'ready'
       ? { metadata: metadata.metadata, metadataRaw: metadata.raw, local: local.memos, localRaw: local.serialized } : null }
@@ -43,8 +44,9 @@ export function useDayMemoRecoveryFinalization(input: Input) {
     && input.isConfigured && input.isSignedIn && connectionEligible(input.connection))
 
   const check = useCallback(async () => {
-    if (!prerequisite || !connectionEligible(input.connection) || !supabaseClient || inFlightRef.current) return
-    inFlightRef.current = true; setRunning(true); setSafeErrorMessage(null); const run = ++runRef.current
+    if (inFlightRef.current) return
+    if (!prerequisite || !connectionEligible(input.connection) || !supabaseClient) { block('final_confirmation_start_prerequisite_invalid'); return }
+    inFlightRef.current = true; setRunning(true); setStage('checking'); setResult(null); setSafeErrorMessage(null); snapshotRef.current = null; const run = ++runRef.current
     try {
       const before = loadFresh(); if (!before || !input.reactMetadata || !same(before.metadata, input.reactMetadata) || localSignature(before.local) !== signature
         || before.metadata.workspaceId !== input.connection.workspaceId || before.metadata.baselineStatus !== 'recovery_required' || before.metadata.baselineConfirmedAt !== null
@@ -55,8 +57,10 @@ export function useDayMemoRecoveryFinalization(input: Input) {
       const confirmedAt = new Date().toISOString(); const candidate: DayMemoSyncMetadataV5 = { ...before.metadata, baselines: { ...before.metadata.baselines },
         lastPulledChangeSequence: pulled.maxChangeSequence, baselineStatus: 'confirmed', baselineConfirmedAt: confirmedAt, pendingOperation: null }
       if (!isDayMemoSyncMetadataV5(candidate)) { block('final_confirmation_candidate_invalid'); return }
-      snapshotRef.current = { token: crypto.randomUUID(), metadataRaw: before.metadataRaw, localRaw: before.localRaw, workspaceId: input.connection.workspaceId, candidate, consumed: false }
+      snapshotRef.current = { metadataRaw: before.metadataRaw, localRaw: before.localRaw, workspaceId: input.connection.workspaceId, candidate, consumed: false }
       finish('confirmation_ready', 'normal_difference_recovery_final_confirmation_ready', before.metadata)
+    } catch {
+      fail('final_confirmation_unexpected_failure')
     } finally { inFlightRef.current = false; setRunning(false) }
   }, [input.connection, input.reactMetadata, prerequisite, signature])
 
@@ -89,5 +93,5 @@ export function useDayMemoRecoveryFinalization(input: Input) {
     } finally { inFlightRef.current = false; setRunning(false) }
   }, [input.connection, input.reactMetadata, stage])
   const discard = useCallback(() => { if (running) return; runRef.current += 1; snapshotRef.current = null; setStage('idle'); setResult(null); setSafeErrorMessage(null) }, [running])
-  return { stage, result, running, safeErrorMessage, eligible: prerequisite && stage === 'idle', canSave: stage === 'confirmation_ready', canVerify: stage === 'confirmed_saved', check, save, verify, discard }
+  return { stage, result, running, safeErrorMessage, eligible: prerequisite && (stage === 'idle' || stage === 'blocked' || stage === 'failed'), canSave: stage === 'confirmation_ready', canVerify: stage === 'confirmed_saved', check, save, verify, discard }
 }
