@@ -46,6 +46,7 @@ import { useDayMemoBodyMismatchRecoveryPreflight } from './hooks/useDayMemoBodyM
 import { useDayMemoBodyMismatchRecoverySend } from './hooks/useDayMemoBodyMismatchRecoverySend'
 import { useDayMemoSavedOperationResultRead } from './hooks/useDayMemoSavedOperationResultRead'
 import { useDayMemoBodyMismatchRecoveryPostSendVerification } from './hooks/useDayMemoBodyMismatchRecoveryPostSendVerification'
+import { useDayMemoBodyMismatchRecoveryCheckpointSave } from './hooks/useDayMemoBodyMismatchRecoveryCheckpointSave'
 import { useDayMemoMetadataV4Migration } from './hooks/useDayMemoMetadataV4Migration'
 import { useDayMemoMetadataV5Migration } from './hooks/useDayMemoMetadataV5Migration'
 import { useDayMemoSyncMetadataMigration } from './hooks/useDayMemoSyncMetadataMigration'
@@ -254,6 +255,19 @@ function App() {
     consumeOperationResultSnapshot: dayMemoSavedOperationResultRead.consumeReadySnapshot,
     getOperationResultSnapshotToken: dayMemoSavedOperationResultRead.getCurrentSnapshotToken,
     inspectOperationResultSnapshotAvailability: dayMemoSavedOperationResultRead.inspectSnapshotAvailability,
+  })
+  const dayMemoBodyMismatchRecoveryCheckpointSave = useDayMemoBodyMismatchRecoveryCheckpointSave({
+    dayMemos,
+    isConfigured: supabaseAuth.isConfigured,
+    isSignedIn: supabaseAuth.isSignedIn,
+    authUserId: supabaseAuth.authUserId,
+    connection: supabaseWorkspace.connection,
+    reactMetadata: dayMemoSyncBaseline.metadata?.version === 5 ? dayMemoSyncBaseline.metadata : null,
+    getReadySnapshot: dayMemoBodyMismatchRecoveryPostSendVerification.getReadySnapshot,
+    consumeReadySnapshot: dayMemoBodyMismatchRecoveryPostSendVerification.consumeReadySnapshot,
+    inspectSnapshotAvailability: dayMemoBodyMismatchRecoveryPostSendVerification.inspectSnapshotAvailability,
+    discardVerificationResult: dayMemoBodyMismatchRecoveryPostSendVerification.discard,
+    adoptVerifiedMetadata: dayMemoSyncBaseline.adoptVerifiedMetadata,
   })
   const dayMemoBaselineRebase = useDayMemoBaselineRebase({
     dayMemos,
@@ -720,6 +734,7 @@ function App() {
           dayMemoBodyMismatchRecoverySend={dayMemoBodyMismatchRecoverySend}
           dayMemoSavedOperationResultRead={dayMemoSavedOperationResultRead}
           dayMemoBodyMismatchRecoveryPostSendVerification={dayMemoBodyMismatchRecoveryPostSendVerification}
+          dayMemoBodyMismatchRecoveryCheckpointSave={dayMemoBodyMismatchRecoveryCheckpointSave}
           dayMemoSyncBaseline={dayMemoSyncBaseline}
           dayMemoBaselineRebase={dayMemoBaselineRebase}
           dayMemoUpdatePreview={dayMemoUpdatePreview}

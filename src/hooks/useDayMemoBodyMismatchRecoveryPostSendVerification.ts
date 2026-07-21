@@ -198,6 +198,7 @@ export function useDayMemoBodyMismatchRecoveryPostSendVerification(input: Input)
   const [checking, setChecking] = useState(false)
   const [result, setResult] = useState<DayMemoBodyMismatchRecoveryPostSendResult | null>(null)
   const snapshotRef = useRef<DayMemoBodyMismatchRecoveryPostSendSnapshot | null>(null)
+  const consumedSnapshotTokenRef = useRef<string | null>(null)
   const inFlightRef = useRef(false)
   const runIdRef = useRef(0)
   const latestRef = useRef({ dayMemos, isConfigured, isSignedIn, authUserId, connection })
@@ -221,7 +222,7 @@ export function useDayMemoBodyMismatchRecoveryPostSendVerification(input: Input)
       nextAction: nextAction(safety), ...values,
     }
     setResult(next)
-    if (!next.snapshotCreated) snapshotRef.current = null
+    if (!next.snapshotCreated) { snapshotRef.current = null; consumedSnapshotTokenRef.current = null }
     return next
   }, [])
 
@@ -329,6 +330,7 @@ export function useDayMemoBodyMismatchRecoveryPostSendVerification(input: Input)
     }
     const runId = ++runIdRef.current
     inFlightRef.current = true; setChecking(true); setResult(null); snapshotRef.current = null
+    consumedSnapshotTokenRef.current = null
     try {
       const pulled = await pullAllDayMemoSyncRecords(supabaseClient, connection.workspaceId,
         () => runIdRef.current === runId).catch(() => null)
@@ -470,11 +472,13 @@ export function useDayMemoBodyMismatchRecoveryPostSendVerification(input: Input)
     isConfigured, isSignedIn])
 
   const discard = useCallback(() => {
-    runIdRef.current += 1; snapshotRef.current = null; setResult(null); setChecking(false)
+    runIdRef.current += 1; snapshotRef.current = null; consumedSnapshotTokenRef.current = null
+    setResult(null); setChecking(false)
   }, [])
   const getReadySnapshot = useCallback(() => {
     const current = snapshotRef.current
-    if (!current || getOperationResultSnapshotToken() !== current.operationResultSnapshotToken) return null
+    if (!current || consumedSnapshotTokenRef.current === current.snapshotToken
+      || getOperationResultSnapshotToken() !== current.operationResultSnapshotToken) return null
     const latest = latestRef.current
     const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
     const stored = readDayMemoStorageSnapshot(window.localStorage)
@@ -489,5 +493,17 @@ export function useDayMemoBodyMismatchRecoveryPostSendVerification(input: Input)
       || loaded.metadata.pushBlock !== null || Object.keys(loaded.metadata.localDeleteIntents).length > 0) return null
     return { ...current }
   }, [getOperationResultSnapshotToken])
-  return { eligible, checking, result, check, discard, getReadySnapshot }
+  const consumeReadySnapshot = useCallback((snapshotToken: string) => {
+    if (snapshotRef.current?.snapshotToken !== snapshotToken || consumedSnapshotTokenRef.current === snapshotToken) return false
+    consumedSnapshotTokenRef.current = snapshotToken
+    return true
+  }, [])
+  const inspectSnapshotAvailability = useCallback((): 'missing' | 'consumed' | 'stale' | 'ready' => {
+    const current = snapshotRef.current
+    if (!current) return 'missing'
+    if (consumedSnapshotTokenRef.current === current.snapshotToken) return 'consumed'
+    return getReadySnapshot() ? 'ready' : 'stale'
+  }, [getReadySnapshot])
+  return { eligible, checking, result, check, discard, getReadySnapshot,
+    consumeReadySnapshot, inspectSnapshotAvailability }
 }

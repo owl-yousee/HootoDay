@@ -31,6 +31,7 @@ import type { useDayMemoBodyMismatchRecoveryPreflight } from '../hooks/useDayMem
 import type { useDayMemoBodyMismatchRecoverySend } from '../hooks/useDayMemoBodyMismatchRecoverySend'
 import type { useDayMemoSavedOperationResultRead } from '../hooks/useDayMemoSavedOperationResultRead'
 import type { useDayMemoBodyMismatchRecoveryPostSendVerification } from '../hooks/useDayMemoBodyMismatchRecoveryPostSendVerification'
+import type { useDayMemoBodyMismatchRecoveryCheckpointSave } from '../hooks/useDayMemoBodyMismatchRecoveryCheckpointSave'
 import type { useDayMemoMetadataV4Migration } from '../hooks/useDayMemoMetadataV4Migration'
 import type { useDayMemoMetadataV5Migration } from '../hooks/useDayMemoMetadataV5Migration'
 import type { useDayMemoSyncMetadataMigration } from '../hooks/useDayMemoSyncMetadataMigration'
@@ -85,6 +86,7 @@ interface ThemeSettingsProps {
   dayMemoBodyMismatchRecoverySend: ReturnType<typeof useDayMemoBodyMismatchRecoverySend>
   dayMemoSavedOperationResultRead: ReturnType<typeof useDayMemoSavedOperationResultRead>
   dayMemoBodyMismatchRecoveryPostSendVerification: ReturnType<typeof useDayMemoBodyMismatchRecoveryPostSendVerification>
+  dayMemoBodyMismatchRecoveryCheckpointSave: ReturnType<typeof useDayMemoBodyMismatchRecoveryCheckpointSave>
   dayMemoSyncBaseline: ReturnType<typeof useDayMemoSyncBaseline>
   dayMemoBaselineRebase: ReturnType<typeof useDayMemoBaselineRebase>
   dayMemoUpdatePreview: ReturnType<typeof useDayMemoUpdatePreview>
@@ -278,6 +280,7 @@ export function ThemeSettings({
   dayMemoBodyMismatchRecoverySend,
   dayMemoSavedOperationResultRead,
   dayMemoBodyMismatchRecoveryPostSendVerification,
+  dayMemoBodyMismatchRecoveryCheckpointSave,
   dayMemoSyncBaseline,
   dayMemoBaselineRebase,
   dayMemoUpdatePreview,
@@ -1428,6 +1431,54 @@ export function ThemeSettings({
                           <button type="button" className="health-secondary-button cloud-sync-button"
                             disabled={dayMemoBodyMismatchRecoveryPostSendVerification.checking}
                             onClick={dayMemoBodyMismatchRecoveryPostSendVerification.discard}>確認結果を破棄</button>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {dayMemoBodyMismatchRecoveryCheckpointSave.canSave
+                    || dayMemoBodyMismatchRecoveryCheckpointSave.result ? (
+                    <div className="cloud-day-memo-baseline-panel" role="region"
+                      aria-labelledby="day-memo-recovery-checkpoint-save-heading">
+                      <h4 id="day-memo-recovery-checkpoint-save-heading">検証済みrecovery候補をmetadataへ保存</h4>
+                      <p>確認済みbaseline・cursor候補を保存し、対象recovery pendingを同じmetadata更新でクリアします。残る差異があるためrecovery_requiredは継続します。Supabase送信、full pull、自動再試行は行いません。</p>
+                      {dayMemoBodyMismatchRecoveryCheckpointSave.canSave ? (
+                        <button type="button" className="health-secondary-button cloud-sync-button"
+                          disabled={dayMemoBodyMismatchRecoveryCheckpointSave.saving}
+                          onClick={dayMemoBodyMismatchRecoveryCheckpointSave.save}>
+                          {dayMemoBodyMismatchRecoveryCheckpointSave.saving
+                            ? '検証済み候補を保存中…' : '検証済み候補をmetadataへ保存'}
+                        </button>
+                      ) : null}
+                      {dayMemoBodyMismatchRecoveryCheckpointSave.result ? (
+                        <div role="status">
+                          <p><strong>safety：{dayMemoBodyMismatchRecoveryCheckpointSave.result.safety}</strong></p>
+                          <ul className="cloud-day-memo-preview-summary">
+                            <li>対象日：{dayMemoBodyMismatchRecoveryCheckpointSave.result.date ?? '確認不能'}</li>
+                            <li>operation mode：{dayMemoBodyMismatchRecoveryCheckpointSave.result.operationMode ?? '確認不能'}</li>
+                            <li>verification snapshot：{dayMemoBodyMismatchRecoveryCheckpointSave.result.verificationSnapshotVerified ? '確認済み' : '未確認／無効'}</li>
+                            <li>candidate metadata：{dayMemoBodyMismatchRecoveryCheckpointSave.result.candidateMetadataVerified ? '確認済み' : '未確認／無効'}</li>
+                            <li>保存前metadata：{dayMemoBodyMismatchRecoveryCheckpointSave.result.sourceMetadataVerified ? '確認済み' : '未確認／変更あり'}</li>
+                            <li>baseline：{dayMemoBodyMismatchRecoveryCheckpointSave.result.beforeBaselineCount}件 → {dayMemoBodyMismatchRecoveryCheckpointSave.result.afterBaselineCount}件</li>
+                            <li>cursor：{dayMemoBodyMismatchRecoveryCheckpointSave.result.beforeCursor ?? '未確認'} → {dayMemoBodyMismatchRecoveryCheckpointSave.result.afterCursor ?? '未確認'}</li>
+                            <li>baselineStatus：{dayMemoBodyMismatchRecoveryCheckpointSave.result.baselineStatus ?? '未確認'}</li>
+                            <li>baselineConfirmedAt：null</li>
+                            <li>pending：{dayMemoBodyMismatchRecoveryCheckpointSave.result.pendingCleared ? 'クリア済み' : '変更なし'}</li>
+                            <li>metadata保存：{dayMemoBodyMismatchRecoveryCheckpointSave.result.metadataSave}</li>
+                            <li>read-back：{dayMemoBodyMismatchRecoveryCheckpointSave.result.readBack}</li>
+                            <li>rollback：{dayMemoBodyMismatchRecoveryCheckpointSave.result.rollback}</li>
+                            <li>DayMemo変更：なし</li><li>Supabase送信：なし</li><li>full pull：なし</li>
+                            <li>自動retry：なし</li>
+                            <li>残る未解決差異：{dayMemoBodyMismatchRecoveryCheckpointSave.result.unresolvedCount}件</li>
+                            {Object.entries(dayMemoBodyMismatchRecoveryCheckpointSave.result.unresolvedClassifications)
+                              .map(([date, classification]) => <li key={date}>{date}：{classification}</li>)}
+                            <li>通常同期ready：いいえ</li>
+                            <li>verification snapshot：{dayMemoBodyMismatchRecoveryCheckpointSave.result.verificationSnapshotDiscarded ? '破棄済み' : '未消費'}</li>
+                            <li>確認日時：{new Date(dayMemoBodyMismatchRecoveryCheckpointSave.result.checkedAt).toLocaleString('ja-JP')}</li>
+                          </ul>
+                          <p>{dayMemoBodyMismatchRecoveryCheckpointSave.result.nextAction}</p>
+                          <button type="button" className="health-secondary-button cloud-sync-button"
+                            disabled={dayMemoBodyMismatchRecoveryCheckpointSave.saving}
+                            onClick={dayMemoBodyMismatchRecoveryCheckpointSave.discard}>保存結果を破棄</button>
                         </div>
                       ) : null}
                     </div>

@@ -2546,3 +2546,12 @@ cleanup後VERIFY結果：
 - B-3f5e4d reads and validates the recovery checkpoint directly from metadata v5. It has no dependency on the normal checkpoint-check UI result. Snapshot availability, metadata, pending, checkpoint existence/validity/fingerprint, local freshness, and consume state are reported separately.
 - The operation-result snapshot remains available across ordinary rerenders and is consumed only after every local precondition and confirmation succeeds, immediately before the one permitted complete full pull. Explicit discard, a new read run, reload, consumption, or relevant persistent/auth/workspace/local changes invalidate it.
 - This correction performs no Supabase operation, full pull, mutation RPC, SQL, or persistent change. B-3f5e4d device verification must be repeated from the explicit B-3f5e4d0a read.
+## Phase B-3f5e4d1: atomically persist the verified recovery checkpoint
+
+- A valid, unconsumed B-3f5e4d post-send verification snapshot is required. After explicit confirmation, all local source state and the complete candidate metadata are revalidated without a pull or Supabase operation.
+- The validated active baseline candidate, complete-pull cursor candidate, `recovery_required` status, null confirmation time, and recovery pending removal are saved together as one metadata v5 candidate. No partial pending/baseline/cursor write is possible.
+- The candidate is compared with an exact reconstruction from current metadata so every unrelated field is preserved. Current metadata raw, canonical pending/checkpoint/baseline fingerprints, cursor, workspace/auth identity, local storage and React state, push block, and intents must remain unchanged.
+- The existing compare-and-write utility performs the metadata v5 validator, expected-raw check, one write, verified read-back, and verified rollback. An unrelated concurrent metadata change is never overwritten by rollback.
+- The verification snapshot is consumed only after confirmation, all local checks, and candidate validation, immediately before compare-and-write. Once writing begins, success or failure cannot reuse it.
+- React metadata is updated only after a complete matching read-back. Successful persistence clears only the target recovery pending, retains `recovery_required` and null confirmation time, and leaves the reconstructed unresolved differences for later one-by-one recovery.
+- This phase changes metadata only. It performs no DayMemo change, full pull, Supabase RPC/write, operation-ID generation, automatic retry, merge, repair, or transition to normal sync.
