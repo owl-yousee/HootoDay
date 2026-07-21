@@ -4,7 +4,7 @@ import type { SyncDifferencePresentationItem } from '../utils/syncDifferencePres
 interface Props {
   items: SyncDifferencePresentationItem[] | null
   stopReason?: string | null
-  onActionPrepared?: (selection: SyncDifferenceActionSelection) => void
+  onActionPrepared: (selection: SyncDifferenceActionSelection) => void
 }
 
 export type SyncDifferenceUiAction = {
@@ -87,7 +87,7 @@ export function DayMemoSyncDifferenceCards({ items, stopReason, onActionPrepared
                     className="health-secondary-button cloud-sync-button" aria-pressed={selectedAction?.id === action.id}
                     onClick={() => {
                       setSelectedAction(action)
-                      onActionPrepared?.({ date: item.date, classification: item.classification,
+                      onActionPrepared({ date: item.date, classification: item.classification,
                         action: action.id, currentTarget: `${item.date}:${item.classification}` })
                     }}>{action.label}</button>)}
                 </div>

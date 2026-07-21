@@ -5,7 +5,8 @@ import { XIcon } from '@phosphor-icons/react/X'
 import { useEffect, useRef, useState, type MouseEvent, type SyntheticEvent } from 'react'
 import { DayMemoBodyMismatchComparison } from './DayMemoBodyMismatchComparison'
 import { DayMemoSyncGuide } from './DayMemoSyncGuide'
-import { DayMemoSyncDifferenceCards } from './DayMemoSyncDifferenceCards'
+import { DayMemoSyncDifferenceCards, type SyncDifferenceActionSelection } from './DayMemoSyncDifferenceCards'
+import { DayMemoRemoteOnlyBlockedDetails } from './DayMemoRemoteOnlyBlockedDetails'
 import { CopyTextControl } from './CopyTextControl'
 import { buildSyncShareText } from '../utils/syncShareText'
 import { presentPullDifference, presentSyncDifference, withCurrentDifferenceAction } from '../utils/syncDifferencePresentation'
@@ -589,6 +590,7 @@ export function ThemeSettings({
   const pendingInternalCloseEventsRef = useRef(0)
   const [recoveryWorkOpen, setRecoveryWorkOpen] = useState(false)
   const [selectedMismatchDate, setSelectedMismatchDate] = useState('')
+  const [syncDifferencePreparation, setSyncDifferencePreparation] = useState<SyncDifferenceActionSelection | null>(null)
   const [normalSyncCheckUi, setNormalSyncCheckUi] = useState<NormalSyncCheckUiResult>(IDLE_NORMAL_SYNC_CHECK_UI)
   const normalSyncCheckStartedAtRef = useRef(0)
   const normalSyncCheckTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -910,6 +912,11 @@ export function ThemeSettings({
     : isRecoveryMetadata
     ? dayMemoSavedRecoveryStateCheck.result?.unresolvedCount ?? null
     : syncDifferenceItems?.length ?? normalDifferenceCount
+  const prepareSyncDifferenceAction = (selection: SyncDifferenceActionSelection) => {
+    if (selection.classification !== 'remote_only_active' || selection.action !== 'adopt_remote') return
+    setSyncDifferencePreparation(selection)
+    void dayMemoRecoveryRemoteOnlyAdoption.checkCandidate(selection.date)
+  }
   const syncDifferenceDetailLines = syncDifferenceItems === null
     ? ['差異一覧：未確認']
     : syncDifferenceItems.length === 0 ? ['差異一覧：なし']
@@ -1136,7 +1143,35 @@ export function ThemeSettings({
                           <li>同期先書き込み：なし</li>
                         </> : null}
                       </ul>
-                      <DayMemoSyncDifferenceCards items={syncDifferenceItems} stopReason={syncStopped ? syncStopReason : null} />
+                      <DayMemoSyncDifferenceCards items={syncDifferenceItems} stopReason={syncStopped ? syncStopReason : null}
+                        onActionPrepared={prepareSyncDifferenceAction} />
+                      {syncDifferencePreparation?.classification === 'remote_only_active'
+                        && syncDifferencePreparation.action === 'adopt_remote'
+                        && syncDifferenceItems?.some((item) => item.date === syncDifferencePreparation.date
+                          && item.classification === 'remote_only_active') ? (
+                          <div className="cloud-day-memo-preview-result" role="status" aria-live="polite">
+                            <h5>{dayMemoRecoveryRemoteOnlyAdoption.running ? 'remote-only反映準備を確認中'
+                              : dayMemoRecoveryRemoteOnlyAdoption.result?.date === syncDifferencePreparation.date
+                                && dayMemoRecoveryRemoteOnlyAdoption.stage === 'candidate_ready' ? 'remote-only反映準備確認完了'
+                                : dayMemoRecoveryRemoteOnlyAdoption.result?.date === syncDifferencePreparation.date
+                                  && (dayMemoRecoveryRemoteOnlyAdoption.stage === 'blocked'
+                                    || dayMemoRecoveryRemoteOnlyAdoption.stage === 'failed') ? 'remote-only反映準備不可'
+                                  : 'remote-only反映準備中'}</h5>
+                            <p>対象：{syncDifferencePreparation.date}</p>
+                            {dayMemoRecoveryRemoteOnlyAdoption.result?.date === syncDifferencePreparation.date
+                              && dayMemoRecoveryRemoteOnlyAdoption.stage === 'candidate_ready' ? (
+                                <p className="cloud-day-memo-success">実行可能状態です。次の操作：明示実行待ち</p>
+                              ) : dayMemoRecoveryRemoteOnlyAdoption.result?.date === syncDifferencePreparation.date
+                                && (dayMemoRecoveryRemoteOnlyAdoption.stage === 'blocked'
+                                  || dayMemoRecoveryRemoteOnlyAdoption.stage === 'failed') ? (
+                                  dayMemoRecoveryRemoteOnlyAdoption.result ? <DayMemoRemoteOnlyBlockedDetails
+                                    result={dayMemoRecoveryRemoteOnlyAdoption.result}
+                                    stopReason={dayMemoRecoveryRemoteOnlyAdoption.safeErrorMessage
+                                      ?? '現在の状態を安全に確認できませんでした。'} /> : null
+                                ) : <p className="cloud-sync-note">選択した1件のpreflightを確認しています。</p>}
+                            <p className="cloud-sync-note">adoption未実行／永続変更なし／自動retryなし</p>
+                          </div>
+                        ) : null}
                       <p>{recoveryNavigation.description}</p>
                       {recoveryNavigation.stage === 'normal_mismatch_difference_review' && dayMemoNormalDifferenceRecoveryPlan.result ? (
                         <>

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { CopyTextControl } from './CopyTextControl'
 import { DayMemoSyncDifferenceCards, type SyncDifferenceActionSelection } from './DayMemoSyncDifferenceCards'
+import { DayMemoRemoteOnlyBlockedDetails } from './DayMemoRemoteOnlyBlockedDetails'
 import { buildSyncShareText } from '../utils/syncShareText'
 import { presentSyncDifference, withCurrentDifferenceAction } from '../utils/syncDifferencePresentation'
 import type { DayMemoSyncMetadataV5 } from '../types/dayMemoSync'
@@ -86,6 +87,9 @@ export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, b
   const remoteCurrent = bodyRemoteAdoption.result?.date === activeDate
   const remoteBlocked = remoteCurrent && bodyRemoteAdoption.stage === 'blocked'
   const remoteOnlyCurrent = remoteOnly.result?.date === activeDate
+  const remoteOnlyPreparationCurrent = remoteOnlyPreparation?.date === activeDate
+    && remoteOnlyPreparation.classification === 'remote_only_active'
+    && remoteOnlyPreparation.action === 'adopt_remote'
   const remaining = remoteOnlyCurrent ? remoteOnly.result?.unresolvedCount ?? items.length
     : bodyRemoteAdoption.result?.remainingCount ?? saved.result?.unresolvedCount ?? items.length
   const localDiscardCurrent = localOnlyDiscard.result?.date === activeDate
@@ -155,6 +159,7 @@ export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, b
     if (selection.classification !== 'remote_only_active' || selection.action !== 'adopt_remote') return
     setSelectedDate(selection.date)
     setRemoteOnlyPreparation(selection)
+    void remoteOnly.checkCandidate(selection.date)
   }
 
   const startSavedStateCheck = () => {
@@ -216,17 +221,27 @@ export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, b
       <p className="sync-stage-id">stageId：<code>{guideStageId}</code></p>
       <DayMemoSyncDifferenceCards items={differenceItems} stopReason={guideState === '安全停止' ? currentProblem : null}
         onActionPrepared={prepareDifferenceAction} />
-      {remoteOnlyPreparation
-        && remoteOnlyPreparation.classification === 'remote_only_active'
-        && remoteOnlyPreparation.action === 'adopt_remote'
+      {remoteOnlyPreparationCurrent
+        && remoteOnlyPreparation
         && items.some(([date, classification]) => date === remoteOnlyPreparation.date && classification === 'remote_only_active')
         ? <div className="iphone-sync-guide-step" role="status" aria-live="polite">
-          <h5>remote-only反映準備中</h5>
+          <h5>{remoteOnly.running ? 'remote-only反映準備を確認中'
+            : remoteOnlyCurrent && remoteOnly.stage === 'candidate_ready' ? 'remote-only反映準備確認完了'
+              : remoteOnlyCurrent && (remoteOnly.stage === 'blocked' || remoteOnly.stage === 'failed') ? 'remote-only反映準備不可'
+                : 'remote-only反映準備中'}</h5>
           <p>対象：{remoteOnlyPreparation.date}</p>
           <p>分類：同期先にだけデータがあります</p>
-          <p className="cloud-sync-note">実行前確認が必要です。この段階ではpreflight、反映、保存、送信を実行していません。</p>
-          <p className="cloud-sync-note">preflight入口：{remoteOnly.candidateDates.includes(remoteOnlyPreparation.date) && remoteOnly.eligible
-            ? '準備可能' : '現在の保存状態を再確認してください'}</p>
+          {remoteOnlyCurrent && remoteOnly.stage === 'candidate_ready' ? <>
+            <p className="cloud-day-memo-success">実行可能状態です。</p>
+            <p className="cloud-sync-note">次の操作：明示実行待ち。このPhaseでは反映を実行しません。</p>
+          </> : remoteOnlyCurrent && (remoteOnly.stage === 'blocked' || remoteOnly.stage === 'failed') ? <>
+            {remoteOnly.result ? <DayMemoRemoteOnlyBlockedDetails result={remoteOnly.result}
+              stopReason={remoteOnlyMessages[remoteOnly.result.safety]
+                ?? remoteOnly.safeErrorMessage ?? '現在の状態を安全に確認できませんでした。'} /> : null}
+            <p className="cloud-sync-note">永続変更なし／自動retryなし</p>
+          </> : <>
+            <p className="cloud-sync-note">preflightを開始しています。この確認では反映、保存、送信を実行しません。</p>
+          </>}
         </div> : null}
 
       {!savedReady ? (
@@ -375,6 +390,10 @@ export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, b
               <button type="button" className="health-primary-button cloud-sync-button" onClick={() => {
                 remoteOnly.discard(); setSelectedDate(''); checkpoint.discard(); bodyCandidate.discard(); saved.discard(); void saved.check()
               }}>保存状態から再確認</button>
+            </> : remoteOnlyCurrent && remoteOnly.stage === 'candidate_ready' && remoteOnlyPreparationCurrent ? <>
+              <h5>反映前の安全確認が完了しました</h5>
+              <p>対象日：{activeDate}</p>
+              <p className="cloud-sync-note">明示実行待ちです。このPhaseではiPhoneへの反映を実行しません。</p>
             </> : remoteOnlyCurrent && remoteOnly.stage === 'candidate_ready' ? <>
               <h5>対象データだけ確認しました</h5>
               <p>対象日：{activeDate}</p>
@@ -401,6 +420,10 @@ export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, b
               <button type="button" className="health-primary-button cloud-sync-button" onClick={() => {
                 remoteOnly.discard(); setSelectedDate(''); checkpoint.discard(); bodyCandidate.discard(); saved.discard(); void saved.check()
               }}>次の差異を確認</button>
+            </> : remoteOnlyPreparationCurrent ? <>
+              <h5>remote-only反映の実行前確認</h5>
+              <p>対象日：{activeDate}</p>
+              <p className="cloud-sync-note">上の準備欄から、対象1件の安全確認を実行してください。</p>
             </> : <>
               <h5>同期先にだけデータがあります</h5>
               <p>対象日：{activeDate}</p>
