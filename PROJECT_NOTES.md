@@ -2738,3 +2738,12 @@ cleanup後VERIFY結果：
 - `blocked`、missing、stale、consumed、対象日不一致では採用handlerへ進めず、「保存状態から再確認」へ切り替える。この明示操作はremote-only result/snapshotを破棄してから現在差異をread-onlyで再構築する。
 - iPhone同期チェック側の保存状態確認も同じremote-only lifecycleを破棄する。対象1件のremote確認、local保存、read-back、rollback、反映後確認、metadata保存という既存順序は変更しない。
 - 他差異、`recovery_required`、remote writeなし、pending/operation IDなし、自動retry/confirmed化なしを維持する。
+
+## 2026-07-21 Phase B-3f5eUI2g remote-only candidate checkのno-op修正
+
+- B-3f5eUI2f後も、iPhone LAN HTTP環境で「対象データだけ確認」を押すと表示がidleのまま変化しない実機事象が残った。handlerとtarget date propsは接続済みだったが、candidate snapshot作成時に未使用の`crypto.randomUUID()`を呼んでいた。
+- iPhone SafariがPCのVite開発サーバーへHTTP接続する環境では`crypto.randomUUID`を利用できない場合がある。candidate checkは`catch`を持たず`finally`だけでrunningを解除していたため、例外時にresult/stageを保存せず無言でidleへ戻っていた。
+- 未使用snapshot tokenを削除した。これはoperation IDではなく永続化もされていなかったため、同期契約や保存形式への変更はない。candidate snapshotは対象日、workspace、metadata/local raw、remote、対象外分類、remote fingerprintを引き続き保持する。
+- candidate checkへ明示`failed` stageとcatchを追加し、開始条件不一致は`blocked` result、想定外例外は`failed` resultとして必ず保存する。checking中はボタンを無効化し、成功は`candidate_ready`、停止・失敗は日本語理由と「保存状態から再確認」を表示する。
+- target dateは現在のsaved-state result／同期チェックの選択中`remote_only_active`から動的に渡す。child/member eligibility、in-flight guard、対象外差異、snapshot鮮度、remote validatorは変更しない。
+- candidate確認では永続変更、Supabase write、pending、operation ID、自動retryを行わない。SQL/RPC/RLS/metadata形式も変更しない。

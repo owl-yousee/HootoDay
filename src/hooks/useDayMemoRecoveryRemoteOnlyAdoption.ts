@@ -11,12 +11,12 @@ import { isUuid } from '../utils/syncConnectionStorage'
 import { classifyDayMemoNormalDifference, type DayMemoNormalDifferenceClassification } from './useDayMemoNormalDifferenceRecoveryPlan'
 import type { DayMemoSavedRecoveryStateResult } from './useDayMemoSavedRecoveryStateCheck'
 
-export type RecoveryRemoteOnlyStage = 'idle' | 'candidate_ready' | 'local_saved' | 'post_adoption_ready' | 'metadata_saved' | 'blocked'
+export type RecoveryRemoteOnlyStage = 'idle' | 'candidate_ready' | 'local_saved' | 'post_adoption_ready' | 'metadata_saved' | 'blocked' | 'failed'
 export interface RecoveryRemoteOnlyResult { stage: RecoveryRemoteOnlyStage; date: string | null; safety: string; checkedAt: string
   unresolvedCount: number; persistentChanged: boolean; localState: 'unchanged' | 'saved' | 'rolled_back' | 'uncertain' }
 
 interface Snapshot {
-  token: string; date: string; workspaceId: string; metadataRaw: string; localRaw: string
+  date: string; workspaceId: string; metadataRaw: string; localRaw: string
   remote: RemoteDayMemoRecord & { payload: DayMemo }; candidateLocal: DayMemo[]
   candidateMetadata: DayMemoSyncMetadataV5 | null; outsideClassifications: Record<string, DayMemoNormalDifferenceClassification>
   remoteFingerprint: string; unresolvedCount: number; consumed: boolean
@@ -51,7 +51,8 @@ export function useDayMemoRecoveryRemoteOnlyAdoption(input: Input) {
   const candidateDates = useMemo(() => input.savedResult?.safety === 'normal_difference_checkpoint_saved_state_ready'
     ? Object.entries(input.savedResult.unresolvedClassifications).filter(([, value]) => value === 'remote_only_active').map(([date]) => date)
     : [], [input.savedResult])
-  const eligible = Boolean(input.isConfigured && input.isSignedIn && eligibleConnection(input.connection) && candidateDates.length && stage === 'idle')
+  const eligible = Boolean(input.isConfigured && input.isSignedIn && supabaseClient
+    && eligibleConnection(input.connection) && candidateDates.length && stage === 'idle')
   const finish = (nextStage: RecoveryRemoteOnlyStage, safety: string, date: string | null, unresolvedCount = 0,
     persistentChanged = false, localState: RecoveryRemoteOnlyResult['localState'] = 'unchanged') => {
     setStage(nextStage); setResult({ stage: nextStage, date, safety, checkedAt: new Date().toISOString(), unresolvedCount, persistentChanged, localState })
@@ -60,6 +61,11 @@ export function useDayMemoRecoveryRemoteOnlyAdoption(input: Input) {
     snapshotRef.current = null; finish('blocked', safety, date, 0, localState === 'saved' || localState === 'uncertain', localState)
     setSafeErrorMessage('同期状態が変化したため、安全側で停止しました。再確認してください。')
   }
+  const fail = (safety: string, date: string | null) => {
+    snapshotRef.current = null
+    finish('failed', safety, date)
+    setSafeErrorMessage('対象データの確認に失敗しました。永続状態は変更していません。保存状態から再確認してください。')
+  }
   const loadFresh = () => {
     const metadata = loadDayMemoSyncMetadataAny(window.localStorage); const local = readDayMemoStorageSnapshot(window.localStorage)
     if (metadata.status !== 'ready' || !isDayMemoSyncMetadataV5(metadata.metadata) || local.status !== 'ready') return null
@@ -67,7 +73,10 @@ export function useDayMemoRecoveryRemoteOnlyAdoption(input: Input) {
   }
 
   const checkCandidate = useCallback(async (targetDate: string) => {
-    if (!eligible || !candidateDates.includes(targetDate) || !eligibleConnection(input.connection) || !supabaseClient || inFlightRef.current) return
+    if (inFlightRef.current) return
+    if (!eligible || !candidateDates.includes(targetDate) || !eligibleConnection(input.connection) || !supabaseClient) {
+      block('remote_only_candidate_start_prerequisite_invalid', targetDate); return
+    }
     inFlightRef.current = true; setRunning(true); setSafeErrorMessage(null); const run = ++runRef.current
     try {
       const before = loadFresh(); if (!before || !input.reactMetadata || !same(before.metadata, input.reactMetadata)
@@ -87,10 +96,12 @@ export function useDayMemoRecoveryRemoteOnlyAdoption(input: Input) {
         || !same(unresolved, input.savedResult?.unresolvedClassifications)) { block('remote_only_candidate_other_difference_changed', targetDate); return }
       const outsideClassifications = Object.fromEntries(Object.entries(unresolved).filter(([date]) => date !== targetDate))
       const candidateLocal = [...before.local, { ...remote.payload }].sort((a, b) => a.date.localeCompare(b.date))
-      snapshotRef.current = { token: crypto.randomUUID(), date: targetDate, workspaceId: input.connection.workspaceId, metadataRaw: before.metadataRaw,
+      snapshotRef.current = { date: targetDate, workspaceId: input.connection.workspaceId, metadataRaw: before.metadataRaw,
         localRaw: before.localRaw, remote: { ...remote, payload: { ...remote.payload } }, candidateLocal, candidateMetadata: null,
         outsideClassifications, remoteFingerprint: remoteFingerprint(pulled.records), unresolvedCount: Object.keys(unresolved).length, consumed: false }
       finish('candidate_ready', 'remote_only_active_candidate_ready', targetDate, Object.keys(unresolved).length)
+    } catch {
+      fail('remote_only_candidate_unexpected_failure', targetDate)
     } finally { inFlightRef.current = false; setRunning(false) }
   }, [candidateDates, currentSignature, eligible, input.connection, input.reactMetadata, input.savedResult])
 

@@ -249,9 +249,11 @@ function deriveSyncRecoveryNavigation(input: {
       title: '同期metadataの確認が必要です', description: '正式なmetadataがconfirmedまたはrecovery_requiredではないため、通常同期と復旧のどちらにも進みません。',
       writesRemote: false, changesPersistentState: false, disabledReason: '同期metadataを安全に確認してください。' }
   }
-  if (input.remoteOnlyStage === 'blocked') {
+  if (input.remoteOnlyStage === 'blocked' || input.remoteOnlyStage === 'failed') {
     return { stage: 'saved_state_check', targetDate: input.remoteOnlyTargetDate, classification: 'remote_only_active',
-      title: '保存状態から再確認', description: 'remote-only候補の前提条件が変化したため、候補を破棄して現在差異をread-onlyで再構築します。',
+      title: '保存状態から再確認', description: input.remoteOnlyStage === 'failed'
+        ? 'remote-only候補の確認に失敗しました。永続状態を変更せず、現在差異をread-onlyで再構築します。'
+        : 'remote-only候補の前提条件が変化したため、候補を破棄して現在差異をread-onlyで再構築します。',
       writesRemote: false, changesPersistentState: false, disabledReason: null }
   }
   if (pending?.status === 'prepared') {

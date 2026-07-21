@@ -56,6 +56,16 @@ const remoteAdoptionMessages: Record<string, string> = {
   body_mismatch_remote_unexpected_failure: '反映処理を完了できませんでした。保存状態から再確認してください。',
 }
 
+const remoteOnlyMessages: Record<string, string> = {
+  remote_only_candidate_start_prerequisite_invalid: '現在の対象日または開始条件を確認できませんでした。',
+  remote_only_candidate_prerequisite_changed: '保存状態、workspace、または対象日の状態が変化しました。',
+  remote_only_candidate_pull_or_state_invalid: '同期先の完全な確認結果または現在の保存状態を確認できませんでした。',
+  remote_only_candidate_tombstone: '対象日は同期先で削除済みになっています。',
+  remote_only_candidate_invalid_remote: '対象日の同期先データをactive recordとして検証できませんでした。',
+  remote_only_candidate_other_difference_changed: '対象外を含む未解決差異が確認時点から変化しました。',
+  remote_only_candidate_unexpected_failure: '対象データの確認中に処理を完了できませんでした。',
+}
+
 export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, bodyLocalPreparation,
   bodyRemoteAdoption, localOnly, localOnlyDiscard, remoteOnly }: Props) {
   const [selectedDate, setSelectedDate] = useState('')
@@ -94,8 +104,9 @@ export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, b
                       : !candidateCurrent ? 'local／remote比較と候補選択'
                         : bodyCandidate.result?.candidate === 'local' ? 'local候補の送信準備'
                           : 'remote候補の明示反映'
-  const currentProblem = remoteOnlyCurrent && remoteOnly.stage === 'blocked'
-    ? remoteOnly.safeErrorMessage ?? '対象データの反映を安全に完了できませんでした。'
+  const currentProblem = remoteOnlyCurrent && (remoteOnly.stage === 'blocked' || remoteOnly.stage === 'failed')
+    ? remoteOnlyMessages[remoteOnly.result?.safety ?? '']
+      ?? remoteOnly.safeErrorMessage ?? '対象データの確認を安全に完了できませんでした。'
     : localDiscardCurrent && localOnlyDiscard.result
     ? localOnlyDiscard.result.safety === 'recovery_local_only_discarded'
       ? 'このiPhoneだけにあったデータを削除しました。同期先は変更していません。'
@@ -112,7 +123,7 @@ export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, b
       : remoteOnly.stage === 'local_saved' ? '反映後の状態を確認'
         : remoteOnly.stage === 'post_adoption_ready' ? '確認済み同期情報を保存'
           : remoteOnly.stage === 'metadata_saved' ? '次の差異を確認'
-            : remoteOnly.stage === 'blocked' ? '保存状態から再確認' : '対象データだけ確認'
+            : remoteOnly.stage === 'blocked' || remoteOnly.stage === 'failed' ? '保存状態から再確認' : '対象データだけ確認'
     : localDiscardCurrent ? '保存状態を再確認'
     : !savedReady ? '保存状態を読み取り専用で確認'
     : !activeDate ? '最終同期確認'
@@ -314,9 +325,10 @@ export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, b
                 onClick={() => chooseDate(Math.min(index + 1, items.length - 1))}>保留</button>
             </>}
           </> : activeClassification === 'remote_only_active' ? <>
-            {remoteOnlyCurrent && remoteOnly.stage === 'blocked' ? <>
-              <h5>反映を安全に完了できませんでした</h5>
-              <p>{remoteOnly.safeErrorMessage ?? '保存状態が変化したため停止しました。'}</p>
+            {remoteOnlyCurrent && (remoteOnly.stage === 'blocked' || remoteOnly.stage === 'failed') ? <>
+              <h5>{remoteOnly.stage === 'failed' ? '確認に失敗しました' : '安全停止'}</h5>
+              <p>{remoteOnlyMessages[remoteOnly.result?.safety ?? '']
+                ?? remoteOnly.safeErrorMessage ?? '保存状態が変化したため停止しました。'}</p>
               <ul className="cloud-day-memo-preview-summary">
                 <li>対象日：{remoteOnly.result?.date ?? activeDate}</li>
                 <li>iPhoneのデータ：{remoteOnly.result?.localState === 'rolled_back' ? '元の状態へ復元済み'

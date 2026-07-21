@@ -1958,3 +1958,11 @@ The remote-only candidate snapshot remains Hook-owned React memory. Its availabi
 The integrated navigation must not interpret `blocked` as a new `remote_only_check`. A blocked result, missing/consumed/stale snapshot, target mismatch, or stage/result mismatch routes to an explicit saved-state recheck. That action first clears the remote-only Hook result and in-memory snapshot, then rebuilds current unresolved differences read-only. A valid ready snapshot routes to the matching adopt, post-adoption check, or metadata-save handler without creating a second candidate.
 
 This lifecycle adapter does not relax the target or freshness validators. Workspace, metadata/local raw values, target date, remote/full-pull fingerprint, outside classifications, remote active state, local absence, backup, verified read-back, rollback, and metadata compare-and-write remain mandatory at their existing stages. Other differences and `recovery_required` remain; there is no remote write, pending/operation ID, automatic retry, or automatic confirmed restoration.
+
+## B-3f5eUI2g — candidate check observable outcome contract
+
+The explicit remote-only candidate check must always produce an observable state after a user click: `checking`, `candidate_ready`, `blocked`, or `failed`. It must never clear `running` in `finally` and return to `idle` without a result.
+
+The prior snapshot constructor called `crypto.randomUUID()` for an unused in-memory token. On iPhone Safari accessing a LAN HTTP development server, that API may be unavailable. The resulting exception bypassed all result writes because the check had no catch; `finally` then restored `running=false`, creating a visible no-op. The unused token is removed. It was not an operation ID, was never persisted or displayed, and was not part of snapshot freshness.
+
+Candidate checking now catches unexpected failures into a `failed` result and converts an invalid start target/prerequisite into a `blocked` result. The UI maps candidate safety classifications to safe Japanese messages and routes both outcomes to an explicit saved-state recheck. A valid result remains `candidate_ready` and exposes the existing one-item local adoption action. In-flight guard prevents duplicate/parallel checks; there is no automatic retry, persistence, remote write, operation ID, pending state, RPC/SQL/RLS, or format change.
