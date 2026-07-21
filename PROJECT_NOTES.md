@@ -2754,3 +2754,10 @@ cleanup後VERIFY結果：
 - AppからThemeSettingsまでの既存finalization Hook接続を維持し、統合UIは実行中、ready、安全停止、失敗を表示する。ready後だけ別の明示操作「同期状態を確認済みにする」へ進む。
 - 最終確認段階はread-onlyであり、metadata、DayMemo、pending、intent、baseline、cursorを変更せず、remote write、自動retry、自動confirmed化を行わない。child/memberとownerの既存eligibility、full pull、validator、保存時read-back／rollbackは変更していない。
 - SQL、RPC、RLS、metadata v5形式、DayMemo・pending・checkpointの保存形式に変更はない。
+## B-3f5eUI2i confirmed readiness refresh
+
+- iPhone child/memberでrecovery finalizationのconfirmed保存とread-backが成功し、metadata v5、baseline 10件、cursor 20、安全状態normalになった後も、通常同期readyが「いいえ」、更新previewの「同期baselineを確認してください」、通常差異のblocked表示が残った。
+- 原因はbaseline自体の自動修復を要する不整合ではなくstate lifecycleである。通常更新previewはconnection・local DayMemoだけをeffect依存にしていたため、metadataだけがrecovery_requiredからconfirmedへ変化しても古いbaseline_not_confirmed resultを破棄しなかった。また統合stageはconfirmed分岐をfinalizationのconfirmed_savedより先に評価し、既存の明示的な保存後ready確認へ到達できなかった。
+- confirmed metadataのReact state変更時に通常update/pull previewを未確認状態へ戻し、古いresult、summary、errorを破棄する。confirmed_savedとnormal_sync_readyは通常同期分岐より先にrouteし、保存後の明示full pull確認を可能にする。
+- 通常pullでcursorが一致し、same件数がbaseline件数と一致し、local-only、remote-only、body difference、active/tombstone不整合がすべて0件の場合は正常な差異なしとして扱う。local-only 1件専用blocked文言へ誤配置しない。
+- baseline、metadata、DayMemo、pending、intent、cursorを自動変更せず、remote write、自動送信、自動pull、自動retryを追加しない。SQL、RPC、RLS、metadata v5・baseline・checkpoint等の保存形式に変更はない。

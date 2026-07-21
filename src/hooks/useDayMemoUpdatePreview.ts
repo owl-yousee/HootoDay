@@ -71,6 +71,7 @@ interface UseDayMemoUpdatePreviewInput {
   isConfigured: boolean
   isSignedIn: boolean
   connection: SyncConnection | null
+  reactMetadata: DayMemoSyncMetadataV5 | null
 }
 
 const ISO_DATE_TIME_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?(Z|[+-]\d{2}:\d{2})$/
@@ -174,7 +175,7 @@ function messageForState(state: DayMemoUpdatePreviewState): string | null {
   }
 }
 
-export function useDayMemoUpdatePreview({ dayMemos, isConfigured, isSignedIn, connection }: UseDayMemoUpdatePreviewInput) {
+export function useDayMemoUpdatePreview({ dayMemos, isConfigured, isSignedIn, connection, reactMetadata }: UseDayMemoUpdatePreviewInput) {
   const [previewState, setPreviewState] = useState<DayMemoUpdatePreviewState>('unavailable')
   const [items, setItems] = useState<DayMemoUpdatePreviewItem[]>([])
   const [summary, setSummary] = useState<DayMemoUpdatePreviewSummary | null>(null)
@@ -228,7 +229,7 @@ export function useDayMemoUpdatePreview({ dayMemos, isConfigured, isSignedIn, co
       return
     }
     setPreviewState('idle')
-  }, [connection?.workspaceId, currentLocalSignature, eligible])
+  }, [connection?.workspaceId, currentLocalSignature, eligible, reactMetadata])
 
   const checkForUpdates = useCallback(() => {
     if (!eligible || !connection?.workspaceId || previewState === 'checking') return

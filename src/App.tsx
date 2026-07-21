@@ -347,6 +347,7 @@ function App() {
     isConfigured: supabaseAuth.isConfigured,
     isSignedIn: supabaseAuth.isSignedIn,
     connection: supabaseWorkspace.connection,
+    reactMetadata: dayMemoSyncBaseline.metadata?.version === 5 ? dayMemoSyncBaseline.metadata : null,
   })
   const dayMemoLocalOnlyPreview = useDayMemoLocalOnlyPreview({
     dayMemos,

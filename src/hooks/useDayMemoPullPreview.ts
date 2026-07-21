@@ -214,7 +214,7 @@ export function useDayMemoPullPreview({
     setApplyState('idle')
     setApplyResult(null)
     setPreviewState(pullReady ? 'idle' : 'unavailable')
-  }, [connection?.workspaceId, pullReady])
+  }, [connection?.workspaceId, pullReady, reactMetadata])
 
   useEffect(() => {
     if (previewLocalSignature.current !== null && previewLocalSignature.current !== currentLocalSignature) {

@@ -191,6 +191,12 @@ function deriveSyncRecoveryNavigation(input: {
       title: '同期状態の確認が必要です', description: '不明または競合状態のため、送信せず詳細・診断を確認してください。',
       writesRemote: false, changesPersistentState: false, disabledReason: '安全確認が完了するまで操作できません。' }
   }
+  if (input.finalizationStage === 'confirmed_saved') return { stage: 'final_ready_check', targetDate: null, classification: '最終確認',
+    title: '通常同期readyを確認', description: 'confirmed保存後の全件一致を明示full pullで確認します。',
+    writesRemote: false, changesPersistentState: false, disabledReason: null }
+  if (input.finalizationStage === 'normal_sync_ready') return { stage: 'complete', targetDate: null, classification: '最終確認',
+    title: '復旧作業は完了しました', description: '全件一致と通常同期readyを確認しました。',
+    writesRemote: false, changesPersistentState: false, disabledReason: null }
   if (input.metadataBaselineStatus === 'confirmed' && input.metadataBaselineConfirmed) {
     if (input.normalLocalOnlyUpload === 'preflight_ready') return { stage: 'normal_local_only_prepare', targetDate: input.normalLocalOnlyDate, classification: 'local_only',
       title: '新規uploadを準備', description: '確認済みの1件に通常operationを準備します。', writesRemote: false, changesPersistentState: true, disabledReason: null }
@@ -206,6 +212,15 @@ function deriveSyncRecoveryNavigation(input: {
     if (input.normalPullState !== 'preview_ready' || !pull || pull.maxChangeSequence !== input.metadataCursor) {
       return { stage: 'normal_state_check', targetDate: null, classification: null, title: '通常同期状態を確認',
         description: '保存済みconfirmed metadataを維持したまま、localと同期先の現在差異をread-onlyで確認します。',
+        writesRemote: false, changesPersistentState: false, disabledReason: null }
+    }
+    const noDifference = pull.localOnlyCount === 0
+      && pull.remoteOnlyCount === 0 && pull.differentCount === 0
+      && pull.remoteTombstoneCount === 0 && pull.remoteTombstoneLocalExistsCount === 0
+      && pull.remoteTombstoneLocalMissingCount === 0 && pull.sameCount === input.baselineCount
+    if (noDifference) {
+      return { stage: 'complete', targetDate: null, classification: null, title: '通常同期状態を確認済みです',
+        description: 'confirmed metadata、local、同期先、baseline、cursorの一致を確認しました。',
         writesRemote: false, changesPersistentState: false, disabledReason: null }
     }
     const onlyOneLocalOnly = pull.localOnlyCount === 1
@@ -293,10 +308,6 @@ function deriveSyncRecoveryNavigation(input: {
     if (input.finalizationStage === 'confirmation_ready') return { stage: 'confirmed_save', targetDate: null, classification: '最終確認',
       title: '同期状態を確認済みにする', description: '最終同期状態を確認しました。次の明示操作でbaseline、cursor、status、confirmedAtをmetadataへ原子的に保存します。',
       writesRemote: false, changesPersistentState: true, disabledReason: null }
-    if (input.finalizationStage === 'confirmed_saved') return { stage: 'final_ready_check', targetDate: null, classification: '最終確認',
-      title: '通常同期readyを確認', description: '保存後の全件一致を明示full pullで確認します。', writesRemote: false, changesPersistentState: false, disabledReason: null }
-    if (input.finalizationStage === 'normal_sync_ready') return { stage: 'complete', targetDate: null, classification: '最終確認',
-      title: '復旧作業は完了しました', description: '全件一致と通常同期readyを確認しました。', writesRemote: false, changesPersistentState: false, disabledReason: null }
     if (input.finalizationStage === 'blocked') return { stage: 'final_confirmation', targetDate: null, classification: '最終確認',
       title: '保存状態から再確認', description: '安全確認を完了できません。永続状態と同期先は変更していません。',
       writesRemote: false, changesPersistentState: false, disabledReason: null }
@@ -619,6 +630,19 @@ export function ThemeSettings({
     ? storedSyncMetadata.metadata : null
   const isRecoveryMetadata = syncMetadata?.baselineStatus === 'recovery_required'
   const isConfirmedMetadata = syncMetadata?.baselineStatus === 'confirmed' && syncMetadata.baselineConfirmedAt !== null
+  const normalPullSummary = dayMemoPullPreview.summary
+  const normalPullReady = Boolean(isConfirmedMetadata
+    && dayMemoPullPreview.previewState === 'preview_ready'
+    && normalPullSummary
+    && normalPullSummary.maxChangeSequence === syncMetadata?.lastPulledChangeSequence
+    && normalPullSummary.sameCount === Object.keys(syncMetadata?.baselines ?? {}).length
+    && normalPullSummary.localOnlyCount === 0
+    && normalPullSummary.remoteOnlyCount === 0
+    && normalPullSummary.differentCount === 0
+    && normalPullSummary.remoteTombstoneCount === 0
+    && normalPullSummary.remoteTombstoneLocalExistsCount === 0
+    && normalPullSummary.remoteTombstoneLocalMissingCount === 0)
+  const normalSyncReady = dayMemoRecoveryFinalization.result?.normalSyncReady === true || normalPullReady
   const operationSnapshotAvailability = dayMemoSavedOperationResultRead.inspectSnapshotAvailability()
   const postSendSnapshotAvailability = dayMemoBodyMismatchRecoveryPostSendVerification.inspectSnapshotAvailability()
   const checkpointSavedAt = dayMemoBodyMismatchRecoveryCheckpointSave.result?.succeeded
@@ -862,7 +886,7 @@ export function ThemeSettings({
                       <li>pending：{syncMetadata?.pendingOperation ? `${syncMetadata.pendingOperation.kind} / ${syncMetadata.pendingOperation.status}` : 'なし'}</li>
                       <li>metadata baselineStatus：{syncMetadata?.baselineStatus ?? '確認不能'}</li>
                       <li>現在のbaseline比較：{dayMemoSyncBaseline.baselineState}</li>
-                      <li>通常同期ready：{isConfirmedMetadata && recoveryNavigation.stage !== 'blocked' ? '差異確定前はいいえ' : dayMemoSavedRecoveryStateCheck.result?.normalSyncReady ? 'はい' : 'いいえ'}</li>
+                      <li>通常同期ready：{normalSyncReady ? 'はい' : isConfirmedMetadata ? '未確認' : 'いいえ'}</li>
                       <li>未解決差異：{isRecoveryMetadata ? `${dayMemoSavedRecoveryStateCheck.result?.unresolvedCount ?? '未確認'}件` : '通常同期確認で分類'}</li>
                       <li>次の対象：{recoveryNavigation.targetDate
                         ? `${recoveryNavigation.targetDate} ${recoveryNavigation.classification ?? ''}` : '未確認／なし'}</li>
