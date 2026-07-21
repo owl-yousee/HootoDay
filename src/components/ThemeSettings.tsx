@@ -4,6 +4,7 @@ import { SunIcon } from '@phosphor-icons/react/Sun'
 import { XIcon } from '@phosphor-icons/react/X'
 import { useEffect, useRef, useState, type MouseEvent, type SyntheticEvent } from 'react'
 import { DayMemoBodyMismatchComparison } from './DayMemoBodyMismatchComparison'
+import { DayMemoSyncGuide } from './DayMemoSyncGuide'
 import type { SupabaseAuthState, SupabaseConfigurationState } from '../hooks/useSupabaseAuth'
 import type { useDayMemoInitialUpload } from '../hooks/useDayMemoInitialUpload'
 import type { useDayMemoLocalOnlyPreview } from '../hooks/useDayMemoLocalOnlyPreview'
@@ -27,6 +28,7 @@ import type { useDayMemoNormalDifferenceRecoveryCheckpointCheck } from '../hooks
 import type { useDayMemoNormalDifferenceRecoveryCheckpointSave } from '../hooks/useDayMemoNormalDifferenceRecoveryCheckpointSave'
 import type { useDayMemoNormalBodyMismatchCandidate } from '../hooks/useDayMemoNormalBodyMismatchCandidate'
 import type { useDayMemoNormalBodyMismatchLocalPreparation } from '../hooks/useDayMemoNormalBodyMismatchLocalPreparation'
+import type { useDayMemoBodyMismatchRemoteAdoption } from '../hooks/useDayMemoBodyMismatchRemoteAdoption'
 import type { useDayMemoBodyMismatchRecoveryPreflight } from '../hooks/useDayMemoBodyMismatchRecoveryPreflight'
 import type { useDayMemoBodyMismatchRecoverySend } from '../hooks/useDayMemoBodyMismatchRecoverySend'
 import type { useDayMemoSavedOperationResultRead } from '../hooks/useDayMemoSavedOperationResultRead'
@@ -88,6 +90,7 @@ interface ThemeSettingsProps {
   dayMemoNormalDifferenceRecoveryCheckpointSave: ReturnType<typeof useDayMemoNormalDifferenceRecoveryCheckpointSave>
   dayMemoNormalBodyMismatchCandidate: ReturnType<typeof useDayMemoNormalBodyMismatchCandidate>
   dayMemoNormalBodyMismatchLocalPreparation: ReturnType<typeof useDayMemoNormalBodyMismatchLocalPreparation>
+  dayMemoBodyMismatchRemoteAdoption: ReturnType<typeof useDayMemoBodyMismatchRemoteAdoption>
   dayMemoBodyMismatchRecoveryPreflight: ReturnType<typeof useDayMemoBodyMismatchRecoveryPreflight>
   dayMemoBodyMismatchRecoverySend: ReturnType<typeof useDayMemoBodyMismatchRecoverySend>
   dayMemoSavedOperationResultRead: ReturnType<typeof useDayMemoSavedOperationResultRead>
@@ -468,6 +471,7 @@ export function ThemeSettings({
   dayMemoNormalDifferenceRecoveryCheckpointSave,
   dayMemoNormalBodyMismatchCandidate,
   dayMemoNormalBodyMismatchLocalPreparation,
+  dayMemoBodyMismatchRemoteAdoption,
   dayMemoBodyMismatchRecoveryPreflight,
   dayMemoBodyMismatchRecoverySend,
   dayMemoSavedOperationResultRead,
@@ -797,6 +801,18 @@ export function ThemeSettings({
             <div className="cloud-workspace-panel">
               {supabaseWorkspace.workspaceState === 'created' ? (
                 <>
+                  {syncMetadata?.baselineStatus === 'recovery_required'
+                    && supabaseWorkspace.connection?.deviceRole === 'child'
+                    && supabaseWorkspace.connection.workspaceRole === 'member' ? (
+                    <DayMemoSyncGuide metadata={syncMetadata}
+                      saved={dayMemoSavedRecoveryStateCheck}
+                      checkpoint={dayMemoNormalDifferenceRecoveryCheckpointCheck}
+                      bodyCandidate={dayMemoNormalBodyMismatchCandidate}
+                      bodyLocalPreparation={dayMemoNormalBodyMismatchLocalPreparation}
+                      bodyRemoteAdoption={dayMemoBodyMismatchRemoteAdoption}
+                      localOnly={dayMemoRecoveryLocalOnlyPreparation}
+                      remoteOnly={dayMemoRecoveryRemoteOnlyAdoption} />
+                  ) : null}
                   <div className={`cloud-day-memo-safety-panel is-${dayMemoSyncSafety.state}`} role={dayMemoSyncSafety.state === 'normal' ? 'status' : 'alert'}>
                     <h4>同期状態</h4>
                     <p><strong>{isConfirmedMetadata

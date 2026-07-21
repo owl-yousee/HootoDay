@@ -2673,3 +2673,13 @@ cleanup後VERIFY結果：
 - 保存は別の明示操作で行い、mismatch確認済みsnapshotを使うため追加pullは行わない。保存直前にmetadata、DayMemo、workspace、pending、intent、pushBlockと候補validatorを再確認する。
 - 既存compare-and-write、完全read-back、条件付きverified rollbackを再利用する。保存後は既存の保存済みrecovery状態確認へ進み、差異を1件ずつ処理する。
 - remote採用、upsert、delete、本文自動反映、operation ID生成、通常同期confirmed化は行わない。
+# Phase B-3f5eUI2: iPhone同期チェック案内
+
+- child/memberのrecovery_required画面上部へ、現在の差異1件と次の明示操作だけを示す「同期チェック」を追加した。詳細・診断は開発者確認用として維持する。
+- 内部分類は通常画面で日本語化し、未解決差異を前後に切り替えられる。選択変更だけでは永続状態を変更しない。
+- saved-state readyと本文比較checkpointの間を統合UIで橋渡しし、詳細パネルを探さず既存checkpoint確認handlerを実行できる。
+- body mismatchはlocal/remote本文比較、候補選択、確認、remoteのlocal反映、反映後確認、metadata保存を同じ案内パネルへ接続した。
+- remote候補反映は既存candidate snapshot、local backup、verified save/read-back/rollback、完全full pull、metadata validator、compare-and-writeを維持し、Supabase書き込み・operation ID・pendingを追加しない。
+- local候補とlocal-onlyは既存recovery準備handlerへ接続する。remote-onlyは既存handlerの安全条件を維持し、他差異がある場合は案内上で安全停止する。
+- 結果コピーは日付、状態、操作、残件数、metadata状態、cursor、pending有無だけを含み、本文・UUID・operation ID・fingerprint・認証情報を含めない。
+- 自動pull、自動採用、自動送信、自動retry、自動mergeは追加していない。PC ownerの既存統合UIは維持する。

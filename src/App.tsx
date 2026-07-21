@@ -41,6 +41,7 @@ import { useDayMemoNormalDifferenceRecoveryPlan } from './hooks/useDayMemoNormal
 import { useDayMemoNormalDifferenceRecoveryCheckpointCheck } from './hooks/useDayMemoNormalDifferenceRecoveryCheckpointCheck'
 import { useDayMemoNormalDifferenceRecoveryCheckpointSave } from './hooks/useDayMemoNormalDifferenceRecoveryCheckpointSave'
 import { useDayMemoNormalBodyMismatchCandidate } from './hooks/useDayMemoNormalBodyMismatchCandidate'
+import { useDayMemoBodyMismatchRemoteAdoption } from './hooks/useDayMemoBodyMismatchRemoteAdoption'
 import { useDayMemoNormalBodyMismatchLocalPreparation } from './hooks/useDayMemoNormalBodyMismatchLocalPreparation'
 import { useDayMemoBodyMismatchRecoveryPreflight } from './hooks/useDayMemoBodyMismatchRecoveryPreflight'
 import { useDayMemoBodyMismatchRecoverySend } from './hooks/useDayMemoBodyMismatchRecoverySend'
@@ -227,6 +228,17 @@ function App() {
     checkpointResult: dayMemoNormalDifferenceRecoveryCheckpointCheck.result,
     getCandidateSnapshot: dayMemoNormalBodyMismatchCandidate.getCandidateSnapshot,
     consumeCandidateSnapshot: dayMemoNormalBodyMismatchCandidate.consumeCandidateSnapshot,
+    adoptVerifiedMetadata: dayMemoSyncBaseline.adoptVerifiedMetadata,
+  })
+  const dayMemoBodyMismatchRemoteAdoption = useDayMemoBodyMismatchRemoteAdoption({
+    dayMemos,
+    isConfigured: supabaseAuth.isConfigured,
+    isSignedIn: supabaseAuth.isSignedIn,
+    connection: supabaseWorkspace.connection,
+    reactMetadata: dayMemoSyncBaseline.metadata?.version === 5 ? dayMemoSyncBaseline.metadata : null,
+    getCandidateSnapshot: dayMemoNormalBodyMismatchCandidate.getCandidateSnapshot,
+    consumeCandidateSnapshot: dayMemoNormalBodyMismatchCandidate.consumeCandidateSnapshot,
+    adoptVerifiedStoredDayMemos,
     adoptVerifiedMetadata: dayMemoSyncBaseline.adoptVerifiedMetadata,
   })
   const dayMemoBodyMismatchRecoveryPreflight = useDayMemoBodyMismatchRecoveryPreflight({
@@ -776,6 +788,7 @@ function App() {
           dayMemoNormalDifferenceRecoveryCheckpointSave={dayMemoNormalDifferenceRecoveryCheckpointSave}
           dayMemoNormalBodyMismatchCandidate={dayMemoNormalBodyMismatchCandidate}
           dayMemoNormalBodyMismatchLocalPreparation={dayMemoNormalBodyMismatchLocalPreparation}
+          dayMemoBodyMismatchRemoteAdoption={dayMemoBodyMismatchRemoteAdoption}
           dayMemoBodyMismatchRecoveryPreflight={dayMemoBodyMismatchRecoveryPreflight}
           dayMemoBodyMismatchRecoverySend={dayMemoBodyMismatchRecoverySend}
           dayMemoSavedOperationResultRead={dayMemoSavedOperationResultRead}

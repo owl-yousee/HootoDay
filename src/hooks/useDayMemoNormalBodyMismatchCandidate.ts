@@ -230,6 +230,12 @@ export function useDayMemoNormalBodyMismatchCandidate({ dayMemos, isConfigured, 
     if (comparison) finish('normal_body_mismatch_compare_ready', comparison.date, null, true)
   }, [comparison, finish])
 
+  const clearChoice = useCallback(() => {
+    candidateSnapshotRef.current = null
+    setChoice(null)
+    if (comparison) finish('normal_body_mismatch_compare_ready', comparison.date, null, true)
+  }, [comparison, finish])
+
   const getCandidateSnapshot = useCallback(() => {
     const snapshot = candidateSnapshotRef.current
     if (!snapshot || checkpointResult?.safety !== 'normal_difference_checkpoint_unresolved_ready'
@@ -250,6 +256,6 @@ export function useDayMemoNormalBodyMismatchCandidate({ dayMemos, isConfigured, 
     setResult(null)
   }, [])
 
-  return { eligible, bodyMismatchDates, selectedDate, setSelectedDate, checking, comparison, choice, setChoice: selectChoice,
+  return { eligible, bodyMismatchDates, selectedDate, setSelectedDate, checking, comparison, choice, setChoice: selectChoice, clearChoice,
     result, compare, confirmCandidate, discard, getCandidateSnapshot, consumeCandidateSnapshot }
 }
