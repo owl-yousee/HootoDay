@@ -454,6 +454,7 @@ function App() {
     getReadySnapshot: dayMemoLocalOperationPreparationCheck.getReadySnapshot,
     getNormalDeletePreparationInput: dayMemoDeleteIntent.getNormalV5DeletePreparationInput,
     adoptVerifiedStoredDayMemos,
+    adoptVerifiedMetadata: dayMemoSyncBaseline.adoptVerifiedMetadata,
   })
   const dayMemoLocalOperationRemoteCheck = useDayMemoLocalOperationRemoteCheck({
     dayMemos,
@@ -921,10 +922,14 @@ function App() {
             }
             return dayMemoLocalOperationPreparation.startNormalDeletePreparation(date)
           }}
+          onPersistDeletePreparation={(date) => (
+            dayMemoLocalOperationPreparation.persistNormalDeletePreparationMetadata(date)
+          )}
           deleteMode={dayMemoDeleteIntent.getDeleteModeForDate(toDateKey(selectedDate))}
           deleteDiagnostic={dayMemoDeleteIntent.getV5DeleteDiagnostic(toDateKey(selectedDate))}
           deletePreparationConnectionResult={dayMemoLocalOperationPreparation.normalDeleteConnectionResult}
           deletePreparationResult={dayMemoLocalOperationPreparation.normalDeleteLifecycleStartResult}
+          deletePreparationMetadataResult={dayMemoLocalOperationPreparation.normalDeleteMetadataPersistenceResult}
           mobileSlide={mobileEntryType === 'memo'}
           onClose={() => {
             setPreparedDayMemoSaveDate(null)

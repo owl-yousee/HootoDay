@@ -191,6 +191,7 @@ interface Input {
   getReadySnapshot: () => DayMemoLocalOperationPreparationReadySnapshot | null
   getNormalDeletePreparationInput?: () => DayMemoLocalOperationDeletePreparationInput | null
   adoptVerifiedStoredDayMemos: (memos: DayMemo[]) => void
+  adoptVerifiedMetadata: (metadata: DayMemoSyncMetadataV5) => void
 }
 
 function signature(memos: DayMemo[]): string {
@@ -265,6 +266,7 @@ export function useDayMemoLocalOperationPreparation({
   getReadySnapshot,
   getNormalDeletePreparationInput,
   adoptVerifiedStoredDayMemos,
+  adoptVerifiedMetadata,
 }: Input) {
   const [result, setResult] = useState<DayMemoLocalOperationPersistentPreparationResult | null>(null)
   const [normalDeleteConnectionResult, setNormalDeleteConnectionResult] = useState<DayMemoNormalDeletePreparationConnectionResult | null>(null)
@@ -553,6 +555,7 @@ export function useDayMemoLocalOperationPreparation({
         rollbackVerified: rollback === 'saved',
       })
     }
+    adoptVerifiedMetadata(readBack.metadata as DayMemoSyncMetadataV5)
     return finish('normal_delete_v5_metadata_saved', {
       operationIdsMatch: true,
       metadataVersion: 5,
@@ -561,7 +564,7 @@ export function useDayMemoLocalOperationPreparation({
       localDeleteIntentSaved: true,
       readBackVerified: true,
     })
-  }, [connection?.workspaceId, dayMemos, eligible, normalDeleteLifecycleStartResult])
+  }, [adoptVerifiedMetadata, connection?.workspaceId, dayMemos, eligible, normalDeleteLifecycleStartResult])
 
   const deletePreparedNormalDeleteLocal = useCallback((date: string): boolean => {
     const checkedAt = new Date().toISOString()

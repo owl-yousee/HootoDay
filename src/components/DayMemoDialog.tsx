@@ -11,6 +11,7 @@ import { MAX_DAY_MEMO_CONTENT_LENGTH, type DayMemo } from '../types/dayMemo'
 import type { DayMemoDeleteMode, DayMemoV5DeleteDiagnostic } from '../hooks/useDayMemoDeleteIntent'
 import type {
   DayMemoNormalDeleteLifecycleStartResult,
+  DayMemoNormalDeleteMetadataPersistenceResult,
   DayMemoNormalDeletePreparationConnectionResult,
 } from '../hooks/useDayMemoLocalOperationPreparation'
 
@@ -22,10 +23,12 @@ interface DayMemoDialogProps {
   onDelete: (date: string) => boolean | void
   onCheckDelete?: (date: string) => void
   onStartDeletePreparation?: (date: string) => boolean
+  onPersistDeletePreparation?: (date: string) => boolean
   deleteMode?: DayMemoDeleteMode
   deleteDiagnostic?: DayMemoV5DeleteDiagnostic | null
   deletePreparationConnectionResult?: DayMemoNormalDeletePreparationConnectionResult | null
   deletePreparationResult?: DayMemoNormalDeleteLifecycleStartResult | null
+  deletePreparationMetadataResult?: DayMemoNormalDeleteMetadataPersistenceResult | null
   onClose: () => void
   mobileSlide?: boolean
 }
@@ -38,10 +41,12 @@ export function DayMemoDialog({
   onDelete,
   onCheckDelete,
   onStartDeletePreparation,
+  onPersistDeletePreparation,
   deleteMode = 'local_delete',
   deleteDiagnostic = null,
   deletePreparationConnectionResult = null,
   deletePreparationResult = null,
+  deletePreparationMetadataResult = null,
   onClose,
   mobileSlide = false,
 }: DayMemoDialogProps) {
@@ -174,7 +179,7 @@ export function DayMemoDialog({
         </div>
 
         <div className="event-editor-actions">
-          {memo && (
+          {memo && !(deletePreparationMetadataResult?.date === date && deletePreparationMetadataResult.succeeded) && (
             <button
               type="button"
               className="event-action-button danger"
@@ -208,7 +213,8 @@ export function DayMemoDialog({
             V5削除候補を確認しました。「削除準備を開始」でoperation planだけを生成します。
           </p>
         )}
-        {memo && deletePreparationResult?.date === date && deletePreparationResult.ready && (
+        {memo && deletePreparationResult?.date === date && deletePreparationResult.ready
+          && !(deletePreparationMetadataResult?.date === date && deletePreparationMetadataResult.succeeded) && (
           <div className="field-hint" role="status">
             <p><strong>削除準備planを生成しました</strong></p>
             <ul>
@@ -218,6 +224,10 @@ export function DayMemoDialog({
               <li>remote送信：未実行</li>
               <li>永続状態変更：なし</li>
             </ul>
+            <button type="button" className="event-action-button danger"
+              onClick={() => onPersistDeletePreparation?.(date)}>
+              削除準備情報を保存
+            </button>
           </div>
         )}
         {memo && deletePreparationResult?.date === date && !deletePreparationResult.ready && (
@@ -236,12 +246,48 @@ export function DayMemoDialog({
             </ul>
           </div>
         )}
-        {memo && deleteMode === 'v5_delete_blocked' && (
+        {memo && deletePreparationMetadataResult?.date === date && deletePreparationMetadataResult.succeeded && (
+          <div className="field-hint" role="status">
+            <p><strong>削除準備情報を保存しました</strong></p>
+            <ul>
+              <li>metadata保存：完了</li>
+              <li>verified read-back：完了</li>
+              <li>pendingOperation保存：完了</li>
+              <li>localDeleteIntent保存：完了</li>
+              <li>local DayMemo削除：未実行</li>
+              <li>remote送信：未実行</li>
+            </ul>
+          </div>
+        )}
+        {memo && deletePreparationMetadataResult?.date === date && !deletePreparationMetadataResult.succeeded && (
+          <div className="field-hint" role="status">
+            <p><strong>削除準備情報を安全に保存できませんでした</strong></p>
+            <ul>
+              <li>classification：{deletePreparationMetadataResult.classification}</li>
+              <li>plan確認：{deletePreparationResult?.date === date && deletePreparationResult.ready ? '成功' : '未確認／停止'}</li>
+              <li>metadata鮮度確認：{deletePreparationMetadataResult.classification === 'normal_delete_v5_metadata_state_changed'
+                ? '不一致' : '確認済み／別条件で停止'}</li>
+              <li>pending候補：{deletePreparationMetadataResult.pendingSaved ? '保存確認済み' : '未保存／未確認'}</li>
+              <li>intent候補：{deletePreparationMetadataResult.localDeleteIntentSaved ? '保存確認済み' : '未保存／未確認'}</li>
+              <li>operation ID整合：{deletePreparationMetadataResult.operationIdsMatch ? '一致' : '未確認／不一致'}</li>
+              <li>validator：{deletePreparationMetadataResult.metadataValid ? '成功' : '未確認／失敗'}</li>
+              <li>compare-and-write：{deletePreparationMetadataResult.succeeded ? '成功' : '成功未確認'}</li>
+              <li>read-back：{deletePreparationMetadataResult.readBackVerified ? '成功' : '未確認／失敗'}</li>
+              <li>rollback実行：{deletePreparationMetadataResult.rollbackAttempted ? 'あり' : 'なし'}</li>
+              <li>rollback確認：{deletePreparationMetadataResult.rollbackVerified ? '成功' : '未実行／確認不能'}</li>
+              <li>recoveryRequired：{deletePreparationMetadataResult.classification === 'normal_delete_v5_metadata_rollback_failed'
+                ? 'はい' : 'いいえ'}</li>
+            </ul>
+          </div>
+        )}
+        {memo && deleteMode === 'v5_delete_blocked'
+          && !(deletePreparationMetadataResult?.date === date && deletePreparationMetadataResult.succeeded) && (
           <p className="field-hint" role="status">
             V5削除候補を安全に確認できませんでした。保存状態または同期状態を再確認してください。
           </p>
         )}
-        {memo && deleteMode === 'v5_delete_blocked' && deleteDiagnostic && (
+        {memo && deleteMode === 'v5_delete_blocked' && deleteDiagnostic
+          && !(deletePreparationMetadataResult?.date === date && deletePreparationMetadataResult.succeeded) && (
           <div className="field-hint" role="status">
             <p><strong>安全停止の診断</strong></p>
             <ul>
