@@ -124,13 +124,6 @@ function App() {
   const { preference, appliedTheme, setPreference, replaceThemePreference } = useTheme()
   const supabaseAuth = useSupabaseAuth()
   const supabaseWorkspace = useSupabaseWorkspace(supabaseAuth.isSignedIn)
-  const dayMemoDeleteIntent = useDayMemoDeleteIntent({
-    dayMemos,
-    isConfigured: supabaseAuth.isConfigured,
-    isSignedIn: supabaseAuth.isSignedIn,
-    connection: supabaseWorkspace.connection,
-    adoptVerifiedStoredDayMemos,
-  })
   const dayMemoDeletePreview = useDayMemoDeletePreview({
     isConfigured: supabaseAuth.isConfigured,
     isSignedIn: supabaseAuth.isSignedIn,
@@ -201,6 +194,17 @@ function App() {
     connection: supabaseWorkspace.connection,
     reactMetadata: dayMemoSyncBaseline.metadata?.version === 5 ? dayMemoSyncBaseline.metadata : null,
     adoptVerifiedStoredDayMemos,
+  })
+  const dayMemoDeleteIntent = useDayMemoDeleteIntent({
+    dayMemos,
+    isConfigured: supabaseAuth.isConfigured,
+    isSignedIn: supabaseAuth.isSignedIn,
+    connection: supabaseWorkspace.connection,
+    adoptVerifiedStoredDayMemos,
+    reactMetadata: dayMemoSyncBaseline.metadata?.version === 5 ? dayMemoSyncBaseline.metadata : null,
+    normalPullState: dayMemoPullPreview.previewState,
+    normalPullSummary: dayMemoPullPreview.summary,
+    normalPullItems: dayMemoPullPreview.items,
   })
   const dayMemoNormalDifferenceRecoveryCheckpointSave = useDayMemoNormalDifferenceRecoveryCheckpointSave({
     dayMemos,
