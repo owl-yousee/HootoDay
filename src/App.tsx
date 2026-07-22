@@ -463,6 +463,7 @@ function App() {
     connection: supabaseWorkspace.connection,
     getReadySnapshot: dayMemoLocalOperationRemoteCheck.getReadySnapshot,
     normalDeleteLocalPersistenceResult: dayMemoLocalOperationPreparation.normalDeleteLocalPersistenceResult,
+    adoptVerifiedMetadata: dayMemoSyncBaseline.adoptVerifiedMetadata,
   })
   const dayMemoMetadataV4Migration = useDayMemoMetadataV4Migration(supabaseWorkspace.connection)
   const dayMemoMetadataV5Migration = useDayMemoMetadataV5Migration(
