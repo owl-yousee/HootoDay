@@ -19,6 +19,7 @@ import type { DayMemoLocalOperationRemoteCheckResult } from '../hooks/useDayMemo
 import type {
   DayMemoLocalOperationSendResult,
   DayMemoNormalDeleteCleanupCandidateResult,
+  DayMemoNormalDeleteCleanupResult,
 } from '../hooks/useDayMemoLocalOperationSend'
 
 interface DayMemoDialogProps {
@@ -34,6 +35,7 @@ interface DayMemoDialogProps {
   onCheckPreparedRemote?: (date: string) => void
   onSendPreparedRemoteDelete?: (date: string) => void
   onPrepareDeleteCleanup?: (date: string) => void
+  onPersistDeleteCleanup?: (date: string) => void
   deleteMode?: DayMemoDeleteMode
   deleteDiagnostic?: DayMemoV5DeleteDiagnostic | null
   deletePreparationConnectionResult?: DayMemoNormalDeletePreparationConnectionResult | null
@@ -46,6 +48,7 @@ interface DayMemoDialogProps {
   deleteRemoteCanSend?: boolean
   deleteRemoteSendResult?: DayMemoLocalOperationSendResult | null
   deleteCleanupCandidateResult?: DayMemoNormalDeleteCleanupCandidateResult | null
+  deleteCleanupResult?: DayMemoNormalDeleteCleanupResult | null
   onClose: () => void
   mobileSlide?: boolean
 }
@@ -63,6 +66,7 @@ export function DayMemoDialog({
   onCheckPreparedRemote,
   onSendPreparedRemoteDelete,
   onPrepareDeleteCleanup,
+  onPersistDeleteCleanup,
   deleteMode = 'local_delete',
   deleteDiagnostic = null,
   deletePreparationConnectionResult = null,
@@ -75,6 +79,7 @@ export function DayMemoDialog({
   deleteRemoteCanSend = false,
   deleteRemoteSendResult = null,
   deleteCleanupCandidateResult = null,
+  deleteCleanupResult = null,
   onClose,
   mobileSlide = false,
 }: DayMemoDialogProps) {
@@ -484,6 +489,12 @@ export function DayMemoDialog({
               <li>cursor更新：未実行</li>
               <li>pendingOperation／localDeleteIntent：保持中</li>
             </ul>
+            {!(deleteCleanupResult?.date === date && deleteCleanupResult.succeeded) && (
+              <button type="button" className="event-action-button danger"
+                onClick={() => onPersistDeleteCleanup?.(date)}>
+                削除結果を確定
+              </button>
+            )}
           </div>
         )}
         {deleteCleanupCandidateResult?.date === date && !deleteCleanupCandidateResult.ready && (
@@ -507,6 +518,45 @@ export function DayMemoDialog({
               <li>tombstone候補生成：{deleteCleanupCandidateResult.ready ? '生成済み' : '未生成'}</li>
               <li>cursor候補生成：{deleteCleanupCandidateResult.candidateCursor !== null ? '確認済み' : '未生成'}</li>
               <li>recoveryRequired：いいえ（永続変更なし）</li>
+            </ul>
+          </div>
+        )}
+        {deleteCleanupResult?.date === date && deleteCleanupResult.succeeded && (
+          <div className="field-hint" role="status">
+            <p><strong>削除結果を確定しました</strong></p>
+            <ul>
+              <li>cleanup保存：完了</li>
+              <li>tombstone baseline更新：完了</li>
+              <li>cursor更新：完了</li>
+              <li>pendingOperation解消：完了</li>
+              <li>localDeleteIntent解消：完了</li>
+              <li>baselineStatus：confirmed</li>
+              <li>verified read-back：完了</li>
+              <li>通常同期確認：未実行</li>
+            </ul>
+          </div>
+        )}
+        {deleteCleanupResult?.date === date && !deleteCleanupResult.succeeded && (
+          <div className="field-hint" role="status">
+            <p><strong>削除結果を安全に確定できませんでした</strong></p>
+            <ul>
+              <li>classification：{deleteCleanupResult.classification}</li>
+              <li>cleanup candidate：{deleteCleanupResult.classification === 'normal_delete_cleanup_candidate_missing'
+                ? '未確認／不在' : '確認済み'}</li>
+              <li>metadata確認：{deleteCleanupResult.classification === 'normal_delete_cleanup_state_changed'
+                || deleteCleanupResult.classification === 'normal_delete_cleanup_metadata_invalid'
+                ? '不一致／無効' : '確認済み／別条件で停止'}</li>
+              <li>pending／intent／operation ID整合：{
+                deleteCleanupResult.operationIdsMatch ? '一致' : '未確認／不一致'
+              }</li>
+              <li>tombstone候補一致：{deleteCleanupResult.tombstoneSaved ? '保存・確認済み' : '未保存／不一致'}</li>
+              <li>cursor候補一致：{deleteCleanupResult.cursorUpdated ? '保存・確認済み' : '未保存／不一致'}</li>
+              <li>compare-and-write：{deleteCleanupResult.classification === 'normal_delete_cleanup_save_failed'
+                ? '失敗' : '未実行または別段階で停止'}</li>
+              <li>read-back：{deleteCleanupResult.readBackVerified ? '成功' : '未確認／失敗'}</li>
+              <li>rollback実行：{deleteCleanupResult.rollbackAttempted ? 'あり' : 'なし'}</li>
+              <li>rollback確認：{deleteCleanupResult.rollbackVerified ? '成功' : '未実行／確認不能'}</li>
+              <li>recoveryRequired：{deleteCleanupResult.recoveryRequired ? 'はい' : 'いいえ'}</li>
             </ul>
           </div>
         )}
