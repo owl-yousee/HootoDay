@@ -925,11 +925,15 @@ function App() {
           onPersistDeletePreparation={(date) => (
             dayMemoLocalOperationPreparation.persistNormalDeletePreparationMetadata(date)
           )}
+          onDeletePreparedLocal={(date) => (
+            dayMemoLocalOperationPreparation.deletePreparedNormalDeleteLocal(date)
+          )}
           deleteMode={dayMemoDeleteIntent.getDeleteModeForDate(toDateKey(selectedDate))}
           deleteDiagnostic={dayMemoDeleteIntent.getV5DeleteDiagnostic(toDateKey(selectedDate))}
           deletePreparationConnectionResult={dayMemoLocalOperationPreparation.normalDeleteConnectionResult}
           deletePreparationResult={dayMemoLocalOperationPreparation.normalDeleteLifecycleStartResult}
           deletePreparationMetadataResult={dayMemoLocalOperationPreparation.normalDeleteMetadataPersistenceResult}
+          deletePreparationLocalResult={dayMemoLocalOperationPreparation.normalDeleteLocalPersistenceResult}
           mobileSlide={mobileEntryType === 'memo'}
           onClose={() => {
             setPreparedDayMemoSaveDate(null)

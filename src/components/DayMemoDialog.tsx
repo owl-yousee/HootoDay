@@ -11,6 +11,7 @@ import { MAX_DAY_MEMO_CONTENT_LENGTH, type DayMemo } from '../types/dayMemo'
 import type { DayMemoDeleteMode, DayMemoV5DeleteDiagnostic } from '../hooks/useDayMemoDeleteIntent'
 import type {
   DayMemoNormalDeleteLifecycleStartResult,
+  DayMemoNormalDeleteLocalPersistenceResult,
   DayMemoNormalDeleteMetadataPersistenceResult,
   DayMemoNormalDeletePreparationConnectionResult,
 } from '../hooks/useDayMemoLocalOperationPreparation'
@@ -24,11 +25,13 @@ interface DayMemoDialogProps {
   onCheckDelete?: (date: string) => void
   onStartDeletePreparation?: (date: string) => boolean
   onPersistDeletePreparation?: (date: string) => boolean
+  onDeletePreparedLocal?: (date: string) => boolean
   deleteMode?: DayMemoDeleteMode
   deleteDiagnostic?: DayMemoV5DeleteDiagnostic | null
   deletePreparationConnectionResult?: DayMemoNormalDeletePreparationConnectionResult | null
   deletePreparationResult?: DayMemoNormalDeleteLifecycleStartResult | null
   deletePreparationMetadataResult?: DayMemoNormalDeleteMetadataPersistenceResult | null
+  deletePreparationLocalResult?: DayMemoNormalDeleteLocalPersistenceResult | null
   onClose: () => void
   mobileSlide?: boolean
 }
@@ -42,11 +45,13 @@ export function DayMemoDialog({
   onCheckDelete,
   onStartDeletePreparation,
   onPersistDeletePreparation,
+  onDeletePreparedLocal,
   deleteMode = 'local_delete',
   deleteDiagnostic = null,
   deletePreparationConnectionResult = null,
   deletePreparationResult = null,
   deletePreparationMetadataResult = null,
+  deletePreparationLocalResult = null,
   onClose,
   mobileSlide = false,
 }: DayMemoDialogProps) {
@@ -54,6 +59,8 @@ export function DayMemoDialog({
   const pendingInternalCloseEventsRef = useRef(0)
   const [content, setContent] = useState(memo?.content ?? '')
   const [error, setError] = useState('')
+  const localDeleteCompleted = deletePreparationLocalResult?.date === date
+    && deletePreparationLocalResult.succeeded
 
   useEffect(() => {
     const dialog = dialogRef.current
@@ -86,6 +93,7 @@ export function DayMemoDialog({
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (localDeleteCompleted) return
     const trimmedContent = content.trim()
 
     if (!trimmedContent) {
@@ -151,7 +159,8 @@ export function DayMemoDialog({
           )}
           <div>
             <p className="day-memo-eyebrow">Diary &amp; memo</p>
-            <h2 id="day-memo-dialog-title">{memo ? '日記・メモを編集' : '日記・メモを書く'}</h2>
+            <h2 id="day-memo-dialog-title">{localDeleteCompleted
+              ? 'DayMemoの削除完了' : memo ? '日記・メモを編集' : '日記・メモを書く'}</h2>
             <p className="day-memo-target-date">{date}（{weekday}）</p>
           </div>
           <button type="button" className="theme-close-button" onClick={closeDialog} aria-label="日記・メモ入力を閉じる">
@@ -159,7 +168,7 @@ export function DayMemoDialog({
           </button>
         </header>
 
-        <div className="form-field">
+        {!localDeleteCompleted && <div className="form-field">
           <label htmlFor="day-memo-content">本文 <span className="required-label">必須・最大2000文字</span></label>
           <textarea
             id="day-memo-content"
@@ -176,7 +185,7 @@ export function DayMemoDialog({
           />
           <span className="character-count" aria-live="polite">{content.length}/{MAX_DAY_MEMO_CONTENT_LENGTH}</span>
           {error && <p id="day-memo-content-error" className="form-error" role="alert">{error}</p>}
-        </div>
+        </div>}
 
         <div className="event-editor-actions">
           {memo && !(deletePreparationMetadataResult?.date === date && deletePreparationMetadataResult.succeeded) && (
@@ -201,7 +210,7 @@ export function DayMemoDialog({
           )}
           <span className="event-action-spacer" />
           <button type="button" className="event-action-button secondary" onClick={closeDialog}>キャンセル</button>
-          <button type="submit" className="event-action-button primary">保存</button>
+          {!localDeleteCompleted && <button type="submit" className="event-action-button primary">保存</button>}
         </div>
         {memo && deleteMode === 'sync_delete_blocked' && (
           <p className="field-hint" role="status">
@@ -246,7 +255,8 @@ export function DayMemoDialog({
             </ul>
           </div>
         )}
-        {memo && deletePreparationMetadataResult?.date === date && deletePreparationMetadataResult.succeeded && (
+        {deletePreparationMetadataResult?.date === date && deletePreparationMetadataResult.succeeded
+          && !localDeleteCompleted && (
           <div className="field-hint" role="status">
             <p><strong>削除準備情報を保存しました</strong></p>
             <ul>
@@ -257,6 +267,10 @@ export function DayMemoDialog({
               <li>local DayMemo削除：未実行</li>
               <li>remote送信：未実行</li>
             </ul>
+            <button type="button" className="event-action-button danger"
+              onClick={() => onDeletePreparedLocal?.(date)}>
+              この端末のDayMemoを削除
+            </button>
           </div>
         )}
         {memo && deletePreparationMetadataResult?.date === date && !deletePreparationMetadataResult.succeeded && (
@@ -277,6 +291,40 @@ export function DayMemoDialog({
               <li>rollback確認：{deletePreparationMetadataResult.rollbackVerified ? '成功' : '未実行／確認不能'}</li>
               <li>recoveryRequired：{deletePreparationMetadataResult.classification === 'normal_delete_v5_metadata_rollback_failed'
                 ? 'はい' : 'いいえ'}</li>
+            </ul>
+          </div>
+        )}
+        {deletePreparationLocalResult?.date === date && deletePreparationLocalResult.succeeded && (
+          <div className="field-hint" role="status">
+            <p><strong>この端末のDayMemoを削除しました</strong></p>
+            <ul>
+              <li>local DayMemo削除：完了</li>
+              <li>verified local read-back：完了</li>
+              <li>React state更新：完了</li>
+              <li>pendingOperation：保持中</li>
+              <li>localDeleteIntent：保持中</li>
+              <li>remote確認：未実行</li>
+              <li>remote送信：未実行</li>
+            </ul>
+          </div>
+        )}
+        {deletePreparationLocalResult?.date === date && !deletePreparationLocalResult.succeeded && (
+          <div className="field-hint" role="status">
+            <p><strong>この端末のDayMemoを安全に削除できませんでした</strong></p>
+            <ul>
+              <li>classification：{deletePreparationLocalResult.classification}</li>
+              <li>metadata確認：{deletePreparationLocalResult.classification === 'normal_delete_v5_local_metadata_invalid'
+                ? '不一致／無効' : '確認済み／別条件で停止'}</li>
+              <li>pending確認：{deletePreparationLocalResult.operationIdsMatch ? '確認済み' : '未確認／不一致'}</li>
+              <li>intent確認：{deletePreparationLocalResult.operationIdsMatch ? '確認済み' : '未確認／不一致'}</li>
+              <li>operation ID整合：{deletePreparationLocalResult.operationIdsMatch ? '一致' : '未確認／不一致'}</li>
+              <li>対象local：{deletePreparationLocalResult.targetDeleted ? '削除済み' : '保持／未確認'}</li>
+              <li>対象外不変：{deletePreparationLocalResult.outsideMemosUnchanged ? '確認済み' : '未確認'}</li>
+              <li>local保存：{deletePreparationLocalResult.succeeded ? '成功' : '成功未確認／失敗'}</li>
+              <li>read-back：{deletePreparationLocalResult.readBackVerified ? '成功' : '未確認／失敗'}</li>
+              <li>rollback実行：{deletePreparationLocalResult.rollbackAttempted ? 'あり' : 'なし'}</li>
+              <li>rollback確認：{deletePreparationLocalResult.rollbackVerified ? '成功' : '未実行／確認不能'}</li>
+              <li>recoveryRequired：{deletePreparationLocalResult.recoveryRequired ? 'はい' : 'いいえ'}</li>
             </ul>
           </div>
         )}
