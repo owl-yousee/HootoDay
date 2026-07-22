@@ -8,6 +8,7 @@ import {
   type SyntheticEvent,
 } from 'react'
 import { MAX_DAY_MEMO_CONTENT_LENGTH, type DayMemo } from '../types/dayMemo'
+import type { DayMemoDeleteMode } from '../hooks/useDayMemoDeleteIntent'
 
 interface DayMemoDialogProps {
   date: string
@@ -15,7 +16,8 @@ interface DayMemoDialogProps {
   memo: DayMemo | null
   onSave: (memo: DayMemo) => boolean | void
   onDelete: (date: string) => boolean | void
-  deleteMode?: 'local_delete' | 'sync_delete_ready' | 'sync_delete_blocked'
+  onCheckDelete?: (date: string) => void
+  deleteMode?: DayMemoDeleteMode
   onClose: () => void
   mobileSlide?: boolean
 }
@@ -26,6 +28,7 @@ export function DayMemoDialog({
   memo,
   onSave,
   onDelete,
+  onCheckDelete,
   deleteMode = 'local_delete',
   onClose,
   mobileSlide = false,
@@ -92,6 +95,12 @@ export function DayMemoDialog({
 
   const handleDelete = () => {
     if (deleteMode === 'sync_delete_blocked') return
+    if (deleteMode === 'v5_delete_check' || deleteMode === 'v5_delete_blocked') {
+      setError('')
+      onCheckDelete?.(date)
+      return
+    }
+    if (deleteMode === 'v5_delete_ready') return
     const message = deleteMode === 'sync_delete_ready'
       ? `${date}の日記・メモをこの端末から削除し、同期先の削除候補として記録しますか？\n\nこの時点では同期先から削除しません。`
       : `${date}の日記・メモをこの端末から削除しますか？`
@@ -154,10 +163,16 @@ export function DayMemoDialog({
               type="button"
               className="event-action-button danger"
               onClick={handleDelete}
-              disabled={deleteMode === 'sync_delete_blocked'}
+              disabled={deleteMode === 'sync_delete_blocked' || deleteMode === 'v5_delete_ready'}
             >
               {deleteMode === 'sync_delete_ready'
                 ? '端末から削除し同期候補へ記録'
+                : deleteMode === 'v5_delete_ready'
+                  ? 'V5削除候補を確認済み'
+                  : deleteMode === 'v5_delete_check'
+                    ? 'V5削除候補を確認'
+                    : deleteMode === 'v5_delete_blocked'
+                      ? 'V5削除候補を再確認'
                 : deleteMode === 'sync_delete_blocked'
                   ? '同期状態の確認が必要'
                   : 'メモを削除'}
@@ -170,6 +185,16 @@ export function DayMemoDialog({
         {memo && deleteMode === 'sync_delete_blocked' && (
           <p className="field-hint" role="status">
             このDayMemoは同期対象です。baselineや未完了同期を確認してから削除してください。
+          </p>
+        )}
+        {memo && deleteMode === 'v5_delete_ready' && (
+          <p className="field-hint" role="status">
+            V5削除候補を確認しました。この段階ではmetadata保存、端末削除、同期先への送信は行いません。
+          </p>
+        )}
+        {memo && deleteMode === 'v5_delete_blocked' && (
+          <p className="field-hint" role="status">
+            V5削除候補を安全に確認できませんでした。保存状態または同期状態を再確認してください。
           </p>
         )}
       </form>

@@ -897,9 +897,12 @@ function App() {
           onDelete={(date) => {
             const deleteMode = dayMemoDeleteIntent.getDeleteModeForDate(date)
             if (deleteMode === 'sync_delete_ready') return dayMemoDeleteIntent.recordIntentAndDeleteLocal(date)
-            if (deleteMode === 'sync_delete_blocked') return false
+            if (deleteMode !== 'local_delete') return false
             deleteDayMemo(date)
             return true
+          }}
+          onCheckDelete={(date) => {
+            dayMemoDeleteIntent.normalDeletePreparation.checkCandidate(date)
           }}
           deleteMode={dayMemoDeleteIntent.getDeleteModeForDate(toDateKey(selectedDate))}
           mobileSlide={mobileEntryType === 'memo'}

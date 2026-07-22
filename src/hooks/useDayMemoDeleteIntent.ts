@@ -2,13 +2,14 @@ import { useCallback, useState } from 'react'
 import type { DayMemo } from '../types/dayMemo'
 import type { SyncConnection } from '../types/sync'
 import { readDayMemoStorageSnapshot, replaceStoredDayMemosVerified } from '../utils/dayMemoStorage'
-import { isDayMemoSyncMetadataV3, loadDayMemoSyncMetadataAny, replaceDayMemoSyncMetadataV2 } from '../utils/dayMemoSyncStorage'
+import { isDayMemoSyncMetadataV3, isDayMemoSyncMetadataV5, loadDayMemoSyncMetadataAny, replaceDayMemoSyncMetadataV2 } from '../utils/dayMemoSyncStorage'
 import { isUuid } from '../utils/syncConnectionStorage'
 import { useDayMemoNormalDeletePreparationCheck } from './useDayMemoNormalDeletePreparationCheck'
 import type { DayMemoPullPreviewItem, DayMemoPullPreviewState, DayMemoPullPreviewSummary, DayMemoSyncMetadataV5 } from '../types/dayMemoSync'
 
 export type DayMemoDeleteIntentState = 'idle' | 'saving' | 'completed' | 'unavailable' | 'error' | 'recovery_required'
 export type DayMemoDeleteMode = 'local_delete' | 'sync_delete_ready' | 'sync_delete_blocked'
+  | 'v5_delete_check' | 'v5_delete_ready' | 'v5_delete_blocked'
 
 interface Input {
   dayMemos: DayMemo[]
@@ -88,13 +89,28 @@ export function useDayMemoDeleteIntent({
   const getDeleteModeForDate = useCallback((date: string): DayMemoDeleteMode => {
     if (!eligible || !connection?.workspaceId) return 'local_delete'
     const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
-    if (loaded.status !== 'ready' || loaded.metadata.version !== 3
-      || loaded.metadata.workspaceId !== connection.workspaceId) return 'sync_delete_blocked'
+    if (loaded.status !== 'ready') return 'sync_delete_blocked'
+    if (isDayMemoSyncMetadataV5(loaded.metadata)) {
+      const metadata = loaded.metadata
+      if (metadata.workspaceId !== connection.workspaceId || !reactMetadata
+        || JSON.stringify(metadata) !== JSON.stringify(reactMetadata)
+        || metadata.baselineStatus !== 'confirmed' || metadata.baselineConfirmedAt === null
+        || metadata.pendingOperation !== null || metadata.pushBlock !== null
+        || Object.keys(metadata.localDeleteIntents).length !== 0) return 'v5_delete_blocked'
+      const baseline = metadata.baselines[date]
+      if (!baseline) return 'local_delete'
+      if (baseline.deletedAt !== null || baseline.baselineLocalUpdatedAt === null) return 'v5_delete_blocked'
+      const preparationResult = normalDeletePreparation.result
+      if (!preparationResult || preparationResult.date !== date) return 'v5_delete_check'
+      return preparationResult.ready && preparationResult.classification === 'normal_delete_preparation_ready'
+        ? 'v5_delete_ready' : 'v5_delete_blocked'
+    }
+    if (loaded.metadata.version !== 3 || loaded.metadata.workspaceId !== connection.workspaceId) return 'sync_delete_blocked'
     if (!baselineStatusAllowsLocalDelete(loaded.metadata.baselineStatus)
       || loaded.metadata.pendingOperation !== null || loaded.metadata.pushBlock !== null) return 'sync_delete_blocked'
     if (loaded.metadata.baselines[date] === undefined) return 'local_delete'
     return canRecordIntentForDate(date) ? 'sync_delete_ready' : 'sync_delete_blocked'
-  }, [canRecordIntentForDate, connection?.workspaceId, eligible])
+  }, [canRecordIntentForDate, connection?.workspaceId, eligible, normalDeletePreparation.result, reactMetadata])
 
   const recordIntentAndDeleteLocal = useCallback((date: string): boolean => {
     if (!canRecordIntentForDate(date) || !connection?.workspaceId) return false
