@@ -937,6 +937,12 @@ function App() {
               || !dayMemoLocalOperationRemoteCheck.result.sendable) return
             void dayMemoLocalOperationSend.sendPreparedNormalDelete()
           }}
+          onPrepareDeleteCleanup={(date) => {
+            if (dayMemoLocalOperationSend.result?.date !== date
+              || !dayMemoLocalOperationSend.result.remoteSucceeded
+              || !dayMemoLocalOperationSend.result.cleanupPending) return
+            dayMemoLocalOperationSend.prepareNormalDeleteCleanupCandidate()
+          }}
           deleteMode={dayMemoDeleteIntent.getDeleteModeForDate(toDateKey(selectedDate))}
           deleteDiagnostic={dayMemoDeleteIntent.getV5DeleteDiagnostic(toDateKey(selectedDate))}
           deletePreparationConnectionResult={dayMemoLocalOperationPreparation.normalDeleteConnectionResult}
@@ -948,6 +954,7 @@ function App() {
           deleteRemoteSendState={dayMemoLocalOperationSend.sending ? 'sending' : 'idle'}
           deleteRemoteCanSend={dayMemoLocalOperationSend.canSend}
           deleteRemoteSendResult={dayMemoLocalOperationSend.result}
+          deleteCleanupCandidateResult={dayMemoLocalOperationSend.normalDeleteCleanupCandidateResult}
           mobileSlide={mobileEntryType === 'memo'}
           onClose={() => {
             setPreparedDayMemoSaveDate(null)

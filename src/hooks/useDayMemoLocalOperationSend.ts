@@ -663,7 +663,14 @@ export function useDayMemoLocalOperationSend({
     if (!remoteSnapshot || result?.classification !== 'local_operation_send_remote_succeeded_cleanup_pending'
       || !result.remoteSucceeded || !result.rpcResultValidated || !result.cleanupPending
       || result.date !== remoteSnapshot.date) {
-      return finish('normal_delete_cleanup_candidate_snapshot_missing')
+      return finish('normal_delete_cleanup_candidate_snapshot_missing', { date: result?.date ?? null })
+    }
+    const existingCandidate = normalDeleteCleanupCandidateRef.current
+    if (existingCandidate?.result.ready
+      && existingCandidate.operationId === remoteSnapshot.operationId
+      && existingCandidate.appliedResult.revision === remoteSnapshot.appliedResult.revision
+      && existingCandidate.appliedResult.change_sequence === remoteSnapshot.appliedResult.change_sequence) {
+      return true
     }
     if (!connectionIsEligible(connection) || connection.workspaceId !== remoteSnapshot.workspaceId) {
       return finish('normal_delete_cleanup_candidate_metadata_invalid', { date: remoteSnapshot.date })
