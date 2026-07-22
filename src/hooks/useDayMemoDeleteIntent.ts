@@ -5,7 +5,8 @@ import { readDayMemoStorageSnapshot, replaceStoredDayMemosVerified } from '../ut
 import { isDayMemoSyncMetadataV3, isDayMemoSyncMetadataV5, loadDayMemoSyncMetadataAny, replaceDayMemoSyncMetadataV2 } from '../utils/dayMemoSyncStorage'
 import { isUuid } from '../utils/syncConnectionStorage'
 import { useDayMemoNormalDeletePreparationCheck } from './useDayMemoNormalDeletePreparationCheck'
-import type { DayMemoPullPreviewItem, DayMemoPullPreviewState, DayMemoPullPreviewSummary, DayMemoSyncMetadataV5 } from '../types/dayMemoSync'
+import type { DayMemoSyncMetadataV5 } from '../types/dayMemoSync'
+import type { useDayMemoDeleteCandidateVerification } from './useDayMemoDeleteCandidateVerification'
 
 export type DayMemoDeleteIntentState = 'idle' | 'saving' | 'completed' | 'unavailable' | 'error' | 'recovery_required'
 export type DayMemoDeleteMode = 'local_delete' | 'sync_delete_ready' | 'sync_delete_blocked'
@@ -41,9 +42,7 @@ interface Input {
   connection: SyncConnection | null
   adoptVerifiedStoredDayMemos: (memos: DayMemo[]) => void
   reactMetadata: DayMemoSyncMetadataV5 | null
-  normalPullState: DayMemoPullPreviewState
-  normalPullSummary: DayMemoPullPreviewSummary | null
-  normalPullItems: DayMemoPullPreviewItem[]
+  deleteCandidateVerification: ReturnType<typeof useDayMemoDeleteCandidateVerification>
 }
 
 function signature(memos: DayMemo[]): string {
@@ -67,9 +66,7 @@ export function useDayMemoDeleteIntent({
   connection,
   adoptVerifiedStoredDayMemos,
   reactMetadata,
-  normalPullState,
-  normalPullSummary,
-  normalPullItems,
+  deleteCandidateVerification,
 }: Input) {
   const [state, setState] = useState<DayMemoDeleteIntentState>('idle')
   const [safeErrorMessage, setSafeErrorMessage] = useState<string | null>(null)
@@ -80,10 +77,13 @@ export function useDayMemoDeleteIntent({
     isSignedIn,
     connection,
     reactMetadata,
-    normalPullState,
-    normalPullSummary,
-    normalPullItems,
+    verifiedSnapshot: deleteCandidateVerification.verifiedSnapshot,
   })
+
+  const checkNormalDeleteCandidate = useCallback(async (date: string): Promise<void> => {
+    await deleteCandidateVerification.checkCandidate(date)
+    normalDeletePreparation.checkCandidate(date, deleteCandidateVerification.getVerifiedSnapshot())
+  }, [deleteCandidateVerification, normalDeletePreparation])
 
   const canRecordIntentForDate = useCallback((date: string): boolean => {
     if (!eligible || !connection?.workspaceId || state === 'saving') return false
@@ -233,6 +233,7 @@ export function useDayMemoDeleteIntent({
     getDeleteModeForDate,
     getV5DeleteDiagnostic,
     recordIntentAndDeleteLocal,
+    checkNormalDeleteCandidate,
     normalDeletePreparation,
     getNormalV5DeletePreparationInput: normalDeletePreparation.getV5DeletePreparationInput,
   }

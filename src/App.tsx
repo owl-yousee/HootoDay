@@ -58,6 +58,7 @@ import { useDayMemoMetadataV4Migration } from './hooks/useDayMemoMetadataV4Migra
 import { useDayMemoMetadataV5Migration } from './hooks/useDayMemoMetadataV5Migration'
 import { useDayMemoSyncMetadataMigration } from './hooks/useDayMemoSyncMetadataMigration'
 import { useDayMemoDeleteIntent } from './hooks/useDayMemoDeleteIntent'
+import { useDayMemoDeleteCandidateVerification } from './hooks/useDayMemoDeleteCandidateVerification'
 import { useDayMemoDeletePreview } from './hooks/useDayMemoDeletePreview'
 import { useDayMemoTombstonePreview } from './hooks/useDayMemoTombstonePreview'
 import { useDayMemoTombstoneApply } from './hooks/useDayMemoTombstoneApply'
@@ -195,6 +196,13 @@ function App() {
     reactMetadata: dayMemoSyncBaseline.metadata?.version === 5 ? dayMemoSyncBaseline.metadata : null,
     adoptVerifiedStoredDayMemos,
   })
+  const dayMemoDeleteCandidateVerification = useDayMemoDeleteCandidateVerification({
+    dayMemos,
+    isConfigured: supabaseAuth.isConfigured,
+    isSignedIn: supabaseAuth.isSignedIn,
+    connection: supabaseWorkspace.connection,
+    reactMetadata: dayMemoSyncBaseline.metadata?.version === 5 ? dayMemoSyncBaseline.metadata : null,
+  })
   const dayMemoDeleteIntent = useDayMemoDeleteIntent({
     dayMemos,
     isConfigured: supabaseAuth.isConfigured,
@@ -202,9 +210,7 @@ function App() {
     connection: supabaseWorkspace.connection,
     adoptVerifiedStoredDayMemos,
     reactMetadata: dayMemoSyncBaseline.metadata?.version === 5 ? dayMemoSyncBaseline.metadata : null,
-    normalPullState: dayMemoPullPreview.previewState,
-    normalPullSummary: dayMemoPullPreview.summary,
-    normalPullItems: dayMemoPullPreview.items,
+    deleteCandidateVerification: dayMemoDeleteCandidateVerification,
   })
   const dayMemoNormalDifferenceRecoveryCheckpointSave = useDayMemoNormalDifferenceRecoveryCheckpointSave({
     dayMemos,
@@ -902,7 +908,7 @@ function App() {
             return true
           }}
           onCheckDelete={(date) => {
-            dayMemoDeleteIntent.normalDeletePreparation.checkCandidate(date)
+            void dayMemoDeleteIntent.checkNormalDeleteCandidate(date)
           }}
           deleteMode={dayMemoDeleteIntent.getDeleteModeForDate(toDateKey(selectedDate))}
           deleteDiagnostic={dayMemoDeleteIntent.getV5DeleteDiagnostic(toDateKey(selectedDate))}

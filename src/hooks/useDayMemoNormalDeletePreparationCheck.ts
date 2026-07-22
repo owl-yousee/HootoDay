@@ -1,9 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { DayMemo } from '../types/dayMemo'
 import type {
-  DayMemoPullPreviewItem,
-  DayMemoPullPreviewState,
-  DayMemoPullPreviewSummary,
   DayMemoRemoteBaselineV3,
   DayMemoSyncMetadataV5,
 } from '../types/dayMemoSync'
@@ -15,6 +12,7 @@ import {
   isDayMemoLocalOperationDeletePreparationInput,
   type DayMemoLocalOperationDeletePreparationInput,
 } from './useDayMemoLocalOperationPreparation'
+import type { DayMemoDeleteCandidateVerifiedSnapshot } from './useDayMemoDeleteCandidateVerification'
 
 export type DayMemoNormalDeletePreparationClassification =
   | 'normal_delete_preparation_ready'
@@ -74,9 +72,7 @@ interface Input {
   isSignedIn: boolean
   connection: SyncConnection | null
   reactMetadata: DayMemoSyncMetadataV5 | null
-  normalPullState: DayMemoPullPreviewState
-  normalPullSummary: DayMemoPullPreviewSummary | null
-  normalPullItems: DayMemoPullPreviewItem[]
+  verifiedSnapshot: DayMemoDeleteCandidateVerifiedSnapshot | null
 }
 
 function localSignature(memos: DayMemo[]): string {
@@ -94,7 +90,7 @@ function copyMetadata(metadata: DayMemoSyncMetadataV5): DayMemoSyncMetadataV5 {
 }
 
 function itemMatchesConfirmedBaseline(
-  item: DayMemoPullPreviewItem,
+  item: DayMemoDeleteCandidateVerifiedSnapshot['previewItems'][number],
   baseline: DayMemoRemoteBaselineV3 | undefined,
   memo: DayMemo | undefined,
 ): boolean {
@@ -117,26 +113,28 @@ export function useDayMemoNormalDeletePreparationCheck(input: Input) {
   const [result, setResult] = useState<DayMemoNormalDeletePreparationResult | null>(null)
   const readySnapshotRef = useRef<DayMemoNormalDeletePreparationReadySnapshot | null>(null)
   const currentLocalSignature = useMemo(() => localSignature(input.dayMemos), [input.dayMemos])
-  const normalPreviewSignature = useMemo(() => JSON.stringify({
-    state: input.normalPullState,
-    summary: input.normalPullSummary,
-    items: input.normalPullItems,
-  }), [input.normalPullItems, input.normalPullState, input.normalPullSummary])
-
   const discard = useCallback(() => {
     readySnapshotRef.current = null
     setResult(null)
   }, [])
 
-  useEffect(() => { discard() }, [discard, input.connection?.workspaceId, currentLocalSignature, normalPreviewSignature])
+  useEffect(() => { discard() }, [discard, input.connection?.workspaceId, currentLocalSignature])
+  useEffect(() => {
+    if (!input.verifiedSnapshot) discard()
+  }, [discard, input.verifiedSnapshot])
 
-  const checkCandidate = useCallback((date: string) => {
+  const checkCandidate = useCallback((
+    date: string,
+    verifiedSnapshotOverride: DayMemoDeleteCandidateVerifiedSnapshot | null = input.verifiedSnapshot,
+  ) => {
     const checkedAt = new Date().toISOString()
     const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
     const stored = readDayMemoStorageSnapshot(window.localStorage)
     const metadata = loaded.status === 'ready' && isDayMemoSyncMetadataV5(loaded.metadata) ? loaded.metadata : null
-    const summary = input.normalPullSummary
-    const items = input.normalPullItems
+    const verifiedSnapshot = verifiedSnapshotOverride
+    const normalPreviewSignature = JSON.stringify(verifiedSnapshot)
+    const summary = verifiedSnapshot?.summary ?? null
+    const items = verifiedSnapshot?.previewItems ?? []
     const baselineCount = metadata ? Object.keys(metadata.baselines).length : null
     const summaryDifferenceCount = summary
       ? summary.localOnlyCount + summary.remoteOnlyCount + summary.differentCount + summary.unresolvedTombstoneCount
@@ -152,7 +150,7 @@ export function useDayMemoNormalDeletePreparationCheck(input: Input) {
       differencesConfirmedAbsent: false,
       targetBaselineConfirmed: false,
       localStateMatched: false,
-      previewReady: input.normalPullState === 'preview_ready',
+      previewReady: verifiedSnapshot !== null,
       summarySameCount: summary?.sameCount ?? null,
       summaryDifferenceCount,
       unresolvedTombstoneCount: summary?.unresolvedTombstoneCount ?? null,
@@ -205,14 +203,25 @@ export function useDayMemoNormalDeletePreparationCheck(input: Input) {
     if (stored.serialized === null || localSignature(stored.memos) !== currentLocalSignature) {
       return finish('normal_delete_preparation_state_changed')
     }
+    if (!verifiedSnapshot) return finish('normal_delete_preparation_difference_unconfirmed')
+    if (verifiedSnapshot.targetDate !== date
+      || verifiedSnapshot.workspaceId !== input.connection.workspaceId
+      || verifiedSnapshot.metadataFingerprint !== loaded.raw
+      || verifiedSnapshot.localSignature !== currentLocalSignature
+      || verifiedSnapshot.cursor !== metadata.lastPulledChangeSequence
+      || verifiedSnapshot.fullPullMaxSequence !== metadata.lastPulledChangeSequence) {
+      return finish('normal_delete_preparation_state_changed')
+    }
 
-    const allSame = input.normalPullState === 'preview_ready' && summary !== null
+    const allSame = summary !== null
       && summary.localOnlyCount === 0 && summary.remoteOnlyCount === 0 && summary.differentCount === 0
       && summary.unresolvedTombstoneCount === 0 && summary.remoteTombstoneLocalExistsCount === 0
       && summary.remoteTombstoneLocalMissingCount === 0
       && summary.sameCount === Object.keys(metadata.baselines).length
       && summary.maxChangeSequence === metadata.lastPulledChangeSequence
       && items.length === summary.sameCount && items.every((item) => item.comparison === 'same')
+      && Object.values(verifiedSnapshot.classifications)
+        .every((classification) => classification === 'exact_match_baseline_confirmed')
       && items.every((item) => {
         const baseline = metadata.baselines[item.date]
         const memo = stored.memos.find((candidate) => candidate.date === item.date)
@@ -252,7 +261,7 @@ export function useDayMemoNormalDeletePreparationCheck(input: Input) {
       memo: { ...targetMemos[0] },
     }
     return next
-  }, [currentLocalSignature, input, normalPreviewSignature])
+  }, [currentLocalSignature, input])
 
   const getReadySnapshot = useCallback(() => {
     const snapshot = readySnapshotRef.current

@@ -103,6 +103,7 @@ export function useDayMemoDeleteCandidateVerification(input: Input) {
   const [status, setStatus] = useState<DayMemoDeleteCandidateVerificationStatus>('idle')
   const [result, setResult] = useState<DayMemoDeleteCandidateVerificationResult | null>(null)
   const [verifiedSnapshot, setVerifiedSnapshot] = useState<DayMemoDeleteCandidateVerifiedSnapshot | null>(null)
+  const verifiedSnapshotRef = useRef<DayMemoDeleteCandidateVerifiedSnapshot | null>(null)
   const runIdRef = useRef(0)
   const inFlightRef = useRef(false)
   const currentLocalSignature = useMemo(() => localSignature(input.dayMemos), [input.dayMemos])
@@ -145,7 +146,10 @@ export function useDayMemoDeleteCandidateVerification(input: Input) {
     }
     setResult(next)
     setStatus(ready ? 'ready' : classification === 'delete_candidate_verification_unknown' ? 'failed' : 'blocked')
-    if (!ready) setVerifiedSnapshot(null)
+    if (!ready) {
+      verifiedSnapshotRef.current = null
+      setVerifiedSnapshot(null)
+    }
     return next
   }, [])
 
@@ -154,6 +158,7 @@ export function useDayMemoDeleteCandidateVerification(input: Input) {
     inFlightRef.current = false
     setStatus('idle')
     setResult(null)
+    verifiedSnapshotRef.current = null
     setVerifiedSnapshot(null)
   }, [])
 
@@ -163,6 +168,7 @@ export function useDayMemoDeleteCandidateVerification(input: Input) {
 
   const checkCandidate = useCallback(async (date: string): Promise<void> => {
     if (inFlightRef.current) return
+    verifiedSnapshotRef.current = null
     setVerifiedSnapshot(null)
     setResult(null)
     if (!eligible || !supabaseClient || !connectionIsEligible(input.connection)) {
@@ -298,7 +304,7 @@ export function useDayMemoDeleteCandidateVerification(input: Input) {
       }
 
       const next = finish('delete_candidate_verification_ready', date, remoteCommon)
-      setVerifiedSnapshot({
+      const snapshot: DayMemoDeleteCandidateVerifiedSnapshot = {
         targetDate: date,
         workspaceId: input.connection.workspaceId,
         metadataFingerprint: loaded.raw,
@@ -310,7 +316,9 @@ export function useDayMemoDeleteCandidateVerification(input: Input) {
         cursor: metadata.lastPulledChangeSequence,
         fullPullMaxSequence: pulled.maxChangeSequence,
         checkedAt: next.checkedAt,
-      })
+      }
+      verifiedSnapshotRef.current = snapshot
+      setVerifiedSnapshot(snapshot)
     } catch {
       finish('delete_candidate_verification_unknown', date)
     } finally {
@@ -318,11 +326,23 @@ export function useDayMemoDeleteCandidateVerification(input: Input) {
     }
   }, [currentLocalSignature, eligible, finish, input.connection, input.reactMetadata, reactMetadataFingerprint])
 
+  const getVerifiedSnapshot = useCallback((): DayMemoDeleteCandidateVerifiedSnapshot | null => {
+    const snapshot = verifiedSnapshotRef.current
+    if (!snapshot) return null
+    return {
+      ...snapshot,
+      previewItems: copyItems(snapshot.previewItems),
+      summary: { ...snapshot.summary },
+      classifications: { ...snapshot.classifications },
+    }
+  }, [])
+
   return {
     eligible,
     status,
     result,
     verifiedSnapshot,
+    getVerifiedSnapshot,
     checkCandidate,
     discard,
   }
