@@ -37,6 +37,15 @@ export interface DayMemoLocalOnlyUploadResult {
   changeSequence: number
 }
 
+export type DayMemoLocalOnlyPreflightFailureClassification =
+  | 'target_remote_present'
+  | 'outside_active_baseline_mismatch'
+  | 'outside_tombstone_baseline_mismatch'
+  | 'remote_baseline_set_mismatch'
+  | 'metadata_changed'
+  | 'local_changed'
+  | 'full_pull_failed'
+
 interface UseDayMemoLocalOnlyUploadInput {
   dayMemos: DayMemo[]
   isConfigured: boolean
@@ -103,19 +112,36 @@ function localMatchesPreview(dayMemos: DayMemo[], preview: DayMemoLocalOnlyUploa
     && stored.memos.filter((memo) => memo.date === preview.candidate.date).length === 1
 }
 
-function remoteMatchesBaselines(metadata: DayMemoSyncMetadataV5, records: Awaited<ReturnType<typeof pullAllDayMemoSyncRecords>> extends { records: infer R } ? Exclude<R, null> : never): boolean {
-  if (records.length !== Object.keys(metadata.baselines).length) return false
+function classifyRemoteBaselineMismatch(
+  metadata: DayMemoSyncMetadataV5,
+  records: Awaited<ReturnType<typeof pullAllDayMemoSyncRecords>> extends { records: infer R } ? Exclude<R, null> : never,
+): DayMemoLocalOnlyPreflightFailureClassification | null {
+  if (records.length !== Object.keys(metadata.baselines).length) return 'remote_baseline_set_mismatch'
   const remoteByDate = new Map(records.map((record) => [record.entityId, record]))
-  if (remoteByDate.size !== records.length) return false
-  return Object.entries(metadata.baselines).every(([date, baseline]) => {
+  if (remoteByDate.size !== records.length) return 'remote_baseline_set_mismatch'
+  for (const [date, baseline] of Object.entries(metadata.baselines)) {
     const remote = remoteByDate.get(date)
-    return Boolean(remote
-      && remote.deletedAt === null
-      && remote.payload
-      && remote.revision === baseline.remoteRevision
-      && remote.changeSequence === baseline.remoteChangeSequence
-      && remote.payload.updatedAt === baseline.remoteUpdatedAt)
-  })
+    if (baseline.deletedAt === null) {
+      if (!remote || remote.deletedAt !== null || remote.payload === null
+        || remote.revision !== baseline.remoteRevision
+        || remote.changeSequence !== baseline.remoteChangeSequence
+        || remote.payload.updatedAt !== baseline.remoteUpdatedAt
+        || baseline.baselineLocalUpdatedAt === null
+        || baseline.baselineLocalUpdatedAt !== remote.payload.updatedAt) {
+        return 'outside_active_baseline_mismatch'
+      }
+      continue
+    }
+    if (!remote || remote.deletedAt === null || remote.payload !== null
+      || remote.revision !== baseline.remoteRevision
+      || remote.changeSequence !== baseline.remoteChangeSequence
+      || remote.deletedAt !== baseline.deletedAt
+      || remote.serverUpdatedAt !== baseline.remoteUpdatedAt
+      || baseline.baselineLocalUpdatedAt !== null) {
+      return 'outside_tombstone_baseline_mismatch'
+    }
+  }
+  return null
 }
 
 export function useDayMemoLocalOnlyUpload({
@@ -130,6 +156,8 @@ export function useDayMemoLocalOnlyUpload({
   const [state, setState] = useState<DayMemoLocalOnlyUploadState>('unavailable')
   const [safeErrorMessage, setSafeErrorMessage] = useState<string | null>(null)
   const [result, setResult] = useState<DayMemoLocalOnlyUploadResult | null>(null)
+  const [preflightFailureClassification, setPreflightFailureClassification]
+    = useState<DayMemoLocalOnlyPreflightFailureClassification | null>(null)
   const preflightRef = useRef<PreflightSnapshot | null>(null)
   const preparedRef = useRef<PreparedSnapshot | null>(null)
   const preflightInFlightRef = useRef(false)
@@ -145,6 +173,7 @@ export function useDayMemoLocalOnlyUpload({
     preflightRef.current = null
     preparedRef.current = null
     setResult(null)
+    setPreflightFailureClassification(null)
     setSafeErrorMessage(null)
     if (!eligible || !connection?.workspaceId) {
       setState('unavailable')
@@ -173,12 +202,14 @@ export function useDayMemoLocalOnlyUpload({
     try {
     const preview = getSingleNewCandidateSnapshot()
     if (!preview || preview.workspaceId !== connection.workspaceId || !localMatchesPreview(dayMemos, preview)) {
+      setPreflightFailureClassification('local_changed')
       setState('local_changed')
       setSafeErrorMessage(messageForState('local_changed'))
       return
     }
     const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
     if (loaded.status !== 'ready' || loaded.metadata.version !== 5 || !metadataMatchesPreview(loaded.metadata, loaded.raw, preview)) {
+      setPreflightFailureClassification('metadata_changed')
       setState('metadata_changed')
       setSafeErrorMessage(messageForState('metadata_changed'))
       return
@@ -186,6 +217,7 @@ export function useDayMemoLocalOnlyUpload({
     setState('preflighting')
     setSafeErrorMessage(null)
     setResult(null)
+    setPreflightFailureClassification(null)
     const requestGeneration = ++generation.current
     const pulled = await pullAllDayMemoSyncRecords(
       supabaseClient,
@@ -194,6 +226,7 @@ export function useDayMemoLocalOnlyUpload({
     ).catch(() => null)
     if (!pulled || pulled.status !== 'complete') {
       const nextState: DayMemoLocalOnlyUploadState = pulled?.status === 'cancelled' ? 'local_changed' : 'error'
+      setPreflightFailureClassification(pulled?.status === 'cancelled' ? 'local_changed' : 'full_pull_failed')
       setState(nextState)
       setSafeErrorMessage(messageForState(nextState))
       return
@@ -202,19 +235,32 @@ export function useDayMemoLocalOnlyUpload({
     if (latestMetadata.status !== 'ready'
       || latestMetadata.metadata.version !== 5
       || !metadataMatchesPreview(latestMetadata.metadata, latestMetadata.raw, preview)) {
+      setPreflightFailureClassification('metadata_changed')
       setState('metadata_changed')
       setSafeErrorMessage(messageForState('metadata_changed'))
       return
     }
     if (!localMatchesPreview(dayMemos, preview)) {
+      setPreflightFailureClassification('local_changed')
       setState('local_changed')
       setSafeErrorMessage(messageForState('local_changed'))
       return
     }
-    if (pulled.records.some((record) => record.entityId === preview.candidate.date)
-      || !remoteMatchesBaselines(latestMetadata.metadata, pulled.records)) {
+    if (pulled.records.some((record) => record.entityId === preview.candidate.date)) {
+      setPreflightFailureClassification('target_remote_present')
       setState('preflight_conflict')
-      setSafeErrorMessage(messageForState('preflight_conflict'))
+      setSafeErrorMessage('同期先に対象日のrecordまたは削除済みrecordがあるため、新規追加できません。')
+      return
+    }
+    const baselineMismatch = classifyRemoteBaselineMismatch(latestMetadata.metadata, pulled.records)
+    if (baselineMismatch) {
+      setPreflightFailureClassification(baselineMismatch)
+      setState('preflight_conflict')
+      setSafeErrorMessage(baselineMismatch === 'outside_tombstone_baseline_mismatch'
+        ? '対象外の削除済みbaselineが同期先と一致しないため、新規追加できません。'
+        : baselineMismatch === 'outside_active_baseline_mismatch'
+          ? '対象外の有効baselineが同期先と一致しないため、新規追加できません。'
+          : '同期先のrecord集合が保存済みbaselineと一致しないため、新規追加できません。')
       return
     }
     preflightRef.current = { preview, previousChangeSequence: pulled.maxChangeSequence }
@@ -391,6 +437,7 @@ export function useDayMemoLocalOnlyUpload({
     eligible,
     state,
     safeErrorMessage,
+    preflightFailureClassification,
     result,
     hasPendingOperation: state === 'prepared' || state === 'uploading' || state === 'conflict' || state === 'response_unknown' || state === 'post_rpc_metadata_failed',
     runPreflight,
