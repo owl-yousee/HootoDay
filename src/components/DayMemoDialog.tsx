@@ -16,6 +16,7 @@ import type {
   DayMemoNormalDeletePreparationConnectionResult,
 } from '../hooks/useDayMemoLocalOperationPreparation'
 import type { DayMemoLocalOperationRemoteCheckResult } from '../hooks/useDayMemoLocalOperationRemoteCheck'
+import type { DayMemoLocalOperationSendResult } from '../hooks/useDayMemoLocalOperationSend'
 
 interface DayMemoDialogProps {
   date: string
@@ -28,6 +29,7 @@ interface DayMemoDialogProps {
   onPersistDeletePreparation?: (date: string) => boolean
   onDeletePreparedLocal?: (date: string) => boolean
   onCheckPreparedRemote?: (date: string) => void
+  onSendPreparedRemoteDelete?: (date: string) => void
   deleteMode?: DayMemoDeleteMode
   deleteDiagnostic?: DayMemoV5DeleteDiagnostic | null
   deletePreparationConnectionResult?: DayMemoNormalDeletePreparationConnectionResult | null
@@ -36,6 +38,9 @@ interface DayMemoDialogProps {
   deletePreparationLocalResult?: DayMemoNormalDeleteLocalPersistenceResult | null
   deleteRemoteCheckState?: 'idle' | 'checking'
   deleteRemoteCheckResult?: DayMemoLocalOperationRemoteCheckResult | null
+  deleteRemoteSendState?: 'idle' | 'sending'
+  deleteRemoteCanSend?: boolean
+  deleteRemoteSendResult?: DayMemoLocalOperationSendResult | null
   onClose: () => void
   mobileSlide?: boolean
 }
@@ -51,6 +56,7 @@ export function DayMemoDialog({
   onPersistDeletePreparation,
   onDeletePreparedLocal,
   onCheckPreparedRemote,
+  onSendPreparedRemoteDelete,
   deleteMode = 'local_delete',
   deleteDiagnostic = null,
   deletePreparationConnectionResult = null,
@@ -59,6 +65,9 @@ export function DayMemoDialog({
   deletePreparationLocalResult = null,
   deleteRemoteCheckState = 'idle',
   deleteRemoteCheckResult = null,
+  deleteRemoteSendState = 'idle',
+  deleteRemoteCanSend = false,
+  deleteRemoteSendResult = null,
   onClose,
   mobileSlide = false,
 }: DayMemoDialogProps) {
@@ -355,6 +364,13 @@ export function DayMemoDialog({
               <li>remote削除：未実行</li>
               <li>pendingOperation／localDeleteIntent：保持中</li>
             </ul>
+            {!(deleteRemoteSendResult?.date === date && deleteRemoteSendResult.remoteSucceeded) && (
+              <button type="button" className="event-action-button danger"
+                disabled={deleteRemoteSendState === 'sending' || !deleteRemoteCanSend}
+                onClick={() => onSendPreparedRemoteDelete?.(date)}>
+                {deleteRemoteSendState === 'sending' ? '同期先から削除中…' : '同期先から削除'}
+              </button>
+            )}
           </div>
         )}
         {deleteRemoteCheckResult?.date === date && !deleteRemoteCheckResult.sendable && (
@@ -389,6 +405,57 @@ export function DayMemoDialog({
               <li>stateChanged：{deleteRemoteCheckResult.classification === 'local_operation_remote_check_verification_stale'
                 ? 'あり' : 'なし／未確認'}</li>
               <li>recoveryRequired：いいえ（永続変更なし）</li>
+            </ul>
+          </div>
+        )}
+        {deleteRemoteSendResult?.date === date && deleteRemoteSendResult.remoteSucceeded
+          && deleteRemoteSendResult.rpcResultValidated && deleteRemoteSendResult.cleanupPending && (
+          <div className="field-hint" role="status">
+            <p><strong>同期先からDayMemoを削除しました</strong></p>
+            <ul>
+              <li>remote送信：完了</li>
+              <li>delete RPC：成功</li>
+              <li>remote削除：完了</li>
+              <li>RPC結果検証：完了</li>
+              <li>cleanup候補：未生成</li>
+              <li>tombstone baseline更新：未実行</li>
+              <li>cursor更新：未実行</li>
+              <li>pendingOperation／localDeleteIntent：保持中</li>
+            </ul>
+          </div>
+        )}
+        {deleteRemoteSendResult?.date === date && !(deleteRemoteSendResult.remoteSucceeded
+          && deleteRemoteSendResult.rpcResultValidated && deleteRemoteSendResult.cleanupPending) && (
+          <div className="field-hint" role="status">
+            <p><strong>同期先からの削除を安全に完了できませんでした</strong></p>
+            <ul>
+              <li>classification：{deleteRemoteSendResult.classification}</li>
+              <li>metadata確認：{deleteRemoteSendResult.classification === 'local_operation_send_state_unknown'
+                ? '無効／確認不能' : '確認済み／別条件で停止'}</li>
+              <li>pending確認：{deleteRemoteSendResult.classification === 'local_operation_send_pending_missing'
+                || deleteRemoteSendResult.classification === 'local_operation_send_pending_invalid'
+                ? '未確認／不一致' : '確認済み'}</li>
+              <li>intent確認：{deleteRemoteSendResult.classification === 'local_operation_send_intent_missing'
+                ? '未確認／不一致' : '確認済み'}</li>
+              <li>operation ID整合：{deleteRemoteSendResult.classification === 'local_operation_send_operation_mismatch'
+                ? '不一致' : '確認済み／停止前'}</li>
+              <li>send snapshot：{deleteRemoteSendResult.snapshotFresh ? '確認済み' : '未確認／古い'}</li>
+              <li>送信直前full pull：{deleteRemoteSendResult.remoteRechecked ? '完了' : '未完了'}</li>
+              <li>remote対象・revision・sequence・cursor・対象外remote：{
+                deleteRemoteSendResult.remoteRechecked
+                  && deleteRemoteSendResult.classification !== 'local_operation_send_remote_changed'
+                  && deleteRemoteSendResult.classification !== 'local_operation_send_duplicate_uncertain'
+                  && deleteRemoteSendResult.classification !== 'local_operation_send_cursor_invalid'
+                  ? '確認済み／別条件で停止' : '未確認／不一致'
+              }</li>
+              <li>RPC実行：{deleteRemoteSendResult.rpcCalled ? 'あり' : 'なし'}</li>
+              <li>conflict：{deleteRemoteSendResult.classification === 'local_operation_send_remote_changed'
+                ? 'あり／remote変化' : 'なし／未確認'}</li>
+              <li>responseUnknown：{deleteRemoteSendResult.classification === 'local_operation_send_rpc_failed'
+                || deleteRemoteSendResult.classification === 'local_operation_send_response_invalid' ? 'はい' : 'いいえ／未確認'}</li>
+              <li>stateChanged：{deleteRemoteSendResult.classification === 'local_operation_send_snapshot_stale'
+                ? 'あり' : 'なし／未確認'}</li>
+              <li>recoveryRequired：{deleteRemoteSendResult.recoveryRequired ? 'はい' : 'いいえ'}</li>
             </ul>
           </div>
         )}

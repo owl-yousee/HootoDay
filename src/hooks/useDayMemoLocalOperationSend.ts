@@ -599,6 +599,13 @@ export function useDayMemoLocalOperationSend({
       })
       return
     }
+    if (!eligible) {
+      finish('local_operation_send_prerequisite_missing', {
+        date: localResult.date,
+        operationKind: 'delete',
+      })
+      return
+    }
     const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
     const intent = loaded.status === 'ready' && isDayMemoSyncMetadataV5(loaded.metadata)
       ? loaded.metadata.localDeleteIntents[localResult.date] : undefined
@@ -613,7 +620,7 @@ export function useDayMemoLocalOperationSend({
       return
     }
     await sendOperation('delete', true)
-  }, [finish, getReadySnapshot, normalDeleteLocalPersistenceResult, sendOperation])
+  }, [eligible, finish, getReadySnapshot, normalDeleteLocalPersistenceResult, sendOperation])
 
   const getNormalDeleteRemoteResultSnapshot = useCallback((): DayMemoNormalDeleteRemoteResultSnapshot | null => {
     const snapshot = normalDeleteRemoteResultRef.current
