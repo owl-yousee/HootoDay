@@ -82,6 +82,26 @@ function copyMetadata(metadata: DayMemoSyncMetadataV5): DayMemoSyncMetadataV5 {
   return JSON.parse(JSON.stringify(metadata)) as DayMemoSyncMetadataV5
 }
 
+function itemMatchesConfirmedBaseline(
+  item: DayMemoPullPreviewItem,
+  baseline: DayMemoRemoteBaselineV3 | undefined,
+  memo: DayMemo | undefined,
+): boolean {
+  if (!baseline || item.comparison !== 'same'
+    || baseline.remoteRevision !== item.remoteRevision
+    || baseline.remoteChangeSequence !== item.remoteChangeSequence
+    || baseline.remoteUpdatedAt !== item.remoteUpdatedAt) return false
+  if (baseline.deletedAt === null) {
+    return !item.tombstone && item.remoteDeletedAt === null && Boolean(memo
+      && baseline.baselineLocalUpdatedAt === memo.updatedAt
+      && baseline.remoteUpdatedAt === memo.updatedAt)
+  }
+  return item.tombstone && memo === undefined
+    && baseline.baselineLocalUpdatedAt === null
+    && item.remoteDeletedAt !== null
+    && baseline.deletedAt === item.remoteDeletedAt
+}
+
 export function useDayMemoNormalDeletePreparationCheck(input: Input) {
   const [result, setResult] = useState<DayMemoNormalDeletePreparationResult | null>(null)
   const readySnapshotRef = useRef<DayMemoNormalDeletePreparationReadySnapshot | null>(null)
@@ -162,11 +182,7 @@ export function useDayMemoNormalDeletePreparationCheck(input: Input) {
       && items.every((item) => {
         const baseline = metadata.baselines[item.date]
         const memo = stored.memos.find((candidate) => candidate.date === item.date)
-        return Boolean(baseline && memo && baseline.deletedAt === null
-          && baseline.remoteRevision === item.remoteRevision
-          && baseline.remoteChangeSequence === item.remoteChangeSequence
-          && baseline.remoteUpdatedAt === memo.updatedAt
-          && baseline.baselineLocalUpdatedAt === memo.updatedAt)
+        return itemMatchesConfirmedBaseline(item, baseline, memo)
       })
     if (!allSame) return finish('normal_delete_preparation_difference_unconfirmed')
 
@@ -174,9 +190,11 @@ export function useDayMemoNormalDeletePreparationCheck(input: Input) {
     const targetItems = items.filter((item) => item.date === date)
     const baseline = metadata.baselines[date]
     const targetReady = targetMemos.length === 1 && targetItems.length === 1
-      && targetItems[0].comparison === 'same' && baseline?.deletedAt === null
+      && targetItems[0].comparison === 'same' && !targetItems[0].tombstone
+      && targetItems[0].remoteDeletedAt === null && baseline?.deletedAt === null
       && baseline.remoteRevision === targetItems[0].remoteRevision
       && baseline.remoteChangeSequence === targetItems[0].remoteChangeSequence
+      && baseline.remoteUpdatedAt === targetItems[0].remoteUpdatedAt
       && baseline.remoteUpdatedAt === targetMemos[0].updatedAt
       && baseline.baselineLocalUpdatedAt === targetMemos[0].updatedAt
     if (!targetReady || !baseline) {

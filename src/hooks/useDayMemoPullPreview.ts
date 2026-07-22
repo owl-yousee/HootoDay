@@ -127,6 +127,10 @@ function buildPreview(
       comparison,
       remoteRevision: remote?.revision ?? null,
       remoteChangeSequence: remote?.changeSequence ?? null,
+      remoteUpdatedAt: remote
+        ? remote.deletedAt === null ? remote.payload?.updatedAt ?? null : remote.serverUpdatedAt
+        : null,
+      remoteDeletedAt: remote?.deletedAt ?? null,
       tombstone: remote?.deletedAt !== null && remote !== null,
     }
   })

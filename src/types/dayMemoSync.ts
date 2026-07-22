@@ -264,6 +264,8 @@ export interface DayMemoPullPreviewItem {
   comparison: DayMemoPullComparison
   remoteRevision: number | null
   remoteChangeSequence: number | null
+  remoteUpdatedAt: string | null
+  remoteDeletedAt: string | null
   tombstone: boolean
 }
 
