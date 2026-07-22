@@ -325,6 +325,13 @@ export function useDayMemoLocalOperationRemoteCheck({
       })
       return
     }
+    if (!isConfigured || !isSignedIn || !supabaseClient || !connectionIsEligible(connection)) {
+      finish('local_operation_remote_check_prerequisite_missing', {
+        date: localResult.date,
+        operationKind: 'delete',
+      })
+      return
+    }
     const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
     const pending = loaded.status === 'ready' && isDayMemoSyncMetadataV5(loaded.metadata)
       ? loaded.metadata.pendingOperation : null
@@ -339,7 +346,7 @@ export function useDayMemoLocalOperationRemoteCheck({
       return
     }
     await checkRemote('delete')
-  }, [checkRemote, finish, normalDeleteLocalPersistenceResult])
+  }, [checkRemote, connection, finish, isConfigured, isSignedIn, normalDeleteLocalPersistenceResult])
 
   const discard = useCallback(() => {
     runIdRef.current += 1

@@ -15,6 +15,7 @@ import type {
   DayMemoNormalDeleteMetadataPersistenceResult,
   DayMemoNormalDeletePreparationConnectionResult,
 } from '../hooks/useDayMemoLocalOperationPreparation'
+import type { DayMemoLocalOperationRemoteCheckResult } from '../hooks/useDayMemoLocalOperationRemoteCheck'
 
 interface DayMemoDialogProps {
   date: string
@@ -26,12 +27,15 @@ interface DayMemoDialogProps {
   onStartDeletePreparation?: (date: string) => boolean
   onPersistDeletePreparation?: (date: string) => boolean
   onDeletePreparedLocal?: (date: string) => boolean
+  onCheckPreparedRemote?: (date: string) => void
   deleteMode?: DayMemoDeleteMode
   deleteDiagnostic?: DayMemoV5DeleteDiagnostic | null
   deletePreparationConnectionResult?: DayMemoNormalDeletePreparationConnectionResult | null
   deletePreparationResult?: DayMemoNormalDeleteLifecycleStartResult | null
   deletePreparationMetadataResult?: DayMemoNormalDeleteMetadataPersistenceResult | null
   deletePreparationLocalResult?: DayMemoNormalDeleteLocalPersistenceResult | null
+  deleteRemoteCheckState?: 'idle' | 'checking'
+  deleteRemoteCheckResult?: DayMemoLocalOperationRemoteCheckResult | null
   onClose: () => void
   mobileSlide?: boolean
 }
@@ -46,12 +50,15 @@ export function DayMemoDialog({
   onStartDeletePreparation,
   onPersistDeletePreparation,
   onDeletePreparedLocal,
+  onCheckPreparedRemote,
   deleteMode = 'local_delete',
   deleteDiagnostic = null,
   deletePreparationConnectionResult = null,
   deletePreparationResult = null,
   deletePreparationMetadataResult = null,
   deletePreparationLocalResult = null,
+  deleteRemoteCheckState = 'idle',
+  deleteRemoteCheckResult = null,
   onClose,
   mobileSlide = false,
 }: DayMemoDialogProps) {
@@ -306,6 +313,13 @@ export function DayMemoDialog({
               <li>remote確認：未実行</li>
               <li>remote送信：未実行</li>
             </ul>
+            {!(deleteRemoteCheckResult?.date === date && deleteRemoteCheckResult.sendable) && (
+              <button type="button" className="event-action-button danger"
+                disabled={deleteRemoteCheckState === 'checking'}
+                onClick={() => onCheckPreparedRemote?.(date)}>
+                {deleteRemoteCheckState === 'checking' ? '同期先の状態を確認中…' : '同期先の状態を確認'}
+              </button>
+            )}
           </div>
         )}
         {deletePreparationLocalResult?.date === date && !deletePreparationLocalResult.succeeded && (
@@ -325,6 +339,56 @@ export function DayMemoDialog({
               <li>rollback実行：{deletePreparationLocalResult.rollbackAttempted ? 'あり' : 'なし'}</li>
               <li>rollback確認：{deletePreparationLocalResult.rollbackVerified ? '成功' : '未実行／確認不能'}</li>
               <li>recoveryRequired：{deletePreparationLocalResult.recoveryRequired ? 'はい' : 'いいえ'}</li>
+            </ul>
+          </div>
+        )}
+        {deleteRemoteCheckResult?.date === date && deleteRemoteCheckResult.sendable && (
+          <div className="field-hint" role="status">
+            <p><strong>同期先の状態を確認しました</strong></p>
+            <ul>
+              <li>remote確認：完了</li>
+              <li>full pull：完了</li>
+              <li>remote対象状態：削除前baselineと一致</li>
+              <li>operation ID整合：完了</li>
+              <li>send可能snapshot：生成済み</li>
+              <li>remote送信：未実行</li>
+              <li>remote削除：未実行</li>
+              <li>pendingOperation／localDeleteIntent：保持中</li>
+            </ul>
+          </div>
+        )}
+        {deleteRemoteCheckResult?.date === date && !deleteRemoteCheckResult.sendable && (
+          <div className="field-hint" role="status">
+            <p><strong>同期先の状態を安全に確認できませんでした</strong></p>
+            <ul>
+              <li>classification：{deleteRemoteCheckResult.classification}</li>
+              <li>metadata確認：{deleteRemoteCheckResult.classification === 'local_operation_remote_check_state_unknown'
+                ? '無効／確認不能' : '確認済み／別条件で停止'}</li>
+              <li>pending確認：{deleteRemoteCheckResult.classification === 'local_operation_remote_check_pending_missing'
+                || deleteRemoteCheckResult.classification === 'local_operation_remote_check_pending_invalid'
+                ? '未確認／不一致' : '確認済み'}</li>
+              <li>intent確認：{deleteRemoteCheckResult.classification === 'local_operation_remote_check_intent_missing'
+                ? '未確認／不一致' : '確認済み'}</li>
+              <li>operation ID整合：{deleteRemoteCheckResult.classification === 'local_operation_remote_check_operation_mismatch'
+                ? '不一致' : '確認済み／停止前'}</li>
+              <li>local対象日不在・対象外local不変：{
+                deleteRemoteCheckResult.classification === 'local_operation_remote_check_local_state_mismatch'
+                  ? '不一致' : '確認済み／停止前'
+              }</li>
+              <li>full pull：{deleteRemoteCheckResult.classification === 'local_operation_remote_check_fetch_failed'
+                || deleteRemoteCheckResult.classification === 'local_operation_remote_check_response_invalid'
+                ? '失敗／無効' : '完了または開始前停止'}</li>
+              <li>remote対象一致：{deleteRemoteCheckResult.remoteUnchanged ? '一致' : '未確認／不一致'}</li>
+              <li>revision一致：{deleteRemoteCheckResult.baselineRevision !== null
+                && deleteRemoteCheckResult.baselineRevision === deleteRemoteCheckResult.remoteRevision ? '一致' : '未確認／不一致'}</li>
+              <li>sequence一致：{deleteRemoteCheckResult.baselineChangeSequence !== null
+                && deleteRemoteCheckResult.baselineChangeSequence === deleteRemoteCheckResult.remoteChangeSequence ? '一致' : '未確認／不一致'}</li>
+              <li>cursor一致：{deleteRemoteCheckResult.classification === 'local_operation_remote_check_cursor_invalid'
+                ? '不一致' : '確認済み／停止前'}</li>
+              <li>対象外remote不変：{deleteRemoteCheckResult.sendable ? '確認済み' : '未確認／不一致'}</li>
+              <li>stateChanged：{deleteRemoteCheckResult.classification === 'local_operation_remote_check_verification_stale'
+                ? 'あり' : 'なし／未確認'}</li>
+              <li>recoveryRequired：いいえ（永続変更なし）</li>
             </ul>
           </div>
         )}
