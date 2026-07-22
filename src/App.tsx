@@ -454,6 +454,7 @@ function App() {
     isConfigured: supabaseAuth.isConfigured,
     isSignedIn: supabaseAuth.isSignedIn,
     connection: supabaseWorkspace.connection,
+    normalDeleteLocalPersistenceResult: dayMemoLocalOperationPreparation.normalDeleteLocalPersistenceResult,
   })
   const dayMemoLocalOperationSend = useDayMemoLocalOperationSend({
     dayMemos,

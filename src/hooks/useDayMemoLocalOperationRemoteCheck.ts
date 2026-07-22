@@ -7,6 +7,7 @@ import { isStoredDayMemo, readDayMemoStorageSnapshot } from '../utils/dayMemoSto
 import { pullAllDayMemoSyncRecords, type RemoteDayMemoRecord } from '../utils/dayMemoSyncPull'
 import { isDayMemoSyncMetadataV5, loadDayMemoSyncMetadataAny } from '../utils/dayMemoSyncStorage'
 import { isUuid } from '../utils/syncConnectionStorage'
+import type { DayMemoNormalDeleteLocalPersistenceResult } from './useDayMemoLocalOperationPreparation'
 
 export type DayMemoLocalOperationRemoteCheckKind = 'upsert' | 'delete'
 
@@ -30,6 +31,7 @@ export type DayMemoLocalOperationRemoteCheckClassification =
   | 'local_operation_remote_check_fetch_failed'
   | 'local_operation_remote_check_verification_stale'
   | 'local_operation_remote_check_prerequisite_missing'
+  | 'local_operation_remote_check_local_preparation_missing'
   | 'local_operation_remote_check_unsupported'
   | 'local_operation_remote_check_state_unknown'
 
@@ -64,6 +66,7 @@ interface Input {
   isConfigured: boolean
   isSignedIn: boolean
   connection: SyncConnection | null
+  normalDeleteLocalPersistenceResult?: DayMemoNormalDeleteLocalPersistenceResult | null
 }
 
 function connectionIsEligible(connection: SyncConnection | null): connection is SyncConnection & { workspaceId: string } {
@@ -132,7 +135,13 @@ function message(classification: DayMemoLocalOperationRemoteCheckClassification)
   return '送信条件を安全に確認できませんでした。永続状態は変更していません。'
 }
 
-export function useDayMemoLocalOperationRemoteCheck({ dayMemos, isConfigured, isSignedIn, connection }: Input) {
+export function useDayMemoLocalOperationRemoteCheck({
+  dayMemos,
+  isConfigured,
+  isSignedIn,
+  connection,
+  normalDeleteLocalPersistenceResult,
+}: Input) {
   const [state, setState] = useState<'idle' | 'checking'>('idle')
   const [result, setResult] = useState<DayMemoLocalOperationRemoteCheckResult | null>(null)
   const readySnapshotRef = useRef<DayMemoLocalOperationRemoteReadySnapshot | null>(null)
@@ -305,6 +314,33 @@ export function useDayMemoLocalOperationRemoteCheck({ dayMemos, isConfigured, is
     }
   }, [connection, dayMemos, finish, isConfigured, isSignedIn, state])
 
+  const checkPreparedNormalDelete = useCallback(async (): Promise<void> => {
+    const localResult = normalDeleteLocalPersistenceResult
+    if (!localResult?.succeeded || !localResult.targetDeleted || !localResult.readBackVerified
+      || !localResult.reactStateUpdated || !localResult.operationIdsMatch
+      || !localResult.outsideMemosUnchanged || localResult.recoveryRequired) {
+      finish('local_operation_remote_check_local_preparation_missing', {
+        date: localResult?.date ?? null,
+        operationKind: 'delete',
+      })
+      return
+    }
+    const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
+    const pending = loaded.status === 'ready' && isDayMemoSyncMetadataV5(loaded.metadata)
+      ? loaded.metadata.pendingOperation : null
+    const intent = loaded.status === 'ready' && isDayMemoSyncMetadataV5(loaded.metadata)
+      ? loaded.metadata.localDeleteIntents[localResult.date] : undefined
+    if (pending?.kind !== 'delete' || pending.date !== localResult.date
+      || intent?.date !== localResult.date || pending.operationId !== intent.operationId) {
+      finish('local_operation_remote_check_local_preparation_missing', {
+        date: localResult.date,
+        operationKind: 'delete',
+      })
+      return
+    }
+    await checkRemote('delete')
+  }, [checkRemote, finish, normalDeleteLocalPersistenceResult])
+
   const discard = useCallback(() => {
     runIdRef.current += 1
     setState('idle')
@@ -327,5 +363,14 @@ export function useDayMemoLocalOperationRemoteCheck({ dayMemos, isConfigured, is
     }
   }, [connection])
 
-  return { eligible, preparedKind, state, result, checkRemote, discard, getReadySnapshot }
+  return {
+    eligible,
+    preparedKind,
+    state,
+    result,
+    checkRemote,
+    checkPreparedNormalDelete,
+    discard,
+    getReadySnapshot,
+  }
 }
