@@ -462,6 +462,7 @@ function App() {
     isSignedIn: supabaseAuth.isSignedIn,
     connection: supabaseWorkspace.connection,
     getReadySnapshot: dayMemoLocalOperationRemoteCheck.getReadySnapshot,
+    normalDeleteLocalPersistenceResult: dayMemoLocalOperationPreparation.normalDeleteLocalPersistenceResult,
   })
   const dayMemoMetadataV4Migration = useDayMemoMetadataV4Migration(supabaseWorkspace.connection)
   const dayMemoMetadataV5Migration = useDayMemoMetadataV5Migration(

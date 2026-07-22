@@ -18,11 +18,13 @@ import type {
   DayMemoLocalOperationRemoteCheckKind,
   DayMemoLocalOperationRemoteReadySnapshot,
 } from './useDayMemoLocalOperationRemoteCheck'
+import type { DayMemoNormalDeleteLocalPersistenceResult } from './useDayMemoLocalOperationPreparation'
 
 export type DayMemoLocalOperationSendClassification =
   | 'local_operation_send_ready'
   | 'local_operation_send_in_progress'
   | 'local_operation_send_succeeded'
+  | 'local_operation_send_remote_succeeded_cleanup_pending'
   | 'local_operation_send_snapshot_missing'
   | 'local_operation_send_snapshot_stale'
   | 'local_operation_send_pending_missing'
@@ -59,9 +61,19 @@ export interface DayMemoLocalOperationSendResult {
   cursorUpdated: boolean
   pendingCleared: boolean
   intentCleared: boolean
+  cleanupPending: boolean
   recoveryRequired: boolean
   checkedAt: string
   nextAction: string
+}
+
+export interface DayMemoNormalDeleteRemoteResultSnapshot {
+  date: string
+  workspaceId: string
+  operationId: string
+  sendingMetadataRaw: string
+  appliedResult: DayMemoSyncResultRecord
+  checkedAt: string
 }
 
 interface Input {
@@ -70,6 +82,7 @@ interface Input {
   isSignedIn: boolean
   connection: SyncConnection | null
   getReadySnapshot: () => DayMemoLocalOperationRemoteReadySnapshot | null
+  normalDeleteLocalPersistenceResult?: DayMemoNormalDeleteLocalPersistenceResult | null
 }
 
 function connectionIsEligible(connection: SyncConnection | null): connection is SyncConnection & { workspaceId: string } {
@@ -113,11 +126,20 @@ function message(classification: DayMemoLocalOperationSendClassification): strin
   return '送信を安全に完了できませんでした。自動再試行は行いません。'
 }
 
-export function useDayMemoLocalOperationSend({ dayMemos, isConfigured, isSignedIn, connection, getReadySnapshot }: Input) {
+export function useDayMemoLocalOperationSend({
+  dayMemos,
+  isConfigured,
+  isSignedIn,
+  connection,
+  getReadySnapshot,
+  normalDeleteLocalPersistenceResult,
+}: Input) {
   const [result, setResult] = useState<DayMemoLocalOperationSendResult | null>(null)
   const [sending, setSending] = useState(false)
   const [attemptedSnapshotToken, setAttemptedSnapshotToken] = useState<string | null>(null)
   const inFlightRef = useRef(false)
+  const attemptedSnapshotTokenRef = useRef<string | null>(null)
+  const normalDeleteRemoteResultRef = useRef<DayMemoNormalDeleteRemoteResultSnapshot | null>(null)
   const eligible = Boolean(isConfigured && isSignedIn && supabaseClient && connectionIsEligible(connection))
   const currentSnapshotToken = getReadySnapshot()?.result.checkedAt ?? null
 
@@ -138,6 +160,7 @@ export function useDayMemoLocalOperationSend({ dayMemos, isConfigured, isSignedI
       cursorUpdated: false,
       pendingCleared: false,
       intentCleared: false,
+      cleanupPending: false,
       recoveryRequired: false,
       ...values,
       classification,
@@ -172,7 +195,10 @@ export function useDayMemoLocalOperationSend({ dayMemos, isConfigured, isSignedI
     return replaceDayMemoSyncMetadataV2(window.localStorage, recovery, current.raw) === 'saved'
   }, [])
 
-  const send = useCallback(async (requestedKind: DayMemoLocalOperationRemoteCheckKind) => {
+  const sendOperation = useCallback(async (
+    requestedKind: DayMemoLocalOperationRemoteCheckKind,
+    stopAfterRemoteSuccess: boolean,
+  ) => {
     if (inFlightRef.current) return
     if (!window.confirm(requestedKind === 'upsert'
       ? '準備済みの保存操作1件を同期先へ送信します。送信しますか？'
@@ -180,6 +206,7 @@ export function useDayMemoLocalOperationSend({ dayMemos, isConfigured, isSignedI
     inFlightRef.current = true
     setSending(true)
     setResult(null)
+    if (stopAfterRemoteSuccess) normalDeleteRemoteResultRef.current = null
     let rpcCalled = false
     try {
       if (!eligible || !supabaseClient || !connectionIsEligible(connection)) {
@@ -191,7 +218,15 @@ export function useDayMemoLocalOperationSend({ dayMemos, isConfigured, isSignedI
         finish('local_operation_send_snapshot_missing')
         return
       }
+      if (stopAfterRemoteSuccess && attemptedSnapshotTokenRef.current === snapshot.result.checkedAt) {
+        finish('local_operation_send_snapshot_stale', {
+          date: snapshot.result.date,
+          operationKind: requestedKind,
+        })
+        return
+      }
       setAttemptedSnapshotToken(snapshot.result.checkedAt)
+      attemptedSnapshotTokenRef.current = snapshot.result.checkedAt
       const common = { date: snapshot.result.date, operationKind: requestedKind, snapshotFresh: true }
       if (snapshot.result.operationKind !== requestedKind || snapshot.pendingOperation.kind !== requestedKind) {
         finish('local_operation_send_target_mismatch', common)
@@ -374,6 +409,34 @@ export function useDayMemoLocalOperationSend({ dayMemos, isConfigured, isSignedI
         return
       }
 
+      if (stopAfterRemoteSuccess) {
+        if (pending.kind !== 'delete') {
+          finish('local_operation_send_unsupported', {
+            ...common, remoteRechecked: true, rpcCalled, rpcResultValidated: true,
+          })
+          return
+        }
+        const checkedAt = new Date().toISOString()
+        normalDeleteRemoteResultRef.current = {
+          date: pending.date,
+          workspaceId: connection.workspaceId,
+          operationId: pending.operationId,
+          sendingMetadataRaw: sendingRaw,
+          appliedResult: { ...appliedResult },
+          checkedAt,
+        }
+        finish('local_operation_send_remote_succeeded_cleanup_pending', {
+          ...common,
+          succeeded: false,
+          remoteRechecked: true,
+          rpcCalled,
+          rpcResultValidated: true,
+          remoteSucceeded: true,
+          cleanupPending: true,
+        })
+        return
+      }
+
       const now = new Date().toISOString()
       const applied = appliedResult
       const remainingIntents = { ...sending.localDeleteIntents }
@@ -443,7 +506,54 @@ export function useDayMemoLocalOperationSend({ dayMemos, isConfigured, isSignedI
     }
   }, [connection, dayMemos, eligible, finish, getReadySnapshot, persistAfterRpcFailure, persistRecoveryRequired])
 
-  const discard = useCallback(() => setResult(null), [])
+  const send = useCallback(async (requestedKind: DayMemoLocalOperationRemoteCheckKind): Promise<void> => {
+    await sendOperation(requestedKind, false)
+  }, [sendOperation])
+
+  const sendPreparedNormalDelete = useCallback(async (): Promise<void> => {
+    const localResult = normalDeleteLocalPersistenceResult
+    const snapshot = getReadySnapshot()
+    if (!localResult?.succeeded || !localResult.operationIdsMatch || localResult.recoveryRequired
+      || !snapshot || snapshot.result.operationKind !== 'delete'
+      || snapshot.result.date !== localResult.date || snapshot.pendingOperation.kind !== 'delete') {
+      finish('local_operation_send_prerequisite_missing', {
+        date: localResult?.date ?? snapshot?.result.date ?? null,
+        operationKind: 'delete',
+      })
+      return
+    }
+    const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
+    const intent = loaded.status === 'ready' && isDayMemoSyncMetadataV5(loaded.metadata)
+      ? loaded.metadata.localDeleteIntents[localResult.date] : undefined
+    if (loaded.status !== 'ready' || !isDayMemoSyncMetadataV5(loaded.metadata)
+      || loaded.metadata.pendingOperation?.kind !== 'delete'
+      || loaded.metadata.pendingOperation.operationId !== snapshot.pendingOperation.operationId
+      || intent?.operationId !== snapshot.pendingOperation.operationId) {
+      finish('local_operation_send_operation_mismatch', {
+        date: localResult.date,
+        operationKind: 'delete',
+      })
+      return
+    }
+    await sendOperation('delete', true)
+  }, [finish, getReadySnapshot, normalDeleteLocalPersistenceResult, sendOperation])
+
+  const getNormalDeleteRemoteResultSnapshot = useCallback((): DayMemoNormalDeleteRemoteResultSnapshot | null => {
+    const snapshot = normalDeleteRemoteResultRef.current
+    if (!snapshot || !connectionIsEligible(connection) || connection.workspaceId !== snapshot.workspaceId) return null
+    const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
+    if (loaded.status !== 'ready' || !isDayMemoSyncMetadataV5(loaded.metadata)
+      || loaded.raw !== snapshot.sendingMetadataRaw
+      || loaded.metadata.pendingOperation?.kind !== 'delete'
+      || loaded.metadata.pendingOperation.operationId !== snapshot.operationId
+      || loaded.metadata.localDeleteIntents[snapshot.date]?.operationId !== snapshot.operationId) return null
+    return { ...snapshot, appliedResult: { ...snapshot.appliedResult } }
+  }, [connection])
+
+  const discard = useCallback(() => {
+    setResult(null)
+    normalDeleteRemoteResultRef.current = null
+  }, [])
 
   return {
     eligible,
@@ -451,6 +561,8 @@ export function useDayMemoLocalOperationSend({ dayMemos, isConfigured, isSignedI
     canSend: Boolean(eligible && !sending && currentSnapshotToken && currentSnapshotToken !== attemptedSnapshotToken),
     result,
     send,
+    sendPreparedNormalDelete,
+    getNormalDeleteRemoteResultSnapshot,
     discard,
   }
 }
