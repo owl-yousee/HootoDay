@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import type { DayMemo } from '../types/dayMemo'
 import type { DayMemoPendingOperationV5, DayMemoSyncMetadataV5 } from '../types/dayMemoSync'
 import type { SyncConnection } from '../types/sync'
@@ -77,6 +77,20 @@ export function isDayMemoLocalOperationDeletePreparationInput(
     && value.checkedAt.length > 0
 }
 
+export type DayMemoNormalDeletePreparationConnectionClassification =
+  | 'normal_delete_v5_connection_ready'
+  | 'normal_delete_v5_connection_missing'
+  | 'normal_delete_v5_connection_target_mismatch'
+  | 'normal_delete_v5_connection_state_changed'
+  | 'normal_delete_v5_connection_prerequisite_invalid'
+
+export interface DayMemoNormalDeletePreparationConnectionResult {
+  date: string
+  classification: DayMemoNormalDeletePreparationConnectionClassification
+  ready: boolean
+  checkedAt: string
+}
+
 interface Input {
   dayMemos: DayMemo[]
   isConfigured: boolean
@@ -84,6 +98,7 @@ interface Input {
   connection: SyncConnection | null
   preparationResult: DayMemoLocalOperationPreparationResult | null
   getReadySnapshot: () => DayMemoLocalOperationPreparationReadySnapshot | null
+  getNormalDeletePreparationInput?: () => DayMemoLocalOperationDeletePreparationInput | null
   adoptVerifiedStoredDayMemos: (memos: DayMemo[]) => void
 }
 
@@ -121,10 +136,71 @@ export function useDayMemoLocalOperationPreparation({
   connection,
   preparationResult,
   getReadySnapshot,
+  getNormalDeletePreparationInput,
   adoptVerifiedStoredDayMemos,
 }: Input) {
   const [result, setResult] = useState<DayMemoLocalOperationPersistentPreparationResult | null>(null)
+  const [normalDeleteConnectionResult, setNormalDeleteConnectionResult] = useState<DayMemoNormalDeletePreparationConnectionResult | null>(null)
+  const normalDeleteInputRef = useRef<DayMemoLocalOperationDeletePreparationInput | null>(null)
   const eligible = Boolean(isConfigured && isSignedIn && connectionIsEligible(connection))
+
+  const connectNormalDeletePreparation = useCallback((date: string): boolean => {
+    const checkedAt = new Date().toISOString()
+    const finish = (classification: DayMemoNormalDeletePreparationConnectionClassification): boolean => {
+      normalDeleteInputRef.current = null
+      setNormalDeleteConnectionResult({
+        date,
+        classification,
+        ready: classification === 'normal_delete_v5_connection_ready',
+        checkedAt,
+      })
+      return classification === 'normal_delete_v5_connection_ready'
+    }
+    const adapter = getNormalDeletePreparationInput?.() ?? null
+    if (!adapter || !isDayMemoLocalOperationDeletePreparationInput(adapter)) {
+      return finish('normal_delete_v5_connection_missing')
+    }
+    if (adapter.date !== date) return finish('normal_delete_v5_connection_target_mismatch')
+    if (!eligible || !connection?.workspaceId || adapter.workspaceId !== connection.workspaceId) {
+      return finish('normal_delete_v5_connection_prerequisite_invalid')
+    }
+    const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
+    const stored = readDayMemoStorageSnapshot(window.localStorage)
+    if (loaded.status !== 'ready' || loaded.metadata.version !== 5 || stored.status !== 'ready') {
+      return finish('normal_delete_v5_connection_prerequisite_invalid')
+    }
+    if (loaded.raw !== adapter.metadataRaw || stored.serialized !== adapter.localStorageSerialized
+      || signature(stored.memos) !== adapter.localSignature || signature(dayMemos) !== adapter.localSignature) {
+      return finish('normal_delete_v5_connection_state_changed')
+    }
+    const baseline = loaded.metadata.baselines[date]
+    const memo = stored.memos.find((item) => item.date === date)
+    if (loaded.metadata.workspaceId !== adapter.workspaceId
+      || loaded.metadata.baselineStatus !== 'confirmed' || loaded.metadata.baselineConfirmedAt === null
+      || loaded.metadata.pendingOperation !== null || loaded.metadata.pushBlock !== null
+      || Object.keys(loaded.metadata.localDeleteIntents).length !== 0
+      || !baseline || baseline.deletedAt !== null || !memo
+      || baseline.remoteRevision !== adapter.baselineRevision
+      || baseline.remoteChangeSequence !== adapter.baselineChangeSequence
+      || baseline.remoteUpdatedAt !== adapter.baselineRemoteUpdatedAt
+      || baseline.baselineLocalUpdatedAt !== adapter.baselineLocalUpdatedAt
+      || memo.updatedAt !== adapter.memoUpdatedAt) {
+      return finish('normal_delete_v5_connection_prerequisite_invalid')
+    }
+    normalDeleteInputRef.current = { ...adapter }
+    setNormalDeleteConnectionResult({
+      date,
+      classification: 'normal_delete_v5_connection_ready',
+      ready: true,
+      checkedAt,
+    })
+    return true
+  }, [connection?.workspaceId, dayMemos, eligible, getNormalDeletePreparationInput])
+
+  const getConnectedNormalDeletePreparationInput = useCallback(() => {
+    const adapter = normalDeleteInputRef.current
+    return adapter ? { ...adapter } : null
+  }, [])
 
   const finish = useCallback((
     operationKind: DayMemoLocalOperationPreparationKind,
@@ -310,5 +386,15 @@ export function useDayMemoLocalOperationPreparation({
 
   const discard = useCallback(() => setResult(null), [])
 
-  return { eligible, result, prepareEdit, prepareSave, prepareDelete, discard }
+  return {
+    eligible,
+    result,
+    prepareEdit,
+    prepareSave,
+    prepareDelete,
+    discard,
+    normalDeleteConnectionResult,
+    connectNormalDeletePreparation,
+    getConnectedNormalDeletePreparationInput,
+  }
 }

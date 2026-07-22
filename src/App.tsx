@@ -446,6 +446,7 @@ function App() {
     connection: supabaseWorkspace.connection,
     preparationResult: dayMemoLocalOperationPreparationCheck.result,
     getReadySnapshot: dayMemoLocalOperationPreparationCheck.getReadySnapshot,
+    getNormalDeletePreparationInput: dayMemoDeleteIntent.getNormalV5DeletePreparationInput,
     adoptVerifiedStoredDayMemos,
   })
   const dayMemoLocalOperationRemoteCheck = useDayMemoLocalOperationRemoteCheck({
