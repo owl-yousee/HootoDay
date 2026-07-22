@@ -167,5 +167,6 @@ export function useDayMemoDeleteIntent({
     getDeleteModeForDate,
     recordIntentAndDeleteLocal,
     normalDeletePreparation,
+    getNormalV5DeletePreparationInput: normalDeletePreparation.getV5DeletePreparationInput,
   }
 }

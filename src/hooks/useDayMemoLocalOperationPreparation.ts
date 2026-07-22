@@ -42,6 +42,41 @@ export interface DayMemoLocalOperationPersistentPreparationResult {
   nextAction: string
 }
 
+export interface DayMemoLocalOperationDeletePreparationInput {
+  source: 'normal_delete_preparation'
+  operationKind: 'local_delete_prepare'
+  date: string
+  workspaceId: string
+  metadataRaw: string
+  localStorageSerialized: string
+  localSignature: string
+  baselineRevision: number
+  baselineChangeSequence: number
+  baselineRemoteUpdatedAt: string
+  baselineLocalUpdatedAt: string
+  memoUpdatedAt: string
+  checkedAt: string
+}
+
+export function isDayMemoLocalOperationDeletePreparationInput(
+  value: DayMemoLocalOperationDeletePreparationInput,
+): boolean {
+  return value.source === 'normal_delete_preparation'
+    && value.operationKind === 'local_delete_prepare'
+    && value.date.length > 0
+    && isUuid(value.workspaceId)
+    && value.metadataRaw.length > 0
+    && value.localStorageSerialized.length > 0
+    && value.localSignature.length > 0
+    && Number.isSafeInteger(value.baselineRevision) && value.baselineRevision >= 1
+    && Number.isSafeInteger(value.baselineChangeSequence) && value.baselineChangeSequence >= 1
+    && value.baselineRemoteUpdatedAt.length > 0
+    && value.baselineLocalUpdatedAt.length > 0
+    && value.memoUpdatedAt.length > 0
+    && value.baselineLocalUpdatedAt === value.memoUpdatedAt
+    && value.checkedAt.length > 0
+}
+
 interface Input {
   dayMemos: DayMemo[]
   isConfigured: boolean

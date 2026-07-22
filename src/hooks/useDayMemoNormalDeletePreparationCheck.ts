@@ -11,6 +11,10 @@ import type { SyncConnection } from '../types/sync'
 import { readDayMemoStorageSnapshot } from '../utils/dayMemoStorage'
 import { isDayMemoSyncMetadataV5, loadDayMemoSyncMetadataAny } from '../utils/dayMemoSyncStorage'
 import { isUuid } from '../utils/syncConnectionStorage'
+import {
+  isDayMemoLocalOperationDeletePreparationInput,
+  type DayMemoLocalOperationDeletePreparationInput,
+} from './useDayMemoLocalOperationPreparation'
 
 export type DayMemoNormalDeletePreparationClassification =
   | 'normal_delete_preparation_ready'
@@ -209,5 +213,29 @@ export function useDayMemoNormalDeletePreparationCheck(input: Input) {
     } : null
   }, [])
 
-  return { result, checkCandidate, discard, getReadySnapshot }
+  const getV5DeletePreparationInput = useCallback((): DayMemoLocalOperationDeletePreparationInput | null => {
+    const snapshot = readySnapshotRef.current
+    if (!snapshot || snapshot.result.classification !== 'normal_delete_preparation_ready'
+      || !snapshot.result.ready || snapshot.baseline.deletedAt !== null
+      || snapshot.baseline.baselineLocalUpdatedAt === null) return null
+
+    const adapter: DayMemoLocalOperationDeletePreparationInput = {
+      source: 'normal_delete_preparation',
+      operationKind: 'local_delete_prepare',
+      date: snapshot.result.date,
+      workspaceId: snapshot.workspaceId,
+      metadataRaw: snapshot.metadataRaw,
+      localStorageSerialized: snapshot.localStorageSerialized,
+      localSignature: snapshot.localSignature,
+      baselineRevision: snapshot.baseline.remoteRevision,
+      baselineChangeSequence: snapshot.baseline.remoteChangeSequence,
+      baselineRemoteUpdatedAt: snapshot.baseline.remoteUpdatedAt,
+      baselineLocalUpdatedAt: snapshot.baseline.baselineLocalUpdatedAt,
+      memoUpdatedAt: snapshot.memo.updatedAt,
+      checkedAt: snapshot.result.checkedAt,
+    }
+    return isDayMemoLocalOperationDeletePreparationInput(adapter) ? { ...adapter } : null
+  }, [])
+
+  return { result, checkCandidate, discard, getReadySnapshot, getV5DeletePreparationInput }
 }
