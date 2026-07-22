@@ -8,7 +8,7 @@ import { pullAllDayMemoSyncRecords } from '../utils/dayMemoSyncPull'
 import { isDayMemoSyncMetadataV5, loadDayMemoSyncMetadataAny, replaceDayMemoSyncMetadataV2 } from '../utils/dayMemoSyncStorage'
 import { isUuid } from '../utils/syncConnectionStorage'
 import { supabaseClient } from '../lib/supabaseClient'
-import { classifyDayMemoNormalDifference } from './useDayMemoNormalDifferenceRecoveryPlan'
+import { classifyDayMemoNormalDifference, remoteRecordMatchesConfirmedBaseline } from './useDayMemoNormalDifferenceRecoveryPlan'
 import type { DayMemoNormalBodyMismatchCandidateSnapshot } from './useDayMemoNormalBodyMismatchCandidate'
 
 export type BodyMismatchRemoteAdoptionStage = 'idle' | 'local_saved' | 'metadata_ready' | 'completed' | 'blocked'
@@ -87,8 +87,7 @@ export function useDayMemoBodyMismatchRemoteAdoption(input: Input) {
         || !input.reactMetadata || !same(input.reactMetadata, metadata.metadata) || !same(input.dayMemos, local.memos)
         || !eligibleConnection(input.connection) || input.connection.workspaceId !== snapshot.workspaceId
         || metadata.metadata.baselineStatus !== 'recovery_required' || metadata.metadata.baselineConfirmedAt !== null
-        || metadata.metadata.pendingOperation || metadata.metadata.pushBlock || Object.keys(metadata.metadata.localDeleteIntents).length
-        || metadata.metadata.baselines[snapshot.date]) {
+        || metadata.metadata.pendingOperation || metadata.metadata.pushBlock || Object.keys(metadata.metadata.localDeleteIntents).length) {
         block('body_mismatch_remote_source_changed', snapshot.date); return
       }
       const current = local.memos.filter((memo) => memo.date === snapshot.date)
@@ -96,6 +95,10 @@ export function useDayMemoBodyMismatchRemoteAdoption(input: Input) {
         || snapshot.remoteRecord.deletedAt !== null || !snapshot.remoteRecord.payload
         || snapshot.remoteRecord.payload.date !== snapshot.date) {
         block('body_mismatch_remote_target_changed', snapshot.date); return
+      }
+      const targetBaseline = metadata.metadata.baselines[snapshot.date] ?? null
+      if (targetBaseline && !remoteRecordMatchesConfirmedBaseline(snapshot.remoteRecord, targetBaseline)) {
+        block('body_mismatch_remote_source_changed', snapshot.date); return
       }
       const next = local.memos.map((memo) => memo.date === snapshot.date ? { ...snapshot.remoteRecord.payload! } : memo)
       const backup = saveDayMemoPullApplyBackup(window.localStorage, snapshot.workspaceId, local.memos,

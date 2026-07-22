@@ -7,7 +7,8 @@ import { isStoredDayMemo, readDayMemoStorageSnapshot } from '../utils/dayMemoSto
 import { pullAllDayMemoSyncRecords, type RemoteDayMemoRecord } from '../utils/dayMemoSyncPull'
 import { isDayMemoSyncMetadataV5, loadDayMemoSyncMetadataAny } from '../utils/dayMemoSyncStorage'
 import { isUuid } from '../utils/syncConnectionStorage'
-import { classifyDayMemoNormalDifference, type DayMemoNormalDifferenceClassification } from './useDayMemoNormalDifferenceRecoveryPlan'
+import { classifyDayMemoNormalDifference, remoteRecordMatchesConfirmedBaseline,
+  type DayMemoNormalDifferenceClassification } from './useDayMemoNormalDifferenceRecoveryPlan'
 import type { DayMemoNormalDifferenceCheckpointResult } from './useDayMemoNormalDifferenceRecoveryCheckpointCheck'
 
 export type DayMemoNormalBodyMismatchSafety =
@@ -156,7 +157,6 @@ export function useDayMemoNormalBodyMismatchCandidate({ dayMemos, isConfigured, 
       if (metadata.pendingOperation) { finish('normal_body_mismatch_pending_remaining'); return }
       if (Object.keys(metadata.localDeleteIntents).length) { finish('normal_body_mismatch_intent_remaining'); return }
       if (metadata.pushBlock) { finish('normal_body_mismatch_push_blocked'); return }
-      if (metadata.baselines[selectedDate]) { finish('normal_body_mismatch_target_mismatch'); return }
       if (localSignature(stored.memos) !== signature || localSignature(dayMemos) !== signature) {
         finish('normal_body_mismatch_verification_stale'); return
       }
@@ -177,6 +177,10 @@ export function useDayMemoNormalBodyMismatchCandidate({ dayMemos, isConfigured, 
       if (!remote) { finish('normal_body_mismatch_target_missing'); return }
       if (remote.deletedAt !== null || !remote.payload || remote.payload.date !== selectedDate) {
         finish('normal_body_mismatch_remote_changed'); return
+      }
+      const targetBaseline = metadata.baselines[selectedDate] ?? null
+      if (targetBaseline && !remoteRecordMatchesConfirmedBaseline(remote, targetBaseline)) {
+        finish('normal_body_mismatch_target_mismatch'); return
       }
       const localByDate = new Map(stored.memos.map((memo) => [memo.date, memo]))
       const dates = [...new Set([...localByDate.keys(), ...remoteByDate.keys(), ...Object.keys(metadata.baselines)])].sort()

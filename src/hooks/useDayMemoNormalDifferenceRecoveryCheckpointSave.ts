@@ -84,8 +84,13 @@ export function useDayMemoNormalDifferenceRecoveryCheckpointSave({ dayMemos, isC
   const bridgeNormalCandidateReady = snapshot?.sourceBaselineStatus === 'confirmed'
     && snapshot.result.candidateCursor !== null && snapshot.result.metadataCursor !== null
     && (snapshot.result.candidateCursor > snapshot.result.metadataCursor
-      || snapshot.result.exactBaselineCandidateCount > 0)
-  const canSave = Boolean(eligible && !saving && snapshot?.result.safety === 'normal_difference_checkpoint_ready'
+      || snapshot.result.exactBaselineCandidateCount > 0
+      || (snapshot.result.candidateCursor === snapshot.result.metadataCursor
+        && snapshot.result.bodyMismatchDates.length > 0
+        && snapshot.result.bodyMismatchDates.length === snapshot.result.unresolvedCount))
+  const canSave = Boolean(eligible && !saving
+    && (snapshot?.result.safety === 'normal_difference_checkpoint_ready'
+      || snapshot?.result.safety === 'normal_difference_status_only_checkpoint_ready')
     && snapshot.result.unresolvedReconstructable && snapshot.result.candidateBaselineStatus === 'recovery_required'
     && snapshot.result.candidateBaselineConfirmedAtNull
     && (snapshot.result.exactBaselineCandidateCount > 0 || bridgeNormalCandidateReady))
@@ -102,7 +107,8 @@ export function useDayMemoNormalDifferenceRecoveryCheckpointSave({ dayMemos, isC
   const save = useCallback(async () => {
     if (inFlightRef.current || !canSave || !supabaseClient || !connectionIsEligible(connection)) return
     const ready = getReadySnapshot()
-    if (!ready || ready.result.safety !== 'normal_difference_checkpoint_ready') {
+    if (!ready || (ready.result.safety !== 'normal_difference_checkpoint_ready'
+      && ready.result.safety !== 'normal_difference_status_only_checkpoint_ready')) {
       finish('normal_difference_checkpoint_result_missing'); return
     }
     const accepted = window.confirm(`完全一致baseline候補${ready.result.exactBaselineCandidateCount}件を保存し、cursorを${ready.result.metadataCursor}から${ready.result.candidateCursor}へ更新します。未解決差異${ready.result.unresolvedCount}件はrecovery_requiredのまま残り、通常同期readyにはなりません。Supabase送信は行いません。保存しますか？`)

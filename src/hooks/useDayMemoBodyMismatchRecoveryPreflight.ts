@@ -7,7 +7,8 @@ import { isStoredDayMemo, readDayMemoStorageSnapshot } from '../utils/dayMemoSto
 import { pullAllDayMemoSyncRecords, type RemoteDayMemoRecord } from '../utils/dayMemoSyncPull'
 import { isDayMemoSyncMetadataV5, loadDayMemoSyncMetadataAny } from '../utils/dayMemoSyncStorage'
 import { isUuid } from '../utils/syncConnectionStorage'
-import { classifyDayMemoNormalDifference, type DayMemoNormalDifferenceClassification } from './useDayMemoNormalDifferenceRecoveryPlan'
+import { classifyDayMemoNormalDifference, remoteRecordMatchesConfirmedBaseline,
+  type DayMemoNormalDifferenceClassification } from './useDayMemoNormalDifferenceRecoveryPlan'
 
 export type DayMemoBodyMismatchRecoveryPreflightSafety =
   | 'normal_body_mismatch_recovery_preflight_ready'
@@ -176,7 +177,8 @@ export function useDayMemoBodyMismatchRecoveryPreflight({ dayMemos, isConfigured
       if (!isRecoveryPending(metadata.pendingOperation)) { finish('normal_body_mismatch_recovery_preflight_pending_invalid'); return }
       const prepared = metadata.pendingOperation
       const base = { date: prepared.date, operationMode: prepared.operationMode, pendingVerified: true, workspaceVerified: true }
-      if (metadata.baselineStatus !== 'recovery_required' || metadata.baselineConfirmedAt !== null || metadata.baselines[prepared.date]) {
+      if (metadata.baselineStatus !== 'recovery_required' || metadata.baselineConfirmedAt !== null
+        || (prepared.operationMode === 'local_only_recovery' && metadata.baselines[prepared.date])) {
         finish(metadata.baselineStatus !== 'recovery_required' || metadata.baselineConfirmedAt !== null
           ? 'normal_body_mismatch_recovery_preflight_checkpoint_missing'
           : 'normal_body_mismatch_recovery_preflight_checkpoint_target_changed', base); return
@@ -227,6 +229,10 @@ export function useDayMemoBodyMismatchRecoveryPreflight({ dayMemos, isConfigured
       if (prepared.operationMode === 'body_mismatch_recovery' && remote!.revision !== prepared.baseRevision) { finish('normal_body_mismatch_recovery_preflight_remote_revision_changed', base); return }
       if (prepared.operationMode === 'body_mismatch_recovery' && remote!.changeSequence !== prepared.baseChangeSequence) { finish('normal_body_mismatch_recovery_preflight_remote_sequence_changed', base); return }
       if (prepared.operationMode === 'body_mismatch_recovery' && remote!.payload?.updatedAt !== prepared.baseRemoteUpdatedAt) { finish('normal_body_mismatch_recovery_preflight_remote_updated_at_changed', base); return }
+      if (prepared.operationMode === 'body_mismatch_recovery' && metadata.baselines[prepared.date]
+        && !remoteRecordMatchesConfirmedBaseline(remote, metadata.baselines[prepared.date])) {
+        finish('normal_body_mismatch_recovery_preflight_checkpoint_target_changed', base); return
+      }
       const remoteByDate = new Map(pulled.records.map((record) => [record.entityId, record]))
       if (remoteByDate.size !== pulled.records.length || (prepared.operationMode === 'body_mismatch_recovery'
         && (remote!.entityId !== prepared.date || remote!.payload?.date !== prepared.date))) {

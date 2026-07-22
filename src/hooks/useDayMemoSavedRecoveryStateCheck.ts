@@ -7,7 +7,8 @@ import { isStoredDayMemo, readDayMemoStorageSnapshot } from '../utils/dayMemoSto
 import { pullAllDayMemoSyncRecords } from '../utils/dayMemoSyncPull'
 import { isDayMemoSyncMetadataV5, loadDayMemoSyncMetadataAny } from '../utils/dayMemoSyncStorage'
 import { isUuid } from '../utils/syncConnectionStorage'
-import { classifyDayMemoNormalDifference, type DayMemoNormalDifferenceClassification } from './useDayMemoNormalDifferenceRecoveryPlan'
+import { classifyDayMemoNormalDifference, remoteRecordMatchesConfirmedBaseline,
+  type DayMemoNormalDifferenceClassification } from './useDayMemoNormalDifferenceRecoveryPlan'
 
 export type DayMemoSavedRecoveryStateSafety =
   | 'normal_difference_checkpoint_saved_state_ready'
@@ -184,7 +185,9 @@ export function useDayMemoSavedRecoveryStateCheck(input: Input) {
       const classifications = Object.fromEntries(dates.map((date) => [date, classifyDayMemoNormalDifference(
         localByDate.get(date) ?? null, remoteByDate.get(date) ?? null, metadata.baselines[date] ?? null,
       )])) as Record<string, DayMemoNormalDifferenceClassification>
-      if (Object.keys(metadata.baselines).some((date) => classifications[date] !== 'exact_match_baseline_confirmed')) {
+      if (Object.keys(metadata.baselines).some((date) => classifications[date] !== 'exact_match_baseline_confirmed'
+        && !(classifications[date] === 'body_mismatch'
+          && remoteRecordMatchesConfirmedBaseline(remoteByDate.get(date) ?? null, metadata.baselines[date] ?? null)))) {
         finish('normal_difference_checkpoint_saved_state_baseline_mismatch', remoteCommon); return
       }
       const unresolvedClassifications = Object.fromEntries(Object.entries(classifications)

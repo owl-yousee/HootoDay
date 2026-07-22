@@ -7,7 +7,7 @@ import { isStoredDayMemo, readDayMemoStorageSnapshot } from '../utils/dayMemoSto
 import { isDayMemoSyncMetadataV5, loadDayMemoSyncMetadataAny, replaceDayMemoSyncMetadataV2 } from '../utils/dayMemoSyncStorage'
 import { isAppliedDayMemoSyncResult, isConflictDayMemoSyncResult, normalizeDayMemoSyncResult } from '../utils/dayMemoSyncUpsertResult'
 import { isUuid } from '../utils/syncConnectionStorage'
-import { classifyDayMemoNormalDifference } from './useDayMemoNormalDifferenceRecoveryPlan'
+import { activeBaselineMatchesRemoteIdentity, classifyDayMemoNormalDifference } from './useDayMemoNormalDifferenceRecoveryPlan'
 import type { DayMemoBodyMismatchRecoveryPreflightSnapshot } from './useDayMemoBodyMismatchRecoveryPreflight'
 
 export type DayMemoBodyMismatchRecoverySendSafety =
@@ -148,8 +148,13 @@ export function useDayMemoBodyMismatchRecoverySend({ dayMemos, isConfigured, isS
       if (pending.status !== 'prepared' || !same(pending, snapshot.pendingOperation)) {
         finish('normal_body_mismatch_recovery_send_pending_changed', base); return
       }
+      const targetBaseline = metadata.baselines[pending.date] ?? null
+      const targetBaselineValid = pending.operationMode === 'local_only_recovery'
+        ? targetBaseline === null
+        : targetBaseline === null || activeBaselineMatchesRemoteIdentity(targetBaseline,
+          pending.baseRevision, pending.baseChangeSequence, pending.baseRemoteUpdatedAt)
       if (metadata.baselineStatus !== 'recovery_required' || metadata.baselineConfirmedAt !== null
-        || metadata.baselines[pending.date] || metadata.lastPulledChangeSequence < pending.baseChangeSequence) {
+        || !targetBaselineValid || metadata.lastPulledChangeSequence < pending.baseChangeSequence) {
         finish('normal_body_mismatch_recovery_send_checkpoint_unavailable', base); return
       }
       if (metadata.localDeleteIntents[pending.date] || Object.keys(metadata.localDeleteIntents).length) {
@@ -163,7 +168,7 @@ export function useDayMemoBodyMismatchRecoverySend({ dayMemos, isConfigured, isS
       const expectedClassification = pending.operationMode === 'body_mismatch_recovery' ? 'body_mismatch' : 'local_only'
       if (memo.updatedAt !== pending.preparedLocalUpdatedAt || JSON.stringify(memo) !== snapshot.localFingerprint
         || (pending.operationMode === 'body_mismatch_recovery' && snapshot.remoteRecord?.payload === null)
-        || classifyDayMemoNormalDifference(memo, snapshot.remoteRecord, null) !== expectedClassification) {
+        || classifyDayMemoNormalDifference(memo, snapshot.remoteRecord, targetBaseline) !== expectedClassification) {
         finish('normal_body_mismatch_recovery_send_local_changed', base); return
       }
       if ((pending.operationMode === 'body_mismatch_recovery' && (!snapshot.remoteRecord

@@ -11,6 +11,7 @@ import {
 } from '../utils/dayMemoSyncOperationResult'
 import { isDayMemoSyncMetadataV5, loadDayMemoSyncMetadataAny } from '../utils/dayMemoSyncStorage'
 import { isUuid } from '../utils/syncConnectionStorage'
+import { activeBaselineMatchesRemoteIdentity } from './useDayMemoNormalDifferenceRecoveryPlan'
 
 export type DayMemoSavedOperationResultReadSafety =
   | 'normal_body_mismatch_recovery_operation_result_read_ready'
@@ -153,9 +154,14 @@ export function fingerprintDayMemoRecoveryCheckpoint(metadata: DayMemoSyncMetada
 }
 
 function checkpointIsValid(metadata: DayMemoSyncMetadataV5, pending: RecoveryPending): boolean {
+  const targetBaseline = metadata.baselines[pending.date] ?? null
+  const targetBaselineValid = pending.operationMode === 'local_only_recovery'
+    ? targetBaseline === null
+    : targetBaseline === null || activeBaselineMatchesRemoteIdentity(targetBaseline,
+      pending.baseRevision, pending.baseChangeSequence, pending.baseRemoteUpdatedAt)
   return metadata.baselineStatus === 'recovery_required' && metadata.baselineConfirmedAt === null
     && metadata.lastPulledChangeSequence >= pending.baseChangeSequence
-    && Object.keys(metadata.baselines).length > 0 && metadata.baselines[pending.date] === undefined
+    && Object.keys(metadata.baselines).length > 0 && targetBaselineValid
 }
 
 function nextAction(safety: DayMemoSavedOperationResultReadSafety): string {

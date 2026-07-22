@@ -127,6 +127,36 @@ export function classifyDayMemoNormalDifference(
     : 'revision_lineage_mismatch'
 }
 
+export function remoteRecordMatchesConfirmedBaseline(
+  remote: RemoteDayMemoRecord | null,
+  baseline: DayMemoSyncMetadataV5['baselines'][string] | null,
+): boolean {
+  if (!remote || !baseline || remote.entityId !== baseline.date
+    || remote.revision !== baseline.remoteRevision
+    || remote.changeSequence !== baseline.remoteChangeSequence) return false
+  if (remote.deletedAt !== null) {
+    return remote.payload === null && baseline.deletedAt === remote.deletedAt
+      && baseline.remoteUpdatedAt === remote.serverUpdatedAt
+      && baseline.baselineLocalUpdatedAt === null
+  }
+  return remote.payload !== null && baseline.deletedAt === null
+    && baseline.remoteUpdatedAt === remote.payload.updatedAt
+    && baseline.baselineLocalUpdatedAt !== null
+}
+
+export function activeBaselineMatchesRemoteIdentity(
+  baseline: DayMemoSyncMetadataV5['baselines'][string] | null,
+  revision: number,
+  changeSequence: number,
+  remoteUpdatedAt: string,
+): boolean {
+  return Boolean(baseline && baseline.deletedAt === null
+    && baseline.remoteRevision === revision
+    && baseline.remoteChangeSequence === changeSequence
+    && baseline.remoteUpdatedAt === remoteUpdatedAt
+    && baseline.baselineLocalUpdatedAt !== null)
+}
+
 function nextAction(safety: DayMemoNormalDifferenceRecoverySafety): string {
   if (safety === 'normal_difference_exact_baseline_candidates') return '次Phaseで完全一致の日付だけを1件ずつbaseline補完候補として確認できます。'
   if (safety === 'normal_difference_manual_resolution_required') return '本文相違、remote-only、local-onlyを種類別に1件ずつ確認してください。'

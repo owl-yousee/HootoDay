@@ -429,15 +429,23 @@ export function useDayMemoBodyMismatchRecoveryPostSendVerification(input: Input)
         finish('normal_body_mismatch_recovery_post_send_remote_payload_mismatch', { ...common, fullPullCount: 1 }); return
       }
       const localByDate = new Map(afterStored.memos.map((memo) => [memo.date, memo]))
-      const targetClassification = classifyDayMemoNormalDifference(local, remote, metadata.baselines[pending.date] ?? null)
-      if (targetClassification !== 'exact_match_baseline_missing') {
+      const previousTargetBaseline = metadata.baselines[pending.date] ?? null
+      const previousBaselineMatchesPending = !previousTargetBaseline || (previousTargetBaseline.deletedAt === null
+        && previousTargetBaseline.remoteRevision === pending.baseRevision
+        && previousTargetBaseline.remoteChangeSequence === pending.baseChangeSequence
+        && previousTargetBaseline.remoteUpdatedAt === pending.baseRemoteUpdatedAt
+        && previousTargetBaseline.baselineLocalUpdatedAt !== null)
+      const targetClassification = classifyDayMemoNormalDifference(local, remote, previousTargetBaseline)
+      if (!previousBaselineMatchesPending || (previousTargetBaseline
+        ? targetClassification !== 'revision_lineage_mismatch'
+        : targetClassification !== 'exact_match_baseline_missing')) {
         finish('normal_body_mismatch_recovery_post_send_target_classification_unexpected', { ...common, fullPullCount: 1 }); return
       }
       const dates = [...new Set([...localByDate.keys(), ...remoteByDate.keys(), ...Object.keys(metadata.baselines)])].sort()
       const classifications = new Map(dates.map((date) => [date, classifyDayMemoNormalDifference(
         localByDate.get(date) ?? null, remoteByDate.get(date) ?? null, metadata.baselines[date] ?? null)]))
-      const invalid = [...classifications.values()].some((value) =>
-        ['active_tombstone_mismatch', 'revision_lineage_mismatch', 'unknown'].includes(value))
+      const invalid = [...classifications.entries()].some(([date, value]) => date !== pending.date
+        && ['active_tombstone_mismatch', 'revision_lineage_mismatch', 'unknown'].includes(value))
       if (invalid) { finish('normal_body_mismatch_recovery_post_send_rebuild_failed', { ...common, fullPullCount: 1 }); return }
       const baselines: DayMemoSyncMetadataV5['baselines'] = { ...metadata.baselines,
         [pending.date]: { date: pending.date, remoteRevision: remote.revision,

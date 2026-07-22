@@ -8,7 +8,7 @@ import { pullAllDayMemoSyncRecords } from '../utils/dayMemoSyncPull'
 import { isDayMemoSyncMetadataV5, loadDayMemoSyncMetadataAny, replaceDayMemoSyncMetadataV2 } from '../utils/dayMemoSyncStorage'
 import { isUuid } from '../utils/syncConnectionStorage'
 import { createUuidV4 } from '../utils/uuid'
-import { classifyDayMemoNormalDifference } from './useDayMemoNormalDifferenceRecoveryPlan'
+import { classifyDayMemoNormalDifference, remoteRecordMatchesConfirmedBaseline } from './useDayMemoNormalDifferenceRecoveryPlan'
 import type { DayMemoNormalDifferenceCheckpointResult } from './useDayMemoNormalDifferenceRecoveryCheckpointCheck'
 import type { DayMemoNormalBodyMismatchCandidateSnapshot } from './useDayMemoNormalBodyMismatchCandidate'
 
@@ -125,7 +125,6 @@ export function useDayMemoNormalBodyMismatchLocalPreparation({ dayMemos, isConfi
       if (metadata.pendingOperation) { finish('normal_body_mismatch_local_pending_exists', base); return }
       if (Object.keys(metadata.localDeleteIntents).length) { finish('normal_body_mismatch_local_intent_exists', base); return }
       if (metadata.pushBlock) { finish('normal_body_mismatch_local_push_blocked', base); return }
-      if (metadata.baselines[candidate.date]) { finish('normal_body_mismatch_local_baseline_unexpected', base); return }
       const local = stored.memos.find((memo) => memo.date === candidate.date)
       if (!local || !isStoredDayMemo(local) || !same(local, candidate.localMemo)) {
         finish('normal_body_mismatch_local_local_invalid', base); return
@@ -149,6 +148,10 @@ export function useDayMemoNormalBodyMismatchLocalPreparation({ dayMemos, isConfi
       }
       if (!same(remote, candidate.remoteRecord)) {
         finish('normal_body_mismatch_local_remote_changed', { ...base, remoteRechecked: true }); return
+      }
+      const targetBaseline = metadata.baselines[candidate.date] ?? null
+      if (targetBaseline && !remoteRecordMatchesConfirmedBaseline(remote, targetBaseline)) {
+        finish('normal_body_mismatch_local_baseline_unexpected', base); return
       }
       const localByDate = new Map(stored.memos.map((memo) => [memo.date, memo]))
       const dates = [...new Set([...localByDate.keys(), ...remoteByDate.keys(), ...Object.keys(metadata.baselines)])].sort()
