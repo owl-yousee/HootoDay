@@ -2,7 +2,12 @@ import { useCallback, useRef, useState } from 'react'
 import type { DayMemo } from '../types/dayMemo'
 import type { DayMemoPendingOperationV5, DayMemoSyncMetadataV5 } from '../types/dayMemoSync'
 import type { SyncConnection } from '../types/sync'
-import { isStoredDayMemo, readDayMemoStorageSnapshot, replaceStoredDayMemosVerified } from '../utils/dayMemoStorage'
+import {
+  DAY_MEMOS_STORAGE_KEY,
+  isStoredDayMemo,
+  readDayMemoStorageSnapshot,
+  replaceStoredDayMemosVerified,
+} from '../utils/dayMemoStorage'
 import {
   DAY_MEMO_SYNC_STORAGE_KEY,
   isDayMemoSyncMetadataV5,
@@ -143,6 +148,33 @@ export interface DayMemoNormalDeleteMetadataPersistenceResult {
   checkedAt: string
 }
 
+export type DayMemoNormalDeleteLocalPersistenceClassification =
+  | 'normal_delete_v5_local_deleted'
+  | 'normal_delete_v5_local_plan_missing'
+  | 'normal_delete_v5_local_metadata_invalid'
+  | 'normal_delete_v5_local_state_changed'
+  | 'normal_delete_v5_local_prerequisite_invalid'
+  | 'normal_delete_v5_local_save_failed'
+  | 'normal_delete_v5_local_readback_failed'
+  | 'normal_delete_v5_local_rollback_failed'
+
+export interface DayMemoNormalDeleteLocalPersistenceResult {
+  date: string
+  classification: DayMemoNormalDeleteLocalPersistenceClassification
+  succeeded: boolean
+  operationIdsMatch: boolean
+  targetDeleted: boolean
+  outsideMemosUnchanged: boolean
+  readBackVerified: boolean
+  reactStateUpdated: boolean
+  rollbackAttempted: boolean
+  rollbackVerified: boolean
+  recoveryRequired: boolean
+  metadataChanged: false
+  remoteSent: false
+  checkedAt: string
+}
+
 interface DayMemoDeletePreparationPlan {
   operationId: string
   pendingOperation: Extract<DayMemoPendingOperationV5, { kind: 'delete' }>
@@ -238,6 +270,7 @@ export function useDayMemoLocalOperationPreparation({
   const [normalDeleteConnectionResult, setNormalDeleteConnectionResult] = useState<DayMemoNormalDeletePreparationConnectionResult | null>(null)
   const [normalDeleteLifecycleStartResult, setNormalDeleteLifecycleStartResult] = useState<DayMemoNormalDeleteLifecycleStartResult | null>(null)
   const [normalDeleteMetadataPersistenceResult, setNormalDeleteMetadataPersistenceResult] = useState<DayMemoNormalDeleteMetadataPersistenceResult | null>(null)
+  const [normalDeleteLocalPersistenceResult, setNormalDeleteLocalPersistenceResult] = useState<DayMemoNormalDeleteLocalPersistenceResult | null>(null)
   const normalDeleteInputRef = useRef<DayMemoLocalOperationDeletePreparationInput | null>(null)
   const normalDeletePlanRef = useRef<DayMemoDeletePreparationPlan | null>(null)
   const eligible = Boolean(isConfigured && isSignedIn && connectionIsEligible(connection))
@@ -249,6 +282,7 @@ export function useDayMemoLocalOperationPreparation({
       normalDeletePlanRef.current = null
       setNormalDeleteLifecycleStartResult(null)
       setNormalDeleteMetadataPersistenceResult(null)
+      setNormalDeleteLocalPersistenceResult(null)
       setNormalDeleteConnectionResult({
         date,
         classification,
@@ -292,6 +326,7 @@ export function useDayMemoLocalOperationPreparation({
     normalDeletePlanRef.current = null
     setNormalDeleteLifecycleStartResult(null)
     setNormalDeleteMetadataPersistenceResult(null)
+    setNormalDeleteLocalPersistenceResult(null)
     setNormalDeleteConnectionResult({
       date,
       classification: 'normal_delete_v5_connection_ready',
@@ -315,6 +350,7 @@ export function useDayMemoLocalOperationPreparation({
     ): boolean => {
       if (classification !== 'normal_delete_v5_lifecycle_ready') normalDeletePlanRef.current = null
       setNormalDeleteMetadataPersistenceResult(null)
+      setNormalDeleteLocalPersistenceResult(null)
       setNormalDeleteLifecycleStartResult({
         date,
         classification,
@@ -384,6 +420,7 @@ export function useDayMemoLocalOperationPreparation({
 
   const persistNormalDeletePreparationMetadata = useCallback((date: string): boolean => {
     const checkedAt = new Date().toISOString()
+    setNormalDeleteLocalPersistenceResult(null)
     const finish = (
       classification: DayMemoNormalDeleteMetadataPersistenceClassification,
       flags: Partial<Pick<DayMemoNormalDeleteMetadataPersistenceResult,
@@ -519,6 +556,123 @@ export function useDayMemoLocalOperationPreparation({
       readBackVerified: true,
     })
   }, [connection?.workspaceId, dayMemos, eligible, normalDeleteLifecycleStartResult])
+
+  const deletePreparedNormalDeleteLocal = useCallback((date: string): boolean => {
+    const checkedAt = new Date().toISOString()
+    const finish = (
+      classification: DayMemoNormalDeleteLocalPersistenceClassification,
+      flags: Partial<Pick<DayMemoNormalDeleteLocalPersistenceResult,
+        'operationIdsMatch' | 'targetDeleted' | 'outsideMemosUnchanged' | 'readBackVerified'
+        | 'reactStateUpdated' | 'rollbackAttempted' | 'rollbackVerified' | 'recoveryRequired'>> = {},
+    ): boolean => {
+      setNormalDeleteLocalPersistenceResult({
+        date,
+        classification,
+        succeeded: classification === 'normal_delete_v5_local_deleted',
+        operationIdsMatch: flags.operationIdsMatch ?? false,
+        targetDeleted: flags.targetDeleted ?? false,
+        outsideMemosUnchanged: flags.outsideMemosUnchanged ?? false,
+        readBackVerified: flags.readBackVerified ?? false,
+        reactStateUpdated: flags.reactStateUpdated ?? false,
+        rollbackAttempted: flags.rollbackAttempted ?? false,
+        rollbackVerified: flags.rollbackVerified ?? false,
+        recoveryRequired: flags.recoveryRequired ?? false,
+        metadataChanged: false,
+        remoteSent: false,
+        checkedAt,
+      })
+      return classification === 'normal_delete_v5_local_deleted'
+    }
+    const adapter = normalDeleteInputRef.current
+    const plan = normalDeletePlanRef.current
+    if (!adapter || !plan || !normalDeleteMetadataPersistenceResult?.succeeded
+      || normalDeleteMetadataPersistenceResult.date !== date
+      || plan.pendingOperation.date !== date || plan.localDeleteIntent.date !== date) {
+      return finish('normal_delete_v5_local_plan_missing')
+    }
+    if (!eligible || !connection?.workspaceId || adapter.workspaceId !== connection.workspaceId) {
+      return finish('normal_delete_v5_local_prerequisite_invalid')
+    }
+    const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
+    const stored = readDayMemoStorageSnapshot(window.localStorage)
+    if (loaded.status !== 'ready' || loaded.metadata.version !== 5
+      || !isDayMemoSyncMetadataV5(loaded.metadata) || stored.status !== 'ready') {
+      return finish('normal_delete_v5_local_metadata_invalid')
+    }
+    const pending = loaded.metadata.pendingOperation
+    const intent = loaded.metadata.localDeleteIntents[date]
+    const operationIdsMatch = pending?.kind === 'delete'
+      && pending.operationId === plan.operationId
+      && intent?.operationId === plan.operationId
+      && pending.operationId === intent.operationId
+    if (loaded.raw !== JSON.stringify(plan.nextMetadata)
+      || JSON.stringify(loaded.metadata) !== JSON.stringify(plan.nextMetadata)
+      || loaded.metadata.workspaceId !== adapter.workspaceId
+      || loaded.metadata.pushBlock !== null || !operationIdsMatch) {
+      return finish('normal_delete_v5_local_metadata_invalid', { operationIdsMatch })
+    }
+    if (stored.serialized !== adapter.localStorageSerialized
+      || signature(stored.memos) !== adapter.localSignature || signature(dayMemos) !== adapter.localSignature) {
+      return finish('normal_delete_v5_local_state_changed', { operationIdsMatch })
+    }
+    const targetMemos = stored.memos.filter((memo) => memo.date === date)
+    const outsideBefore = stored.memos.filter((memo) => memo.date !== date)
+    if (targetMemos.length !== 1 || targetMemos[0].updatedAt !== adapter.memoUpdatedAt
+      || stored.memos.length !== outsideBefore.length + 1) {
+      return finish('normal_delete_v5_local_prerequisite_invalid', { operationIdsMatch })
+    }
+    const nextMemos = outsideBefore.map((memo) => ({ ...memo }))
+    const localSave = replaceStoredDayMemosVerified(window.localStorage, nextMemos, stored.serialized)
+    if (localSave !== 'saved') {
+      return finish(localSave === 'rollback_failed'
+        ? 'normal_delete_v5_local_rollback_failed'
+        : 'normal_delete_v5_local_save_failed', {
+        operationIdsMatch,
+        rollbackAttempted: localSave === 'readback_invalid' || localSave === 'rollback_failed',
+        rollbackVerified: localSave === 'readback_invalid',
+        recoveryRequired: localSave === 'rollback_failed',
+      })
+    }
+
+    const readBack = readDayMemoStorageSnapshot(window.localStorage)
+    const outsideUnchanged = readBack.status === 'ready'
+      && readBack.memos.length === outsideBefore.length
+      && signature(readBack.memos) === signature(outsideBefore)
+    const readBackVerified = readBack.status === 'ready'
+      && readBack.memos.every((memo) => memo.date !== date)
+      && outsideUnchanged
+    if (!readBackVerified) {
+      let currentRaw: string | null
+      try {
+        currentRaw = window.localStorage.getItem(DAY_MEMOS_STORAGE_KEY)
+      } catch {
+        return finish('normal_delete_v5_local_rollback_failed', {
+          operationIdsMatch,
+          rollbackAttempted: true,
+          recoveryRequired: true,
+        })
+      }
+      const rollback = currentRaw === null
+        ? 'rollback_failed'
+        : replaceStoredDayMemosVerified(window.localStorage, stored.memos, currentRaw)
+      return finish(rollback === 'saved'
+        ? 'normal_delete_v5_local_readback_failed'
+        : 'normal_delete_v5_local_rollback_failed', {
+        operationIdsMatch,
+        rollbackAttempted: true,
+        rollbackVerified: rollback === 'saved',
+        recoveryRequired: rollback !== 'saved',
+      })
+    }
+    adoptVerifiedStoredDayMemos(nextMemos)
+    return finish('normal_delete_v5_local_deleted', {
+      operationIdsMatch: true,
+      targetDeleted: true,
+      outsideMemosUnchanged: true,
+      readBackVerified: true,
+      reactStateUpdated: true,
+    })
+  }, [adoptVerifiedStoredDayMemos, connection?.workspaceId, dayMemos, eligible, normalDeleteMetadataPersistenceResult])
 
   const finish = useCallback((
     operationKind: DayMemoLocalOperationPreparationKind,
@@ -691,5 +845,7 @@ export function useDayMemoLocalOperationPreparation({
     startNormalDeletePreparation,
     normalDeleteMetadataPersistenceResult,
     persistNormalDeletePreparationMetadata,
+    normalDeleteLocalPersistenceResult,
+    deletePreparedNormalDeleteLocal,
   }
 }
