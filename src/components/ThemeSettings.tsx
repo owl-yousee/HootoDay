@@ -146,7 +146,7 @@ type SyncRecoveryUiStage = 'checkpoint_check' | 'body_mismatch_compare' | 'candi
   | 'remote_only_post_check' | 'remote_only_metadata_save' | 'final_confirmation' | 'confirmed_save'
   | 'final_ready_check' | 'metadata_repair_check' | 'metadata_repair_save' | 'normal_mismatch_difference_check'
   | 'normal_mismatch_difference_review' | 'normal_mismatch_checkpoint_check' | 'normal_mismatch_checkpoint_save'
-  | 'normal_state_check' | 'normal_local_only_check' | 'normal_local_only_preflight'
+  | 'normal_state_check' | 'normal_local_only_check' | 'normal_local_only_preflight' | 'normal_local_only_recheck'
   | 'normal_local_only_prepare' | 'normal_local_only_send' | 'next_difference' | 'blocked' | 'complete'
 
 interface SyncRecoveryNavigation {
@@ -205,6 +205,7 @@ const SYNC_STAGE_IDS: Record<SyncRecoveryUiStage, string> = {
   normal_mismatch_difference_review: 'normal_mismatch_review', normal_mismatch_checkpoint_check: 'normal_mismatch_checkpoint_check',
   normal_mismatch_checkpoint_save: 'normal_mismatch_checkpoint_save', normal_state_check: 'normal_sync_check',
   normal_local_only_check: 'normal_sync_local_only', normal_local_only_preflight: 'normal_sync_preflight',
+  normal_local_only_recheck: 'normal_sync_local_only_recheck',
   normal_local_only_prepare: 'normal_sync_upload_ready', normal_local_only_send: 'normal_sync_writing',
   next_difference: 'recovery_next_difference', blocked: 'blocked', complete: 'normal_sync_complete',
 }
@@ -252,6 +253,16 @@ function deriveSyncRecoveryNavigation(input: {
     title: '復旧作業は完了しました', description: '全件一致と通常同期readyを確認しました。',
     writesRemote: false, changesPersistentState: false, disabledReason: null }
   if (input.metadataBaselineStatus === 'confirmed' && input.metadataBaselineConfirmed) {
+    const localOnlyPreflightFailed = input.normalLocalOnlyUpload === 'local_changed'
+      || input.normalLocalOnlyUpload === 'metadata_changed'
+      || input.normalLocalOnlyUpload === 'preflight_conflict'
+      || input.normalLocalOnlyUpload === 'error'
+    if (localOnlyPreflightFailed) {
+      return { stage: 'normal_local_only_recheck', targetDate: input.normalLocalOnlyDate, classification: 'local_only',
+        title: 'local-only候補を再確認',
+        description: '送信前確認に使ったsnapshotが失効しました。古い候補を明示的に破棄して、候補確認から再開します。',
+        writesRemote: false, changesPersistentState: false, disabledReason: null }
+    }
     if (input.normalLocalOnlyUpload === 'preflight_ready') return { stage: 'normal_local_only_prepare', targetDate: input.normalLocalOnlyDate, classification: 'local_only',
       title: '新規uploadを準備', description: '確認済みの1件に通常operationを準備します。', writesRemote: false, changesPersistentState: true, disabledReason: null }
     if (input.normalLocalOnlyUpload === 'prepared') return { stage: 'normal_local_only_send', targetDate: input.normalLocalOnlyDate, classification: 'local_only',
@@ -826,6 +837,8 @@ export function ThemeSettings({
                               ? dayMemoPullPreview.canStartNormalStateCheck
                             : recoveryNavigation.stage === 'normal_local_only_check'
                                   ? dayMemoLocalOnlyPreview.eligible && dayMemoLocalOnlyPreview.previewState !== 'checking'
+                                  : recoveryNavigation.stage === 'normal_local_only_recheck'
+                                    ? true
                                   : recoveryNavigation.stage === 'normal_local_only_preflight'
                                     ? dayMemoLocalOnlyUpload.state === 'idle'
                                     : recoveryNavigation.stage === 'normal_local_only_prepare'
@@ -877,11 +890,22 @@ export function ThemeSettings({
         void dayMemoPullPreview.pullPreview({ requireConfirmedMetadata: true })
         break
       case 'normal_local_only_check': void dayMemoLocalOnlyPreview.previewLocalOnly(); break
+      case 'normal_local_only_recheck':
+        dayMemoLocalOnlyUpload.reset()
+        dayMemoLocalOnlyPreview.discardPreview()
+        setNormalSyncCheckUi(IDLE_NORMAL_SYNC_CHECK_UI)
+        break
       case 'normal_local_only_preflight': void dayMemoLocalOnlyUpload.runPreflight(); break
       case 'normal_local_only_prepare': dayMemoLocalOnlyUpload.prepareUpload(); break
       case 'normal_local_only_send': void dayMemoLocalOnlyUpload.uploadPrepared(); break
       default: break
     }
+  }
+  const restartNormalSyncAfterLocalOnlyFailure = () => {
+    dayMemoLocalOnlyUpload.reset()
+    dayMemoLocalOnlyPreview.discardPreview()
+    dayMemoPullPreview.clearPreview()
+    setNormalSyncCheckUi(IDLE_NORMAL_SYNC_CHECK_UI)
   }
   const syncStageId = normalSyncCheckUi.status === 'checking' ? 'normal_sync_check'
     : normalSyncCheckUi.stageId ?? SYNC_STAGE_IDS[recoveryNavigation.stage]
@@ -1600,6 +1624,17 @@ export function ThemeSettings({
                           </div>
                         ) : null}
                       <p>{recoveryNavigation.description}</p>
+                      {recoveryNavigation.stage === 'normal_local_only_recheck' ? (
+                        <div className="cloud-day-memo-preview-result is-blocked" role="status">
+                          <p><strong>送信前確認に使ったsnapshotが失効しました</strong></p>
+                          <ul className="cloud-day-memo-preview-summary">
+                            <li>Supabase書き込み：なし</li>
+                            <li>永続変更：なし</li>
+                            <li>自動retry：なし</li>
+                            <li>次の操作：local-only候補を再確認</li>
+                          </ul>
+                        </div>
+                      ) : null}
                       {recoveryNavigation.stage === 'normal_mismatch_difference_review' && dayMemoNormalDifferenceRecoveryPlan.result ? (
                         <>
                           <label className="cloud-sync-field">確認する1件
@@ -1616,6 +1651,12 @@ export function ThemeSettings({
                         <button type="button" className="health-primary-button cloud-sync-button"
                           disabled={normalSyncCheckUi.status === 'checking' || !navigationCanExecute} onClick={runRecoveryNavigationAction}>
                           {normalSyncCheckUi.status === 'checking' ? '確認しています…' : recoveryNavigation.title}</button>
+                        {recoveryNavigation.stage === 'normal_local_only_recheck' ? (
+                          <button type="button" className="health-secondary-button cloud-sync-button"
+                            onClick={restartNormalSyncAfterLocalOnlyFailure}>
+                            通常同期状態から再確認
+                          </button>
+                        ) : null}
                         {normalSyncCheckUi.status !== 'checking' && !navigationCanExecute && navigationDisabledReason
                           ? <p className="cloud-sync-note">{navigationDisabledReason}</p> : null}
                       </>}
