@@ -8,7 +8,7 @@ import {
   type SyntheticEvent,
 } from 'react'
 import { MAX_DAY_MEMO_CONTENT_LENGTH, type DayMemo } from '../types/dayMemo'
-import type { DayMemoDeleteMode } from '../hooks/useDayMemoDeleteIntent'
+import type { DayMemoDeleteMode, DayMemoV5DeleteDiagnostic } from '../hooks/useDayMemoDeleteIntent'
 
 interface DayMemoDialogProps {
   date: string
@@ -18,6 +18,7 @@ interface DayMemoDialogProps {
   onDelete: (date: string) => boolean | void
   onCheckDelete?: (date: string) => void
   deleteMode?: DayMemoDeleteMode
+  deleteDiagnostic?: DayMemoV5DeleteDiagnostic | null
   onClose: () => void
   mobileSlide?: boolean
 }
@@ -30,6 +31,7 @@ export function DayMemoDialog({
   onDelete,
   onCheckDelete,
   deleteMode = 'local_delete',
+  deleteDiagnostic = null,
   onClose,
   mobileSlide = false,
 }: DayMemoDialogProps) {
@@ -196,6 +198,22 @@ export function DayMemoDialog({
           <p className="field-hint" role="status">
             V5削除候補を安全に確認できませんでした。保存状態または同期状態を再確認してください。
           </p>
+        )}
+        {memo && deleteMode === 'v5_delete_blocked' && deleteDiagnostic && (
+          <div className="field-hint" role="status">
+            <p><strong>安全停止の診断</strong></p>
+            <ul>
+              <li>classification：{deleteDiagnostic.classification}</li>
+              <li>metadata version：{deleteDiagnostic.metadataVersion ?? '確認不能'}</li>
+              <li>baseline confirmed：{deleteDiagnostic.baselineConfirmed ? 'はい' : 'いいえ'}</li>
+              <li>pendingなし：{deleteDiagnostic.pendingAbsent ? 'はい' : 'いいえ'}</li>
+              <li>pushBlockなし：{deleteDiagnostic.pushBlockClear ? 'はい' : 'いいえ'}</li>
+              <li>delete intent件数：{deleteDiagnostic.intentCount}</li>
+              <li>差異なし確認：{deleteDiagnostic.differencesConfirmedAbsent ? '確認済み' : '未確認'}</li>
+              <li>対象baseline確認：{deleteDiagnostic.targetBaselineConfirmed ? '確認済み' : '未確認'}</li>
+              <li>local状態一致：{deleteDiagnostic.localStateMatched ? '確認済み' : '未確認'}</li>
+            </ul>
+          </div>
         )}
       </form>
     </dialog>

@@ -11,6 +11,18 @@ export type DayMemoDeleteIntentState = 'idle' | 'saving' | 'completed' | 'unavai
 export type DayMemoDeleteMode = 'local_delete' | 'sync_delete_ready' | 'sync_delete_blocked'
   | 'v5_delete_check' | 'v5_delete_ready' | 'v5_delete_blocked'
 
+export interface DayMemoV5DeleteDiagnostic {
+  classification: string
+  metadataVersion: number | null
+  baselineConfirmed: boolean
+  pendingAbsent: boolean
+  pushBlockClear: boolean
+  intentCount: number
+  differencesConfirmedAbsent: boolean
+  targetBaselineConfirmed: boolean
+  localStateMatched: boolean
+}
+
 interface Input {
   dayMemos: DayMemo[]
   isConfigured: boolean
@@ -112,6 +124,22 @@ export function useDayMemoDeleteIntent({
     return canRecordIntentForDate(date) ? 'sync_delete_ready' : 'sync_delete_blocked'
   }, [canRecordIntentForDate, connection?.workspaceId, eligible, normalDeletePreparation.result, reactMetadata])
 
+  const getV5DeleteDiagnostic = useCallback((date: string): DayMemoV5DeleteDiagnostic | null => {
+    const preparationResult = normalDeletePreparation.result
+    if (!preparationResult || preparationResult.date !== date || preparationResult.ready) return null
+    return {
+      classification: preparationResult.classification,
+      metadataVersion: preparationResult.metadataVersion,
+      baselineConfirmed: preparationResult.baselineConfirmed,
+      pendingAbsent: preparationResult.pendingAbsent,
+      pushBlockClear: preparationResult.pushBlockClear,
+      intentCount: preparationResult.intentCount,
+      differencesConfirmedAbsent: preparationResult.differencesConfirmedAbsent,
+      targetBaselineConfirmed: preparationResult.targetBaselineConfirmed,
+      localStateMatched: preparationResult.localStateMatched,
+    }
+  }, [normalDeletePreparation.result])
+
   const recordIntentAndDeleteLocal = useCallback((date: string): boolean => {
     if (!canRecordIntentForDate(date) || !connection?.workspaceId) return false
     setState('saving')
@@ -181,6 +209,7 @@ export function useDayMemoDeleteIntent({
     canRecordIntentForDate,
     requiresSynchronizedDelete,
     getDeleteModeForDate,
+    getV5DeleteDiagnostic,
     recordIntentAndDeleteLocal,
     normalDeletePreparation,
     getNormalV5DeletePreparationInput: normalDeletePreparation.getV5DeletePreparationInput,
