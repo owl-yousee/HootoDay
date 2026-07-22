@@ -42,6 +42,17 @@ export interface DayMemoNormalDeletePreparationResult {
   differencesConfirmedAbsent: boolean
   targetBaselineConfirmed: boolean
   localStateMatched: boolean
+  previewReady: boolean
+  summarySameCount: number | null
+  summaryDifferenceCount: number | null
+  unresolvedTombstoneCount: number | null
+  baselineCount: number | null
+  previewItemCount: number
+  cursorMatched: boolean
+  fullPullSequenceMatched: boolean
+  sameCountMatchesBaselineCount: boolean
+  previewItemCountMatchesSameCount: boolean
+  allPreviewItemsConfirmed: boolean
   checkedAt: string
 }
 
@@ -124,6 +135,12 @@ export function useDayMemoNormalDeletePreparationCheck(input: Input) {
     const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
     const stored = readDayMemoStorageSnapshot(window.localStorage)
     const metadata = loaded.status === 'ready' && isDayMemoSyncMetadataV5(loaded.metadata) ? loaded.metadata : null
+    const summary = input.normalPullSummary
+    const items = input.normalPullItems
+    const baselineCount = metadata ? Object.keys(metadata.baselines).length : null
+    const summaryDifferenceCount = summary
+      ? summary.localOnlyCount + summary.remoteOnlyCount + summary.differentCount + summary.unresolvedTombstoneCount
+      : null
     const common = {
       date,
       metadataVersion: metadata?.version ?? null,
@@ -135,6 +152,25 @@ export function useDayMemoNormalDeletePreparationCheck(input: Input) {
       differencesConfirmedAbsent: false,
       targetBaselineConfirmed: false,
       localStateMatched: false,
+      previewReady: input.normalPullState === 'preview_ready',
+      summarySameCount: summary?.sameCount ?? null,
+      summaryDifferenceCount,
+      unresolvedTombstoneCount: summary?.unresolvedTombstoneCount ?? null,
+      baselineCount,
+      previewItemCount: items.length,
+      cursorMatched: Boolean(metadata && input.reactMetadata
+        && metadata.lastPulledChangeSequence === input.reactMetadata.lastPulledChangeSequence),
+      fullPullSequenceMatched: Boolean(metadata && summary
+        && summary.maxChangeSequence === metadata.lastPulledChangeSequence),
+      sameCountMatchesBaselineCount: Boolean(summary && baselineCount !== null
+        && summary.sameCount === baselineCount),
+      previewItemCountMatchesSameCount: Boolean(summary && items.length === summary.sameCount),
+      allPreviewItemsConfirmed: Boolean(metadata && stored.status === 'ready'
+        && items.every((item) => itemMatchesConfirmedBaseline(
+          item,
+          metadata.baselines[item.date],
+          stored.memos.find((candidate) => candidate.date === item.date),
+        ))),
       checkedAt,
     }
     const finish = (
@@ -170,8 +206,6 @@ export function useDayMemoNormalDeletePreparationCheck(input: Input) {
       return finish('normal_delete_preparation_state_changed')
     }
 
-    const summary = input.normalPullSummary
-    const items = input.normalPullItems
     const allSame = input.normalPullState === 'preview_ready' && summary !== null
       && summary.localOnlyCount === 0 && summary.remoteOnlyCount === 0 && summary.differentCount === 0
       && summary.unresolvedTombstoneCount === 0 && summary.remoteTombstoneLocalExistsCount === 0

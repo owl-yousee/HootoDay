@@ -21,6 +21,17 @@ export interface DayMemoV5DeleteDiagnostic {
   differencesConfirmedAbsent: boolean
   targetBaselineConfirmed: boolean
   localStateMatched: boolean
+  previewReady: boolean
+  summarySameCount: number | null
+  summaryDifferenceCount: number | null
+  unresolvedTombstoneCount: number | null
+  baselineCount: number | null
+  previewItemCount: number
+  cursorMatched: boolean
+  fullPullSequenceMatched: boolean
+  sameCountMatchesBaselineCount: boolean
+  previewItemCountMatchesSameCount: boolean
+  allPreviewItemsConfirmed: boolean
 }
 
 interface Input {
@@ -137,6 +148,17 @@ export function useDayMemoDeleteIntent({
       differencesConfirmedAbsent: preparationResult.differencesConfirmedAbsent,
       targetBaselineConfirmed: preparationResult.targetBaselineConfirmed,
       localStateMatched: preparationResult.localStateMatched,
+      previewReady: preparationResult.previewReady,
+      summarySameCount: preparationResult.summarySameCount,
+      summaryDifferenceCount: preparationResult.summaryDifferenceCount,
+      unresolvedTombstoneCount: preparationResult.unresolvedTombstoneCount,
+      baselineCount: preparationResult.baselineCount,
+      previewItemCount: preparationResult.previewItemCount,
+      cursorMatched: preparationResult.cursorMatched,
+      fullPullSequenceMatched: preparationResult.fullPullSequenceMatched,
+      sameCountMatchesBaselineCount: preparationResult.sameCountMatchesBaselineCount,
+      previewItemCountMatchesSameCount: preparationResult.previewItemCountMatchesSameCount,
+      allPreviewItemsConfirmed: preparationResult.allPreviewItemsConfirmed,
     }
   }, [normalDeletePreparation.result])
 

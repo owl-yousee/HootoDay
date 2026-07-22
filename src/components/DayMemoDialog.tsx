@@ -212,6 +212,17 @@ export function DayMemoDialog({
               <li>差異なし確認：{deleteDiagnostic.differencesConfirmedAbsent ? '確認済み' : '未確認'}</li>
               <li>対象baseline確認：{deleteDiagnostic.targetBaselineConfirmed ? '確認済み' : '未確認'}</li>
               <li>local状態一致：{deleteDiagnostic.localStateMatched ? '確認済み' : '未確認'}</li>
+              <li>preview ready：{deleteDiagnostic.previewReady ? 'はい' : 'いいえ'}</li>
+              <li>summary same件数：{deleteDiagnostic.summarySameCount ?? '確認不能'}</li>
+              <li>summary差異件数：{deleteDiagnostic.summaryDifferenceCount ?? '確認不能'}</li>
+              <li>未解決tombstone：{deleteDiagnostic.unresolvedTombstoneCount ?? '確認不能'}件</li>
+              <li>baseline件数：{deleteDiagnostic.baselineCount ?? '確認不能'}</li>
+              <li>preview item件数：{deleteDiagnostic.previewItemCount}</li>
+              <li>metadata cursor一致：{deleteDiagnostic.cursorMatched ? 'はい' : 'いいえ'}</li>
+              <li>full pull sequence一致：{deleteDiagnostic.fullPullSequenceMatched ? 'はい' : 'いいえ'}</li>
+              <li>same件数とbaseline件数一致：{deleteDiagnostic.sameCountMatchesBaselineCount ? 'はい' : 'いいえ'}</li>
+              <li>preview件数とsame件数一致：{deleteDiagnostic.previewItemCountMatchesSameCount ? 'はい' : 'いいえ'}</li>
+              <li>全preview item厳格一致：{deleteDiagnostic.allPreviewItemsConfirmed ? 'はい' : 'いいえ'}</li>
             </ul>
           </div>
         )}
