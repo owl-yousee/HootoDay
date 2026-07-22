@@ -23,6 +23,10 @@ import {
   type RemoteDayMemoRecord,
 } from '../utils/dayMemoSyncPull'
 import { isUuid } from '../utils/syncConnectionStorage'
+import {
+  classifyDayMemoNormalDifference,
+  type DayMemoNormalDifferenceClassification,
+} from './useDayMemoNormalDifferenceRecoveryPlan'
 
 interface UseDayMemoPullPreviewInput {
   dayMemos: DayMemo[]
@@ -75,7 +79,26 @@ function localSignature(memos: DayMemo[]): string {
   return JSON.stringify(memos.map((memo) => [memo.date, memo.updatedAt, memo.content]).sort(([a], [b]) => a.localeCompare(b)))
 }
 
-function buildPreview(remoteRecords: RemoteDayMemoRecord[], localMemos: DayMemo[]): Omit<PullPreviewData, 'localStorageSnapshot'> | null {
+function comparisonForClassification(
+  classification: DayMemoNormalDifferenceClassification,
+  remote: RemoteDayMemoRecord | null,
+  local: DayMemo | null,
+): DayMemoPullComparison {
+  if (classification === 'exact_match_baseline_confirmed'
+    || classification === 'exact_match_baseline_missing') return 'same'
+  if (classification === 'local_only') return 'local_only'
+  if (classification === 'remote_only_active') return 'remote_only'
+  if (remote?.deletedAt !== null && remote !== null) {
+    return local ? 'remote_tombstone_local_exists' : 'remote_tombstone_local_missing'
+  }
+  return 'different'
+}
+
+function buildPreview(
+  remoteRecords: RemoteDayMemoRecord[],
+  localMemos: DayMemo[],
+  metadata: DayMemoSyncMetadataV5 | null,
+): Omit<PullPreviewData, 'localStorageSnapshot'> | null {
   if (!localMemos.every((memo) => isValidDayMemo(memo))) return null
   const localByDate = new Map<string, DayMemo>()
   for (const memo of localMemos) {
@@ -83,41 +106,39 @@ function buildPreview(remoteRecords: RemoteDayMemoRecord[], localMemos: DayMemo[
     localByDate.set(memo.date, memo)
   }
 
-  const remoteDates = new Set(remoteRecords.map((record) => record.entityId))
-  const items: DayMemoPullPreviewItem[] = remoteRecords.map((record) => {
-    const local = localByDate.get(record.entityId)
-    let comparison: DayMemoPullComparison
-    if (record.deletedAt !== null) {
-      comparison = local ? 'remote_tombstone_local_exists' : 'remote_tombstone_local_missing'
-    } else if (!local) {
-      comparison = 'remote_only'
-    } else {
-      comparison = local.updatedAt === record.payload!.updatedAt && local.content === record.payload!.content
-        ? 'same'
-        : 'different'
-    }
+  const remoteByDate = new Map(remoteRecords.map((record) => [record.entityId, record]))
+  if (remoteByDate.size !== remoteRecords.length) return null
+  const dates = [...new Set([
+    ...localByDate.keys(),
+    ...remoteByDate.keys(),
+    ...Object.keys(metadata?.baselines ?? {}),
+  ])].sort()
+  const classifications = new Map(dates.map((date) => {
+    const local = localByDate.get(date) ?? null
+    const remote = remoteByDate.get(date) ?? null
+    return [date, classifyDayMemoNormalDifference(local, remote, metadata?.baselines[date] ?? null)] as const
+  }))
+  const items: DayMemoPullPreviewItem[] = dates.map((date) => {
+    const local = localByDate.get(date) ?? null
+    const remote = remoteByDate.get(date) ?? null
+    const comparison = comparisonForClassification(classifications.get(date)!, remote, local)
     return {
-      date: record.entityId,
+      date,
       comparison,
-      remoteRevision: record.revision,
-      remoteChangeSequence: record.changeSequence,
-      tombstone: record.deletedAt !== null,
+      remoteRevision: remote?.revision ?? null,
+      remoteChangeSequence: remote?.changeSequence ?? null,
+      tombstone: remote?.deletedAt !== null && remote !== null,
     }
   })
 
-  for (const memo of localMemos) {
-    if (!remoteDates.has(memo.date)) {
-      items.push({ date: memo.date, comparison: 'local_only', remoteRevision: null, remoteChangeSequence: null, tombstone: false })
-    }
-  }
-  items.sort((a, b) => a.date.localeCompare(b.date))
-
   const count = (comparison: DayMemoPullComparison) => items.filter((item) => item.comparison === comparison).length
+  const unresolvedTombstoneCount = remoteRecords.filter((record) => record.deletedAt !== null
+    && classifications.get(record.entityId) !== 'exact_match_baseline_confirmed').length
   return {
     items,
     summary: {
       remoteActiveCount: remoteRecords.filter((record) => record.deletedAt === null).length,
-      remoteTombstoneCount: remoteRecords.filter((record) => record.deletedAt !== null).length,
+      remoteTombstoneCount: unresolvedTombstoneCount,
       remoteOnlyCount: count('remote_only'),
       localOnlyCount: count('local_only'),
       sameCount: count('same'),
@@ -306,7 +327,7 @@ export function useDayMemoPullPreview({
       }
 
       if (data.length < PAGE_LIMIT) {
-        const nextPreview = buildPreview(records, dayMemos)
+        const nextPreview = buildPreview(records, dayMemos, reactMetadata)
         if (!nextPreview) {
           setPreviewState('validation_error')
           setSafeErrorMessage(messageForState('validation_error'))
