@@ -268,7 +268,7 @@ function deriveSyncRecoveryNavigation(input: {
     }
     const noDifference = pull.localOnlyCount === 0
       && pull.remoteOnlyCount === 0 && pull.differentCount === 0
-      && pull.remoteTombstoneCount === 0 && pull.remoteTombstoneLocalExistsCount === 0
+      && pull.unresolvedTombstoneCount === 0 && pull.remoteTombstoneLocalExistsCount === 0
       && pull.remoteTombstoneLocalMissingCount === 0 && pull.sameCount === input.baselineCount
     if (noDifference) {
       return { stage: 'complete', targetDate: null, classification: null, title: '通常同期状態を確認済みです',
@@ -277,7 +277,7 @@ function deriveSyncRecoveryNavigation(input: {
     }
     const onlyOneLocalOnly = pull.localOnlyCount === 1
       && pull.remoteOnlyCount === 0 && pull.differentCount === 0
-      && pull.remoteTombstoneCount === 0 && pull.remoteTombstoneLocalExistsCount === 0
+      && pull.unresolvedTombstoneCount === 0 && pull.remoteTombstoneLocalExistsCount === 0
       && pull.remoteTombstoneLocalMissingCount === 0 && pull.sameCount === input.baselineCount
     if (!onlyOneLocalOnly) {
       return { stage: 'blocked', targetDate: null, classification: null, title: '通常同期の差異確認が必要です',
@@ -697,7 +697,7 @@ export function ThemeSettings({
     && normalPullSummary.localOnlyCount === 0
     && normalPullSummary.remoteOnlyCount === 0
     && normalPullSummary.differentCount === 0
-    && normalPullSummary.remoteTombstoneCount === 0
+    && normalPullSummary.unresolvedTombstoneCount === 0
     && normalPullSummary.remoteTombstoneLocalExistsCount === 0
     && normalPullSummary.remoteTombstoneLocalMissingCount === 0)
   const normalSyncReady = dayMemoRecoveryFinalization.result?.normalSyncReady === true || normalPullReady
@@ -750,7 +750,7 @@ export function ThemeSettings({
     const finish = () => {
       const summary = dayMemoPullPreview.summary
       const differenceCount = summary
-        ? summary.localOnlyCount + summary.remoteOnlyCount + summary.differentCount + summary.remoteTombstoneCount : null
+        ? summary.localOnlyCount + summary.remoteOnlyCount + summary.differentCount + summary.unresolvedTombstoneCount : null
       const failed = dayMemoPullPreview.previewState === 'rpc_error'
         || dayMemoPullPreview.previewState === 'auth_error'
       const successful = dayMemoPullPreview.previewState === 'preview_ready'
@@ -898,7 +898,7 @@ export function ThemeSettings({
     : 'なし'
   const normalDifferenceCount = dayMemoPullPreview.summary
     ? dayMemoPullPreview.summary.localOnlyCount + dayMemoPullPreview.summary.remoteOnlyCount
-      + dayMemoPullPreview.summary.differentCount + dayMemoPullPreview.summary.remoteTombstoneCount
+      + dayMemoPullPreview.summary.differentCount + dayMemoPullPreview.summary.unresolvedTombstoneCount
     : null
   const baseSyncDifferenceItems = isRecoveryMetadata
     ? dayMemoSavedRecoveryStateCheck.result

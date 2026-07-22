@@ -270,6 +270,7 @@ export interface DayMemoPullPreviewItem {
 export interface DayMemoPullPreviewSummary {
   remoteActiveCount: number
   remoteTombstoneCount: number
+  unresolvedTombstoneCount: number
   remoteOnlyCount: number
   localOnlyCount: number
   sameCount: number

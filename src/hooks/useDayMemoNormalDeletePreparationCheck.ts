@@ -154,7 +154,7 @@ export function useDayMemoNormalDeletePreparationCheck(input: Input) {
     const items = input.normalPullItems
     const allSame = input.normalPullState === 'preview_ready' && summary !== null
       && summary.localOnlyCount === 0 && summary.remoteOnlyCount === 0 && summary.differentCount === 0
-      && summary.remoteTombstoneCount === 0 && summary.remoteTombstoneLocalExistsCount === 0
+      && summary.unresolvedTombstoneCount === 0 && summary.remoteTombstoneLocalExistsCount === 0
       && summary.remoteTombstoneLocalMissingCount === 0
       && summary.sameCount === Object.keys(metadata.baselines).length
       && summary.maxChangeSequence === metadata.lastPulledChangeSequence

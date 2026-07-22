@@ -138,7 +138,8 @@ function buildPreview(
     items,
     summary: {
       remoteActiveCount: remoteRecords.filter((record) => record.deletedAt === null).length,
-      remoteTombstoneCount: unresolvedTombstoneCount,
+      remoteTombstoneCount: remoteRecords.filter((record) => record.deletedAt !== null).length,
+      unresolvedTombstoneCount,
       remoteOnlyCount: count('remote_only'),
       localOnlyCount: count('local_only'),
       sameCount: count('same'),
@@ -344,7 +345,7 @@ export function useDayMemoPullPreview({
         previewLocalSignature.current = currentLocalSignature
         setPreviewState(records.length === 0
           ? 'empty_remote'
-          : nextPreview.summary.remoteTombstoneCount > 0 ? 'tombstones_present' : 'preview_ready')
+          : nextPreview.summary.unresolvedTombstoneCount > 0 ? 'tombstones_present' : 'preview_ready')
         return
       }
 
@@ -377,7 +378,7 @@ export function useDayMemoPullPreview({
     && preview.summary.remoteOnlyCount > 0
     && preview.summary.localOnlyCount === 0
     && preview.summary.differentCount === 0
-    && preview.summary.remoteTombstoneCount === 0
+    && preview.summary.unresolvedTombstoneCount === 0
     && preview.summary.remoteTombstoneLocalExistsCount === 0
     && preview.summary.remoteTombstoneLocalMissingCount === 0
     && applyState !== 'applying'
