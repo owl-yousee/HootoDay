@@ -273,6 +273,7 @@ export function useDayMemoLocalOperationPreparation({
   const [normalDeleteLocalPersistenceResult, setNormalDeleteLocalPersistenceResult] = useState<DayMemoNormalDeleteLocalPersistenceResult | null>(null)
   const normalDeleteInputRef = useRef<DayMemoLocalOperationDeletePreparationInput | null>(null)
   const normalDeletePlanRef = useRef<DayMemoDeletePreparationPlan | null>(null)
+  const normalDeleteConnectionResultRef = useRef<DayMemoNormalDeletePreparationConnectionResult | null>(null)
   const eligible = Boolean(isConfigured && isSignedIn && connectionIsEligible(connection))
 
   const connectNormalDeletePreparation = useCallback((date: string): boolean => {
@@ -283,12 +284,14 @@ export function useDayMemoLocalOperationPreparation({
       setNormalDeleteLifecycleStartResult(null)
       setNormalDeleteMetadataPersistenceResult(null)
       setNormalDeleteLocalPersistenceResult(null)
-      setNormalDeleteConnectionResult({
+      const next = {
         date,
         classification,
         ready: classification === 'normal_delete_v5_connection_ready',
         checkedAt,
-      })
+      }
+      normalDeleteConnectionResultRef.current = next
+      setNormalDeleteConnectionResult(next)
       return classification === 'normal_delete_v5_connection_ready'
     }
     const adapter = getNormalDeletePreparationInput?.() ?? null
@@ -327,12 +330,14 @@ export function useDayMemoLocalOperationPreparation({
     setNormalDeleteLifecycleStartResult(null)
     setNormalDeleteMetadataPersistenceResult(null)
     setNormalDeleteLocalPersistenceResult(null)
-    setNormalDeleteConnectionResult({
+    const next = {
       date,
       classification: 'normal_delete_v5_connection_ready',
       ready: true,
       checkedAt,
-    })
+    } as const
+    normalDeleteConnectionResultRef.current = next
+    setNormalDeleteConnectionResult(next)
     return true
   }, [connection?.workspaceId, dayMemos, eligible, getNormalDeletePreparationInput])
 
@@ -366,7 +371,8 @@ export function useDayMemoLocalOperationPreparation({
       return classification === 'normal_delete_v5_lifecycle_ready'
     }
     const adapter = normalDeleteInputRef.current
-    if (!adapter || !normalDeleteConnectionResult?.ready || normalDeleteConnectionResult.date !== date) {
+    const connectionResult = normalDeleteConnectionResultRef.current
+    if (!adapter || !connectionResult?.ready || connectionResult.date !== date) {
       return finish('normal_delete_v5_lifecycle_connection_missing')
     }
     if (!eligible || !connection?.workspaceId || adapter.date !== date || adapter.workspaceId !== connection.workspaceId) {
@@ -416,7 +422,7 @@ export function useDayMemoLocalOperationPreparation({
       operationIdsMatch: plan.pendingOperation.operationId === plan.localDeleteIntent.operationId,
       metadataValid: true,
     })
-  }, [connection?.workspaceId, dayMemos, eligible, normalDeleteConnectionResult])
+  }, [connection?.workspaceId, dayMemos, eligible])
 
   const persistNormalDeletePreparationMetadata = useCallback((date: string): boolean => {
     const checkedAt = new Date().toISOString()

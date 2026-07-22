@@ -910,8 +910,21 @@ function App() {
           onCheckDelete={(date) => {
             void dayMemoDeleteIntent.checkNormalDeleteCandidate(date)
           }}
+          onStartDeletePreparation={(date) => {
+            const verifiedSnapshot = dayMemoDeleteCandidateVerification.getVerifiedSnapshot()
+            if (!verifiedSnapshot || verifiedSnapshot.targetDate !== date
+              || verifiedSnapshot.workspaceId !== supabaseWorkspace.connection?.workspaceId) {
+              return dayMemoLocalOperationPreparation.startNormalDeletePreparation(date)
+            }
+            if (!dayMemoLocalOperationPreparation.connectNormalDeletePreparation(date)) {
+              return dayMemoLocalOperationPreparation.startNormalDeletePreparation(date)
+            }
+            return dayMemoLocalOperationPreparation.startNormalDeletePreparation(date)
+          }}
           deleteMode={dayMemoDeleteIntent.getDeleteModeForDate(toDateKey(selectedDate))}
           deleteDiagnostic={dayMemoDeleteIntent.getV5DeleteDiagnostic(toDateKey(selectedDate))}
+          deletePreparationConnectionResult={dayMemoLocalOperationPreparation.normalDeleteConnectionResult}
+          deletePreparationResult={dayMemoLocalOperationPreparation.normalDeleteLifecycleStartResult}
           mobileSlide={mobileEntryType === 'memo'}
           onClose={() => {
             setPreparedDayMemoSaveDate(null)

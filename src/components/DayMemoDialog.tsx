@@ -9,6 +9,10 @@ import {
 } from 'react'
 import { MAX_DAY_MEMO_CONTENT_LENGTH, type DayMemo } from '../types/dayMemo'
 import type { DayMemoDeleteMode, DayMemoV5DeleteDiagnostic } from '../hooks/useDayMemoDeleteIntent'
+import type {
+  DayMemoNormalDeleteLifecycleStartResult,
+  DayMemoNormalDeletePreparationConnectionResult,
+} from '../hooks/useDayMemoLocalOperationPreparation'
 
 interface DayMemoDialogProps {
   date: string
@@ -17,8 +21,11 @@ interface DayMemoDialogProps {
   onSave: (memo: DayMemo) => boolean | void
   onDelete: (date: string) => boolean | void
   onCheckDelete?: (date: string) => void
+  onStartDeletePreparation?: (date: string) => boolean
   deleteMode?: DayMemoDeleteMode
   deleteDiagnostic?: DayMemoV5DeleteDiagnostic | null
+  deletePreparationConnectionResult?: DayMemoNormalDeletePreparationConnectionResult | null
+  deletePreparationResult?: DayMemoNormalDeleteLifecycleStartResult | null
   onClose: () => void
   mobileSlide?: boolean
 }
@@ -30,8 +37,11 @@ export function DayMemoDialog({
   onSave,
   onDelete,
   onCheckDelete,
+  onStartDeletePreparation,
   deleteMode = 'local_delete',
   deleteDiagnostic = null,
+  deletePreparationConnectionResult = null,
+  deletePreparationResult = null,
   onClose,
   mobileSlide = false,
 }: DayMemoDialogProps) {
@@ -102,7 +112,11 @@ export function DayMemoDialog({
       onCheckDelete?.(date)
       return
     }
-    if (deleteMode === 'v5_delete_ready') return
+    if (deleteMode === 'v5_delete_ready') {
+      setError('')
+      onStartDeletePreparation?.(date)
+      return
+    }
     const message = deleteMode === 'sync_delete_ready'
       ? `${date}の日記・メモをこの端末から削除し、同期先の削除候補として記録しますか？\n\nこの時点では同期先から削除しません。`
       : `${date}の日記・メモをこの端末から削除しますか？`
@@ -165,12 +179,12 @@ export function DayMemoDialog({
               type="button"
               className="event-action-button danger"
               onClick={handleDelete}
-              disabled={deleteMode === 'sync_delete_blocked' || deleteMode === 'v5_delete_ready'}
+              disabled={deleteMode === 'sync_delete_blocked'}
             >
               {deleteMode === 'sync_delete_ready'
                 ? '端末から削除し同期候補へ記録'
                 : deleteMode === 'v5_delete_ready'
-                  ? 'V5削除候補を確認済み'
+                  ? '削除準備を開始'
                   : deleteMode === 'v5_delete_check'
                     ? 'V5削除候補を確認'
                     : deleteMode === 'v5_delete_blocked'
@@ -191,8 +205,36 @@ export function DayMemoDialog({
         )}
         {memo && deleteMode === 'v5_delete_ready' && (
           <p className="field-hint" role="status">
-            V5削除候補を確認しました。この段階ではmetadata保存、端末削除、同期先への送信は行いません。
+            V5削除候補を確認しました。「削除準備を開始」でoperation planだけを生成します。
           </p>
+        )}
+        {memo && deletePreparationResult?.date === date && deletePreparationResult.ready && (
+          <div className="field-hint" role="status">
+            <p><strong>削除準備planを生成しました</strong></p>
+            <ul>
+              <li>plan生成：完了</li>
+              <li>metadata保存：未実行</li>
+              <li>local DayMemo削除：未実行</li>
+              <li>remote送信：未実行</li>
+              <li>永続状態変更：なし</li>
+            </ul>
+          </div>
+        )}
+        {memo && deletePreparationResult?.date === date && !deletePreparationResult.ready && (
+          <div className="field-hint" role="status">
+            <p><strong>削除準備を安全に開始できませんでした</strong></p>
+            <ul>
+              <li>classification：{deletePreparationResult.classification}</li>
+              <li>connection確認：{deletePreparationConnectionResult?.date === date
+                && deletePreparationConnectionResult.ready ? '成功' : '未確認／停止'}</li>
+              <li>plan生成：{deletePreparationResult.operationIdGenerated ? '成功' : '未実行'}</li>
+              <li>pending候補：{deletePreparationResult.pendingPrepared ? '生成済み' : '未生成'}</li>
+              <li>intent候補：{deletePreparationResult.localDeleteIntentPrepared ? '生成済み' : '未生成'}</li>
+              <li>候補間整合：{deletePreparationResult.operationIdsMatch ? '一致' : '未確認'}</li>
+              <li>validator：{deletePreparationResult.metadataValid ? '成功' : '未確認／停止'}</li>
+              <li>永続状態変更：{deletePreparationResult.persistentChanged ? 'あり' : 'なし'}</li>
+            </ul>
+          </div>
         )}
         {memo && deleteMode === 'v5_delete_blocked' && (
           <p className="field-hint" role="status">
