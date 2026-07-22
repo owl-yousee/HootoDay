@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from 'react'
 import { supabaseClient } from '../lib/supabaseClient'
 import type { DayMemo } from '../types/dayMemo'
-import type { DayMemoSyncMetadataV5 } from '../types/dayMemoSync'
+import type { DayMemoRemoteBaselineV3, DayMemoSyncMetadataV5 } from '../types/dayMemoSync'
 import type { SyncConnection } from '../types/sync'
 import { isStoredDayMemo, readDayMemoStorageSnapshot } from '../utils/dayMemoStorage'
 import { pullAllDayMemoSyncRecords, type RemoteDayMemoRecord } from '../utils/dayMemoSyncPull'
@@ -76,6 +76,40 @@ export interface DayMemoNormalDeleteRemoteResultSnapshot {
   checkedAt: string
 }
 
+export type DayMemoNormalDeleteCleanupCandidateClassification =
+  | 'normal_delete_cleanup_candidate_ready'
+  | 'normal_delete_cleanup_candidate_snapshot_missing'
+  | 'normal_delete_cleanup_candidate_metadata_invalid'
+  | 'normal_delete_cleanup_candidate_operation_mismatch'
+  | 'normal_delete_cleanup_candidate_remote_result_invalid'
+  | 'normal_delete_cleanup_candidate_cursor_invalid'
+
+export interface DayMemoNormalDeleteCleanupCandidateResult {
+  date: string | null
+  classification: DayMemoNormalDeleteCleanupCandidateClassification
+  ready: boolean
+  operationIdsMatch: boolean
+  remoteRevision: number | null
+  remoteChangeSequence: number | null
+  timestampValid: boolean
+  currentCursor: number | null
+  candidateCursor: number | null
+  metadataChanged: false
+  checkedAt: string
+}
+
+export interface DayMemoNormalDeleteCleanupCandidateSnapshot {
+  result: DayMemoNormalDeleteCleanupCandidateResult
+  workspaceId: string
+  operationId: string
+  metadataRaw: string
+  previousBaseline: DayMemoRemoteBaselineV3
+  tombstoneBaseline: DayMemoRemoteBaselineV3
+  currentCursor: number
+  candidateCursor: number
+  appliedResult: DayMemoSyncResultRecord
+}
+
 interface Input {
   dayMemos: DayMemo[]
   isConfigured: boolean
@@ -140,6 +174,8 @@ export function useDayMemoLocalOperationSend({
   const inFlightRef = useRef(false)
   const attemptedSnapshotTokenRef = useRef<string | null>(null)
   const normalDeleteRemoteResultRef = useRef<DayMemoNormalDeleteRemoteResultSnapshot | null>(null)
+  const [normalDeleteCleanupCandidateResult, setNormalDeleteCleanupCandidateResult] = useState<DayMemoNormalDeleteCleanupCandidateResult | null>(null)
+  const normalDeleteCleanupCandidateRef = useRef<DayMemoNormalDeleteCleanupCandidateSnapshot | null>(null)
   const eligible = Boolean(isConfigured && isSignedIn && supabaseClient && connectionIsEligible(connection))
   const currentSnapshotToken = getReadySnapshot()?.result.checkedAt ?? null
 
@@ -206,7 +242,11 @@ export function useDayMemoLocalOperationSend({
     inFlightRef.current = true
     setSending(true)
     setResult(null)
-    if (stopAfterRemoteSuccess) normalDeleteRemoteResultRef.current = null
+    if (stopAfterRemoteSuccess) {
+      normalDeleteRemoteResultRef.current = null
+      normalDeleteCleanupCandidateRef.current = null
+      setNormalDeleteCleanupCandidateResult(null)
+    }
     let rpcCalled = false
     try {
       if (!eligible || !supabaseClient || !connectionIsEligible(connection)) {
@@ -550,9 +590,157 @@ export function useDayMemoLocalOperationSend({
     return { ...snapshot, appliedResult: { ...snapshot.appliedResult } }
   }, [connection])
 
+  const prepareNormalDeleteCleanupCandidate = useCallback((): boolean => {
+    const checkedAt = new Date().toISOString()
+    const finish = (
+      classification: DayMemoNormalDeleteCleanupCandidateClassification,
+      values: Partial<Omit<DayMemoNormalDeleteCleanupCandidateResult,
+        'classification' | 'ready' | 'metadataChanged' | 'checkedAt'>> = {},
+    ): boolean => {
+      const next: DayMemoNormalDeleteCleanupCandidateResult = {
+        date: null,
+        classification,
+        ready: classification === 'normal_delete_cleanup_candidate_ready',
+        operationIdsMatch: false,
+        remoteRevision: null,
+        remoteChangeSequence: null,
+        timestampValid: false,
+        currentCursor: null,
+        candidateCursor: null,
+        metadataChanged: false,
+        checkedAt,
+        ...values,
+      }
+      if (!next.ready) normalDeleteCleanupCandidateRef.current = null
+      setNormalDeleteCleanupCandidateResult(next)
+      return next.ready
+    }
+    const remoteSnapshot = normalDeleteRemoteResultRef.current
+    if (!remoteSnapshot || result?.classification !== 'local_operation_send_remote_succeeded_cleanup_pending'
+      || !result.remoteSucceeded || !result.rpcResultValidated || !result.cleanupPending
+      || result.date !== remoteSnapshot.date) {
+      return finish('normal_delete_cleanup_candidate_snapshot_missing')
+    }
+    if (!connectionIsEligible(connection) || connection.workspaceId !== remoteSnapshot.workspaceId) {
+      return finish('normal_delete_cleanup_candidate_metadata_invalid', { date: remoteSnapshot.date })
+    }
+    const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
+    if (loaded.status !== 'ready' || !isDayMemoSyncMetadataV5(loaded.metadata)
+      || loaded.raw !== remoteSnapshot.sendingMetadataRaw) {
+      return finish('normal_delete_cleanup_candidate_metadata_invalid', { date: remoteSnapshot.date })
+    }
+    const metadata = loaded.metadata
+    const pending = metadata.pendingOperation
+    const intent = metadata.localDeleteIntents[remoteSnapshot.date]
+    const operationIdsMatch = pending?.kind === 'delete'
+      && pending.status === 'sending'
+      && pending.operationId === remoteSnapshot.operationId
+      && intent?.operationId === remoteSnapshot.operationId
+      && pending.operationId === intent.operationId
+    if (!operationIdsMatch || pending.date !== remoteSnapshot.date || intent.date !== remoteSnapshot.date) {
+      return finish('normal_delete_cleanup_candidate_operation_mismatch', {
+        date: remoteSnapshot.date,
+        operationIdsMatch,
+      })
+    }
+    const baseline = metadata.baselines[remoteSnapshot.date]
+    if (!baseline || baseline.deletedAt !== null || baseline.remoteRevision !== pending.baseRevision
+      || baseline.remoteRevision !== intent.baselineRevision
+      || baseline.remoteChangeSequence !== intent.baselineChangeSequence) {
+      return finish('normal_delete_cleanup_candidate_metadata_invalid', {
+        date: remoteSnapshot.date,
+        operationIdsMatch: true,
+      })
+    }
+    const applied = remoteSnapshot.appliedResult
+    const appliedValid = isAppliedDayMemoDeleteSyncResult(
+      applied,
+      connection.workspaceId,
+      remoteSnapshot.date,
+      pending.baseRevision,
+      metadata.lastPulledChangeSequence,
+    )
+    if (!appliedValid || applied.deleted_at === null) {
+      return finish('normal_delete_cleanup_candidate_remote_result_invalid', {
+        date: remoteSnapshot.date,
+        operationIdsMatch: true,
+      })
+    }
+    const timestampValid = !Number.isNaN(Date.parse(applied.server_updated_at))
+      && !Number.isNaN(Date.parse(applied.deleted_at))
+    const candidateCursor = applied.change_sequence
+    if (!timestampValid || !Number.isSafeInteger(candidateCursor)
+      || metadata.lastPulledChangeSequence < baseline.remoteChangeSequence
+      || candidateCursor <= metadata.lastPulledChangeSequence) {
+      return finish('normal_delete_cleanup_candidate_cursor_invalid', {
+        date: remoteSnapshot.date,
+        operationIdsMatch: true,
+        remoteRevision: applied.revision,
+        remoteChangeSequence: applied.change_sequence,
+        timestampValid,
+        currentCursor: metadata.lastPulledChangeSequence,
+        candidateCursor,
+      })
+    }
+    const tombstoneBaseline: DayMemoRemoteBaselineV3 = {
+      date: remoteSnapshot.date,
+      remoteRevision: applied.revision,
+      remoteChangeSequence: applied.change_sequence,
+      remoteUpdatedAt: applied.server_updated_at,
+      baselineLocalUpdatedAt: null,
+      deletedAt: applied.deleted_at,
+    }
+    const nextResult: DayMemoNormalDeleteCleanupCandidateResult = {
+      date: remoteSnapshot.date,
+      classification: 'normal_delete_cleanup_candidate_ready',
+      ready: true,
+      operationIdsMatch: true,
+      remoteRevision: applied.revision,
+      remoteChangeSequence: applied.change_sequence,
+      timestampValid: true,
+      currentCursor: metadata.lastPulledChangeSequence,
+      candidateCursor,
+      metadataChanged: false,
+      checkedAt,
+    }
+    normalDeleteCleanupCandidateRef.current = {
+      result: { ...nextResult },
+      workspaceId: connection.workspaceId,
+      operationId: remoteSnapshot.operationId,
+      metadataRaw: loaded.raw,
+      previousBaseline: { ...baseline },
+      tombstoneBaseline,
+      currentCursor: metadata.lastPulledChangeSequence,
+      candidateCursor,
+      appliedResult: { ...applied },
+    }
+    setNormalDeleteCleanupCandidateResult(nextResult)
+    return true
+  }, [connection, result])
+
+  const getNormalDeleteCleanupCandidateSnapshot = useCallback((): DayMemoNormalDeleteCleanupCandidateSnapshot | null => {
+    const snapshot = normalDeleteCleanupCandidateRef.current
+    if (!snapshot || !connectionIsEligible(connection) || connection.workspaceId !== snapshot.workspaceId) return null
+    const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
+    if (loaded.status !== 'ready' || !isDayMemoSyncMetadataV5(loaded.metadata)
+      || loaded.raw !== snapshot.metadataRaw
+      || loaded.metadata.pendingOperation?.kind !== 'delete'
+      || loaded.metadata.pendingOperation.operationId !== snapshot.operationId
+      || loaded.metadata.localDeleteIntents[snapshot.result.date ?? '']?.operationId !== snapshot.operationId) return null
+    return {
+      ...snapshot,
+      result: { ...snapshot.result },
+      previousBaseline: { ...snapshot.previousBaseline },
+      tombstoneBaseline: { ...snapshot.tombstoneBaseline },
+      appliedResult: { ...snapshot.appliedResult },
+    }
+  }, [connection])
+
   const discard = useCallback(() => {
     setResult(null)
     normalDeleteRemoteResultRef.current = null
+    normalDeleteCleanupCandidateRef.current = null
+    setNormalDeleteCleanupCandidateResult(null)
   }, [])
 
   return {
@@ -563,6 +751,9 @@ export function useDayMemoLocalOperationSend({
     send,
     sendPreparedNormalDelete,
     getNormalDeleteRemoteResultSnapshot,
+    normalDeleteCleanupCandidateResult,
+    prepareNormalDeleteCleanupCandidate,
+    getNormalDeleteCleanupCandidateSnapshot,
     discard,
   }
 }
