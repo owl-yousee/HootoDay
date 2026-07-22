@@ -3,7 +3,12 @@ import type { DayMemo } from '../types/dayMemo'
 import type { DayMemoPendingOperationV5, DayMemoSyncMetadataV5 } from '../types/dayMemoSync'
 import type { SyncConnection } from '../types/sync'
 import { isStoredDayMemo, readDayMemoStorageSnapshot, replaceStoredDayMemosVerified } from '../utils/dayMemoStorage'
-import { isDayMemoSyncMetadataV5, loadDayMemoSyncMetadataAny, replaceDayMemoSyncMetadataV2 } from '../utils/dayMemoSyncStorage'
+import {
+  DAY_MEMO_SYNC_STORAGE_KEY,
+  isDayMemoSyncMetadataV5,
+  loadDayMemoSyncMetadataAny,
+  replaceDayMemoSyncMetadataV2,
+} from '../utils/dayMemoSyncStorage'
 import { isUuid } from '../utils/syncConnectionStorage'
 import { createUuidV4 } from '../utils/uuid'
 import type {
@@ -111,6 +116,33 @@ export interface DayMemoNormalDeleteLifecycleStartResult {
   checkedAt: string
 }
 
+export type DayMemoNormalDeleteMetadataPersistenceClassification =
+  | 'normal_delete_v5_metadata_saved'
+  | 'normal_delete_v5_metadata_plan_missing'
+  | 'normal_delete_v5_metadata_state_changed'
+  | 'normal_delete_v5_metadata_prerequisite_invalid'
+  | 'normal_delete_v5_metadata_invalid'
+  | 'normal_delete_v5_metadata_save_failed'
+  | 'normal_delete_v5_metadata_readback_failed'
+  | 'normal_delete_v5_metadata_rollback_failed'
+
+export interface DayMemoNormalDeleteMetadataPersistenceResult {
+  date: string
+  classification: DayMemoNormalDeleteMetadataPersistenceClassification
+  succeeded: boolean
+  operationIdsMatch: boolean
+  metadataVersion: number | null
+  metadataValid: boolean
+  pendingSaved: boolean
+  localDeleteIntentSaved: boolean
+  readBackVerified: boolean
+  rollbackAttempted: boolean
+  rollbackVerified: boolean
+  localDayMemoChanged: false
+  remoteSent: false
+  checkedAt: string
+}
+
 interface DayMemoDeletePreparationPlan {
   operationId: string
   pendingOperation: Extract<DayMemoPendingOperationV5, { kind: 'delete' }>
@@ -205,6 +237,7 @@ export function useDayMemoLocalOperationPreparation({
   const [result, setResult] = useState<DayMemoLocalOperationPersistentPreparationResult | null>(null)
   const [normalDeleteConnectionResult, setNormalDeleteConnectionResult] = useState<DayMemoNormalDeletePreparationConnectionResult | null>(null)
   const [normalDeleteLifecycleStartResult, setNormalDeleteLifecycleStartResult] = useState<DayMemoNormalDeleteLifecycleStartResult | null>(null)
+  const [normalDeleteMetadataPersistenceResult, setNormalDeleteMetadataPersistenceResult] = useState<DayMemoNormalDeleteMetadataPersistenceResult | null>(null)
   const normalDeleteInputRef = useRef<DayMemoLocalOperationDeletePreparationInput | null>(null)
   const normalDeletePlanRef = useRef<DayMemoDeletePreparationPlan | null>(null)
   const eligible = Boolean(isConfigured && isSignedIn && connectionIsEligible(connection))
@@ -215,6 +248,7 @@ export function useDayMemoLocalOperationPreparation({
       normalDeleteInputRef.current = null
       normalDeletePlanRef.current = null
       setNormalDeleteLifecycleStartResult(null)
+      setNormalDeleteMetadataPersistenceResult(null)
       setNormalDeleteConnectionResult({
         date,
         classification,
@@ -257,6 +291,7 @@ export function useDayMemoLocalOperationPreparation({
     normalDeleteInputRef.current = { ...adapter }
     normalDeletePlanRef.current = null
     setNormalDeleteLifecycleStartResult(null)
+    setNormalDeleteMetadataPersistenceResult(null)
     setNormalDeleteConnectionResult({
       date,
       classification: 'normal_delete_v5_connection_ready',
@@ -279,6 +314,7 @@ export function useDayMemoLocalOperationPreparation({
         'operationIdGenerated' | 'pendingPrepared' | 'localDeleteIntentPrepared' | 'operationIdsMatch' | 'metadataValid'>> = {},
     ): boolean => {
       if (classification !== 'normal_delete_v5_lifecycle_ready') normalDeletePlanRef.current = null
+      setNormalDeleteMetadataPersistenceResult(null)
       setNormalDeleteLifecycleStartResult({
         date,
         classification,
@@ -345,6 +381,144 @@ export function useDayMemoLocalOperationPreparation({
       metadataValid: true,
     })
   }, [connection?.workspaceId, dayMemos, eligible, normalDeleteConnectionResult])
+
+  const persistNormalDeletePreparationMetadata = useCallback((date: string): boolean => {
+    const checkedAt = new Date().toISOString()
+    const finish = (
+      classification: DayMemoNormalDeleteMetadataPersistenceClassification,
+      flags: Partial<Pick<DayMemoNormalDeleteMetadataPersistenceResult,
+        'operationIdsMatch' | 'metadataVersion' | 'metadataValid' | 'pendingSaved'
+        | 'localDeleteIntentSaved' | 'readBackVerified' | 'rollbackAttempted' | 'rollbackVerified'>> = {},
+    ): boolean => {
+      setNormalDeleteMetadataPersistenceResult({
+        date,
+        classification,
+        succeeded: classification === 'normal_delete_v5_metadata_saved',
+        operationIdsMatch: flags.operationIdsMatch ?? false,
+        metadataVersion: flags.metadataVersion ?? null,
+        metadataValid: flags.metadataValid ?? false,
+        pendingSaved: flags.pendingSaved ?? false,
+        localDeleteIntentSaved: flags.localDeleteIntentSaved ?? false,
+        readBackVerified: flags.readBackVerified ?? false,
+        rollbackAttempted: flags.rollbackAttempted ?? false,
+        rollbackVerified: flags.rollbackVerified ?? false,
+        localDayMemoChanged: false,
+        remoteSent: false,
+        checkedAt,
+      })
+      return classification === 'normal_delete_v5_metadata_saved'
+    }
+    const adapter = normalDeleteInputRef.current
+    const plan = normalDeletePlanRef.current
+    if (!adapter || !plan || !normalDeleteLifecycleStartResult?.ready
+      || normalDeleteLifecycleStartResult.date !== date || plan.pendingOperation.date !== date
+      || plan.localDeleteIntent.date !== date) {
+      return finish('normal_delete_v5_metadata_plan_missing')
+    }
+    if (!eligible || !connection?.workspaceId || adapter.workspaceId !== connection.workspaceId) {
+      return finish('normal_delete_v5_metadata_prerequisite_invalid')
+    }
+    const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
+    const stored = readDayMemoStorageSnapshot(window.localStorage)
+    if (loaded.status !== 'ready' || loaded.metadata.version !== 5 || stored.status !== 'ready') {
+      return finish('normal_delete_v5_metadata_prerequisite_invalid')
+    }
+    if (loaded.raw !== adapter.metadataRaw || stored.serialized !== adapter.localStorageSerialized
+      || signature(stored.memos) !== adapter.localSignature || signature(dayMemos) !== adapter.localSignature) {
+      return finish('normal_delete_v5_metadata_state_changed')
+    }
+    const baseline = loaded.metadata.baselines[date]
+    const memo = stored.memos.find((item) => item.date === date)
+    const operationIdsMatch = plan.operationId === plan.pendingOperation.operationId
+      && plan.operationId === plan.localDeleteIntent.operationId
+    const planShapeValid = operationIdsMatch && isDayMemoSyncMetadataV5(plan.nextMetadata)
+      && plan.nextMetadata.version === 5
+      && plan.nextMetadata.workspaceId === loaded.metadata.workspaceId
+      && plan.nextMetadata.baselineStatus === loaded.metadata.baselineStatus
+      && plan.nextMetadata.baselineConfirmedAt === loaded.metadata.baselineConfirmedAt
+      && plan.nextMetadata.lastPulledChangeSequence === loaded.metadata.lastPulledChangeSequence
+      && JSON.stringify(plan.nextMetadata.baselines) === JSON.stringify(loaded.metadata.baselines)
+      && plan.nextMetadata.pushBlock === null
+      && plan.nextMetadata.pendingOperation?.kind === 'delete'
+      && plan.nextMetadata.pendingOperation.operationId === plan.localDeleteIntent.operationId
+      && plan.nextMetadata.localDeleteIntents[date]?.operationId === plan.pendingOperation.operationId
+    if (loaded.metadata.workspaceId !== adapter.workspaceId
+      || loaded.metadata.baselineStatus !== 'confirmed' || loaded.metadata.baselineConfirmedAt === null
+      || loaded.metadata.pendingOperation !== null || loaded.metadata.pushBlock !== null
+      || Object.keys(loaded.metadata.localDeleteIntents).length !== 0
+      || !baseline || baseline.deletedAt !== null || !memo
+      || baseline.remoteRevision !== adapter.baselineRevision
+      || baseline.remoteChangeSequence !== adapter.baselineChangeSequence
+      || baseline.remoteUpdatedAt !== adapter.baselineRemoteUpdatedAt
+      || baseline.baselineLocalUpdatedAt !== adapter.baselineLocalUpdatedAt
+      || memo.updatedAt !== adapter.memoUpdatedAt) {
+      return finish('normal_delete_v5_metadata_prerequisite_invalid', { operationIdsMatch })
+    }
+    if (!planShapeValid) {
+      return finish('normal_delete_v5_metadata_invalid', { operationIdsMatch, metadataVersion: plan.nextMetadata.version })
+    }
+
+    const save = replaceDayMemoSyncMetadataV2(window.localStorage, plan.nextMetadata, loaded.raw)
+    if (save !== 'saved') {
+      return finish(save === 'rollback_failed'
+        ? 'normal_delete_v5_metadata_rollback_failed'
+        : save === 'readback_failed'
+          ? 'normal_delete_v5_metadata_readback_failed'
+          : 'normal_delete_v5_metadata_save_failed', {
+        operationIdsMatch,
+        metadataVersion: 5,
+        metadataValid: true,
+        rollbackAttempted: save === 'write_failed' || save === 'readback_failed' || save === 'rollback_failed',
+        rollbackVerified: save === 'write_failed' || save === 'readback_failed',
+      })
+    }
+
+    const readBack = loadDayMemoSyncMetadataAny(window.localStorage)
+    const localReadBack = readDayMemoStorageSnapshot(window.localStorage)
+    const pending = readBack.status === 'ready' && readBack.metadata.version === 5
+      ? readBack.metadata.pendingOperation : null
+    const intent = readBack.status === 'ready' && readBack.metadata.version === 5
+      ? readBack.metadata.localDeleteIntents[date] : undefined
+    const readBackVerified = readBack.status === 'ready' && readBack.metadata.version === 5
+      && isDayMemoSyncMetadataV5(readBack.metadata)
+      && readBack.raw === JSON.stringify(plan.nextMetadata)
+      && JSON.stringify(readBack.metadata) === JSON.stringify(plan.nextMetadata)
+      && pending?.kind === 'delete' && pending.operationId === plan.operationId
+      && intent?.operationId === plan.operationId && pending.operationId === intent.operationId
+      && localReadBack.status === 'ready' && localReadBack.serialized === adapter.localStorageSerialized
+      && signature(localReadBack.memos) === adapter.localSignature
+    if (!readBackVerified) {
+      let currentRaw: string | null
+      try {
+        currentRaw = window.localStorage.getItem(DAY_MEMO_SYNC_STORAGE_KEY)
+      } catch {
+        return finish('normal_delete_v5_metadata_rollback_failed', {
+          operationIdsMatch,
+          metadataVersion: readBack.status === 'ready' ? readBack.metadata.version : null,
+          metadataValid: readBack.status === 'ready' && readBack.metadata.version === 5,
+          rollbackAttempted: true,
+        })
+      }
+      const rollback = replaceDayMemoSyncMetadataV2(window.localStorage, loaded.metadata, currentRaw)
+      return finish(rollback === 'saved'
+        ? 'normal_delete_v5_metadata_readback_failed'
+        : 'normal_delete_v5_metadata_rollback_failed', {
+        operationIdsMatch,
+        metadataVersion: readBack.status === 'ready' ? readBack.metadata.version : null,
+        metadataValid: readBack.status === 'ready' && readBack.metadata.version === 5,
+        rollbackAttempted: true,
+        rollbackVerified: rollback === 'saved',
+      })
+    }
+    return finish('normal_delete_v5_metadata_saved', {
+      operationIdsMatch: true,
+      metadataVersion: 5,
+      metadataValid: true,
+      pendingSaved: true,
+      localDeleteIntentSaved: true,
+      readBackVerified: true,
+    })
+  }, [connection?.workspaceId, dayMemos, eligible, normalDeleteLifecycleStartResult])
 
   const finish = useCallback((
     operationKind: DayMemoLocalOperationPreparationKind,
@@ -515,5 +689,7 @@ export function useDayMemoLocalOperationPreparation({
     getConnectedNormalDeletePreparationInput,
     normalDeleteLifecycleStartResult,
     startNormalDeletePreparation,
+    normalDeleteMetadataPersistenceResult,
+    persistNormalDeletePreparationMetadata,
   }
 }
