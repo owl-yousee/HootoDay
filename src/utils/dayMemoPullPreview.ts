@@ -16,6 +16,7 @@ export interface DayMemoPullPreviewBuildResult {
   items: DayMemoPullPreviewItem[]
   summary: DayMemoPullPreviewSummary
   remoteRecords: RemoteDayMemoRecord[]
+  classifications: Record<string, DayMemoNormalDifferenceClassification>
 }
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
@@ -107,6 +108,7 @@ export function buildDayMemoPullPreview(
     && classifications.get(record.entityId) !== 'exact_match_baseline_confirmed').length
   return {
     items,
+    classifications: Object.fromEntries(classifications),
     summary: {
       remoteActiveCount: remoteRecords.filter((record) => record.deletedAt === null).length,
       remoteTombstoneCount: remoteRecords.filter((record) => record.deletedAt !== null).length,
