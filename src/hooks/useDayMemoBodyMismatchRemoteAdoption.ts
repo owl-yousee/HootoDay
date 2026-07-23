@@ -11,7 +11,7 @@ import { supabaseClient } from '../lib/supabaseClient'
 import { classifyDayMemoNormalDifference, remoteRecordMatchesConfirmedBaseline } from './useDayMemoNormalDifferenceRecoveryPlan'
 import type { DayMemoNormalBodyMismatchCandidateSnapshot } from './useDayMemoNormalBodyMismatchCandidate'
 
-export type BodyMismatchRemoteAdoptionStage = 'idle' | 'preparation_ready' | 'local_saved' | 'metadata_ready' | 'completed' | 'blocked'
+export type BodyMismatchRemoteAdoptionStage = 'idle' | 'preparation_ready' | 'execution_ready' | 'local_saved' | 'metadata_ready' | 'completed' | 'blocked'
 export interface BodyMismatchRemoteAdoptionResult {
   stage: BodyMismatchRemoteAdoptionStage
   date: string | null
@@ -26,6 +26,7 @@ export interface BodyMismatchRemoteAdoptionResult {
   candidateRevision: number | null
   contentRevision: number | null
   preparationRevision: number | null
+  finalVerificationRevision: number | null
   metadataVerified: boolean
   workspaceVerified: boolean
   localVerified: boolean
@@ -55,6 +56,25 @@ export interface BodyMismatchRemoteAdoptionPreparationSnapshot {
   cursor: number
   fullPullMaxSequence: number
   localAfter: DayMemo[]
+  checkedAt: string
+}
+
+export interface BodyMismatchRemoteAdoptionExecutionVerificationRequest {
+  date: string
+  comparisonRunId: number
+  candidateRevision: number
+  contentRevision: number
+  preparationRevision: number
+}
+
+export interface BodyMismatchRemoteAdoptionExecutionSnapshot {
+  preparation: BodyMismatchRemoteAdoptionPreparationSnapshot
+  finalVerificationRevision: number
+  metadataRaw: string
+  localStorageSerialized: string
+  workspaceId: string
+  cursor: number
+  fullPullMaxSequence: number
   checkedAt: string
 }
 
@@ -91,7 +111,9 @@ export function useDayMemoBodyMismatchRemoteAdoption(input: Input) {
   const inFlight = useRef(false)
   const runId = useRef(0)
   const preparationRevision = useRef(0)
+  const finalVerificationRevision = useRef(0)
   const preparation = useRef<BodyMismatchRemoteAdoptionPreparationSnapshot | null>(null)
+  const execution = useRef<BodyMismatchRemoteAdoptionExecutionSnapshot | null>(null)
   const resultRef = useRef<BodyMismatchRemoteAdoptionResult | null>(null)
   const applied = useRef<ApplySnapshot | null>(null)
   const candidate = input.getCandidateSnapshot()
@@ -102,7 +124,7 @@ export function useDayMemoBodyMismatchRemoteAdoption(input: Input) {
     const nextResult = { stage: next, date: null, safety, remainingCount: null, localChanged: false,
       metadataChanged: false, localState: 'unchanged' as const, remoteWritten: false as const,
       preparationCreated: false, comparisonRunId: null, candidateRevision: null, contentRevision: null,
-      preparationRevision: null, metadataVerified: false, workspaceVerified: false, localVerified: false,
+      preparationRevision: null, finalVerificationRevision: null, metadataVerified: false, workspaceVerified: false, localVerified: false,
       remoteVerified: false, baselineVerified: false, cursorVerified: false, differencesVerified: false,
       checkedAt: new Date().toISOString(), ...values }
     resultRef.current = nextResult
@@ -120,6 +142,7 @@ export function useDayMemoBodyMismatchRemoteAdoption(input: Input) {
     const snapshot = input.getCandidateSnapshot()
     const fail = (safety: string, values: Partial<BodyMismatchRemoteAdoptionResult> = {}) => {
       preparation.current = null
+      execution.current = null
       return finish('blocked', safety, { date: request.date, comparisonRunId: request.comparisonRunId,
         candidateRevision: request.candidateRevision, contentRevision: request.contentRevision, ...values })
     }
@@ -223,6 +246,123 @@ export function useDayMemoBodyMismatchRemoteAdoption(input: Input) {
       setRunning(false)
     }
   }, [finish, input])
+
+  const verifyPreparedRemote = useCallback(async (request: BodyMismatchRemoteAdoptionExecutionVerificationRequest) => {
+    const prepared = preparation.current
+    const candidate = input.getCandidateSnapshot()
+    const fail = (safety: string, values: Partial<BodyMismatchRemoteAdoptionResult> = {}) => {
+      execution.current = null
+      return finish('blocked', safety, { date: request.date, comparisonRunId: request.comparisonRunId,
+        candidateRevision: request.candidateRevision, contentRevision: request.contentRevision,
+        preparationRevision: request.preparationRevision, ...values })
+    }
+    if (inFlight.current) return resultRef.current
+    if (!prepared) return fail('remote_preparation_missing')
+    if (stage !== 'preparation_ready' && stage !== 'blocked') return fail('remote_preparation_not_ready')
+    if (!candidate) return fail('candidate_missing')
+    if (candidate.candidate !== 'remote') return fail('candidate_choice_mismatch')
+    if (candidate.date !== request.date || prepared.source.date !== request.date) return fail('candidate_target_mismatch')
+    if (prepared.comparisonRunId !== request.comparisonRunId) return fail('comparison_run_mismatch')
+    if (prepared.candidateRevision !== request.candidateRevision) return fail('candidate_revision_mismatch')
+    if (prepared.contentRevision !== request.contentRevision
+      || candidate.snapshotRevision !== request.contentRevision) return fail('content_revision_mismatch')
+    if (prepared.preparationRevision !== request.preparationRevision) return fail('preparation_revision_mismatch')
+    if (!supabaseClient || !input.isConfigured || !input.isSignedIn || !eligibleConnection(input.connection)) {
+      return fail('execution_verification_input_invalid')
+    }
+    inFlight.current = true
+    setRunning(true)
+    const currentRun = ++runId.current
+    try {
+      const metadata = loadDayMemoSyncMetadataAny(window.localStorage)
+      const local = readDayMemoStorageSnapshot(window.localStorage)
+      if (metadata.status !== 'ready' || !isDayMemoSyncMetadataV5(metadata.metadata)
+        || local.status !== 'ready' || !input.reactMetadata || !same(input.reactMetadata, metadata.metadata)) {
+        return fail('metadata_changed')
+      }
+      const metadataVerified = metadata.raw === prepared.metadataRaw && metadata.raw === candidate.metadataRaw
+        && metadata.metadata.version === 5 && metadata.metadata.baselineStatus === 'recovery_required'
+        && metadata.metadata.baselineConfirmedAt === null && !metadata.metadata.pendingOperation
+        && !metadata.metadata.pushBlock && Object.keys(metadata.metadata.localDeleteIntents).length === 0
+      if (!metadataVerified) return fail('metadata_changed')
+      const workspaceVerified = input.connection.workspaceId === prepared.workspaceId
+        && candidate.workspaceId === prepared.workspaceId && metadata.metadata.workspaceId === prepared.workspaceId
+      if (!workspaceVerified) return fail('workspace_changed', { metadataVerified: true })
+      const storageLocalVerified = local.serialized === prepared.localStorageSerialized
+        && local.serialized === candidate.localStorageSerialized
+        && same(local.memos.find((memo) => memo.date === request.date) ?? null, candidate.localMemo)
+      if (!storageLocalVerified) return fail('local_changed', { metadataVerified: true, workspaceVerified: true })
+      if (!same(input.dayMemos, local.memos)) return fail('react_local_changed', {
+        metadataVerified: true, workspaceVerified: true })
+      const expectedLocalAfter = local.memos.map((memo) => memo.date === request.date
+        ? { ...candidate.remoteRecord.payload! } : { ...memo })
+      if (!candidate.remoteRecord.payload || !same(expectedLocalAfter, prepared.localAfter)
+        || expectedLocalAfter.filter((memo) => memo.date === request.date).length !== 1) {
+        return fail('execution_verification_input_invalid', {
+          metadataVerified: true, workspaceVerified: true, localVerified: true })
+      }
+      const pulled = await pullAllDayMemoSyncRecords(supabaseClient, prepared.workspaceId,
+        () => runId.current === currentRun).catch(() => null)
+      if (!pulled || pulled.status !== 'complete') return fail('full_pull_failed', {
+        metadataVerified: true, workspaceVerified: true, localVerified: true })
+      const afterMetadata = loadDayMemoSyncMetadataAny(window.localStorage)
+      const afterLocal = readDayMemoStorageSnapshot(window.localStorage)
+      if (runId.current !== currentRun || afterMetadata.status !== 'ready' || afterMetadata.raw !== metadata.raw
+        || afterLocal.status !== 'ready' || afterLocal.serialized !== local.serialized
+        || !same(input.dayMemos, local.memos)) {
+        return fail('snapshot_expired', { metadataVerified: true, workspaceVerified: true, localVerified: true })
+      }
+      const cursorVerified = pulled.maxChangeSequence === metadata.metadata.lastPulledChangeSequence
+        && pulled.maxChangeSequence === prepared.cursor && pulled.maxChangeSequence === prepared.fullPullMaxSequence
+        && pulled.maxChangeSequence === candidate.cursor && pulled.maxChangeSequence === candidate.fullPullMaxSequence
+      if (!cursorVerified) return fail('cursor_changed', {
+        metadataVerified: true, workspaceVerified: true, localVerified: true })
+      const remoteByDate = new Map(pulled.records.map((record) => [record.entityId, record]))
+      if (remoteByDate.size !== pulled.records.length) return fail('sequence_invalid', {
+        metadataVerified: true, workspaceVerified: true, localVerified: true, cursorVerified: true })
+      const target = remoteByDate.get(request.date)
+      if (!target || target.deletedAt !== null || !target.payload || !same(target, candidate.remoteRecord)) {
+        return fail('remote_changed', { metadataVerified: true, workspaceVerified: true,
+          localVerified: true, cursorVerified: true })
+      }
+      const baseline = metadata.metadata.baselines[request.date] ?? null
+      if (!baseline || !remoteRecordMatchesConfirmedBaseline(target, baseline)) {
+        return fail('baseline_mismatch', { metadataVerified: true, workspaceVerified: true,
+          localVerified: true, cursorVerified: true, remoteVerified: true })
+      }
+      const localByDate = new Map(local.memos.map((memo) => [memo.date, memo]))
+      const dates = [...new Set([...localByDate.keys(), ...remoteByDate.keys(), ...Object.keys(metadata.metadata.baselines)])].sort()
+      for (const date of dates) {
+        const classification = classifyDayMemoNormalDifference(localByDate.get(date) ?? null,
+          remoteByDate.get(date) ?? null, metadata.metadata.baselines[date] ?? null)
+        if (classification !== candidate.classifications[date]) {
+          const tombstone = metadata.metadata.baselines[date]?.deletedAt != null
+          return fail(tombstone ? 'confirmed_tombstone_mismatch' : 'difference_changed', {
+            metadataVerified: true, workspaceVerified: true, localVerified: true, cursorVerified: true,
+            remoteVerified: true, baselineVerified: true })
+        }
+      }
+      if (candidate.classifications[request.date] !== 'body_mismatch') return fail('body_mismatch_not_found', {
+        metadataVerified: true, workspaceVerified: true, localVerified: true, cursorVerified: true,
+        remoteVerified: true, baselineVerified: true })
+      const checkedAt = new Date().toISOString()
+      const nextFinalRevision = ++finalVerificationRevision.current
+      execution.current = { preparation: prepared, finalVerificationRevision: nextFinalRevision,
+        metadataRaw: metadata.raw, localStorageSerialized: local.serialized, workspaceId: prepared.workspaceId,
+        cursor: metadata.metadata.lastPulledChangeSequence, fullPullMaxSequence: pulled.maxChangeSequence, checkedAt }
+      return finish('execution_ready', 'body_mismatch_remote_execution_verification_ready', {
+        date: request.date, preparationCreated: true, comparisonRunId: request.comparisonRunId,
+        candidateRevision: request.candidateRevision, contentRevision: request.contentRevision,
+        preparationRevision: request.preparationRevision, finalVerificationRevision: nextFinalRevision,
+        metadataVerified: true, workspaceVerified: true, localVerified: true, remoteVerified: true,
+        baselineVerified: true, cursorVerified: true, differencesVerified: true, checkedAt })
+    } catch {
+      return fail('unknown')
+    } finally {
+      inFlight.current = false
+      setRunning(false)
+    }
+  }, [finish, input, stage])
 
   const applyRemote = useCallback(async () => {
     const snapshot = input.getCandidateSnapshot()
@@ -357,10 +497,12 @@ export function useDayMemoBodyMismatchRemoteAdoption(input: Input) {
 
   const discard = useCallback(() => {
     if (running) return
-    runId.current += 1; preparation.current = null; applied.current = null; resultRef.current = null; setStage('idle'); setResult(null)
+    runId.current += 1; preparation.current = null; execution.current = null; applied.current = null; resultRef.current = null; setStage('idle'); setResult(null)
   }, [running])
   const getPreparationSnapshot = useCallback(() => preparation.current, [])
+  const getExecutionSnapshot = useCallback(() => execution.current, [])
   return { stage, running, result, canPrepare: stage === 'idle' && Boolean(candidate), canApply,
-    canVerify: stage === 'local_saved', canSave: stage === 'metadata_ready', prepareRemote,
-    getPreparationSnapshot, applyRemote, verifyAfterApply, saveMetadata, discard }
+    canVerifyPreparation: stage === 'preparation_ready', canVerify: stage === 'local_saved', canSave: stage === 'metadata_ready',
+    prepareRemote, verifyPreparedRemote, getPreparationSnapshot, getExecutionSnapshot,
+    applyRemote, verifyAfterApply, saveMetadata, discard }
 }
