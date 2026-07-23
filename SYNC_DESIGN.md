@@ -2053,6 +2053,15 @@ Candidate checking now catches unexpected failures into a `failed` result and co
 - candidate確認、local反映、反映後確認、metadata保存は独立したstageであり、前段成功から後段処理を自動実行しない。
 - recovery完了またはconfirmed保存だけで通常同期readyを推測せず、別の明示的な通常同期確認成功を`normal_sync_ready`の条件として維持する。
 
+## 通常差異だがcandidate未成立となるcleanup境界
+
+- 通常同期でremote-only等の差異が表示されても、その表示結果だけではrecovery/adoption candidateではない。
+- 正式なcandidateには、Recovery Bridge、全差異のcheckpoint確認と明示保存、Saved Recovery State確認、`unresolvedClassifications`の再構築が必要である。
+- `remote_only_candidate_start_prerequisite_invalid`は、これらの前提を満たさない通常差異から採用処理へ進ませない正常なfail-closedである。
+- candidate未成立のremote-onlyを直接remote削除しない。通常削除もlocal DayMemoと整合するactive baseline等を前提とするため、この状態では条件を満たさない。
+- 過去テストや復旧途中に残った同種の状態については、対象日を限定し、workspace、metadata、完全full pull、snapshot鮮度、pending、localDeleteIntent、pushBlockを再確認するcleanup専用Phaseを将来検討する。
+- UIでは「現在の復旧候補として確認できません」「保存済み復旧状態の確認が必要です」「最新状態を再確認してください」と案内し、採用・削除・retryを自動実行しない。
+
 ## 2026-07-23 Sync Audit後の同期工程・表示原則
 
 - 同じverified snapshotで安全に判断できる連続したread-only工程は統合する。過去のUI結果やtransient previewを根拠にせず、metadata、workspace、local signature、remote fingerprint、baseline、cursor、対象外差異を束ねた操作時snapshotだけを再利用する。
@@ -2065,3 +2074,16 @@ Candidate checking now catches unexpected failures into a `failed` result and co
 - active baselineとconfirmed tombstoneは種別ごとに厳格比較する。confirmed tombstoneもrevision、sequence、deletedAt、server timestamp、payload状態、`baselineLocalUpdatedAt = null`の全一致を必要とし、不明・不一致tombstoneは許可しない。
 - 同期パネルは現在状態、現在の対象、直近結果、実行可能な主操作を中心に表示する。過去工程をカードとして累積せず、外側containerと主要カードの役割を分け、説明文・箇条書き・stage ID・共有・診断の余白を抑える。
 - 個人利用アプリとして、同じ安全証拠を繰り返し確認させる過剰な工程は避ける。ただし明示操作、破壊操作直前確認、変更後read-back、rollback、fail-closed、confirmed tombstone比較、自動retry禁止は省略しない。
+
+## Sync Stabilization Audit完成基準と保守モード
+
+- 完成基準は、主要正常経路の実機完走、既知再現不具合なし、破壊操作直前のverified確認、書込み後read-back、rollback、対象外不変確認、通常同期復帰、未接続nextActionなしとする。理論上の全競合を専用実装することは完成条件にしない。
+- 正式経路は、通常同期確認、新規local-only候補確認／preflight／明示送信／cleanup、body mismatch remote採用4操作、body mismatch local採用4操作、通常削除V5 lifecycle、Recovery Bridge／checkpoint明示保存、Saved Recovery State確認、各operationのmetadata cleanupである。
+- body mismatchのchoice正本はHookのcandidate snapshot＋resultだけである。requested choice、snapshot choice、result choice、safetyが一致しない場合は`candidate_choice_mismatch`でfail-closedとし、UI choice、default choice、remote fallbackを正本にしない。
+- verified snapshotは同じlifecycleの次工程でだけ再利用する。metadata、workspace、local signature、cursor、baseline、remote identity、対象外差異のいずれかが変化した場合は破棄する。
+- local／remote反映、remote送信、削除の直前にread-only full pullまたは同等のverified確認を行う。変更後はread-backし、永続metadataはcompare-and-writeとverified read-backで確定し、失敗時はrollbackまたはrecovery_requiredで停止する。
+- 通常操作のnextActionは`recoveryNavigation`または同一action descriptorのlabel・eligibility・handlerから生成する。handlerのないnextAction説明を通常UIへ表示しない。
+- 失敗後導線は「現在段階を再確認」「保存済み状態からやり直す」「復旧作業を閉じる」を基本とする。内部Hook単位の操作を通常UIへ積み上げない。
+- metadata V3／V4読込、V4／V5 migration、保存データvalidatorの互換投影は既存データ読込のため残す。通常運用の正本はmetadata V5であり、旧UIや未接続Hookは互換処理として扱わない。
+- completeでは成功結果だけを表示する。checkingは処理中表示、disabledは操作不可理由、blocked／failedは停止理由とし、completeと共通disabled文言を併記しない。
+- 保守モードでは、metadata version、同期方式、SQL、新しい細分化stageや確認ボタンを追加しない。実利用で再現した問題だけを既存の明示操作、fail-closed、read-back、rollback境界内で最小修正する。

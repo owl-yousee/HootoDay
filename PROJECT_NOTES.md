@@ -2833,6 +2833,15 @@ cleanup後VERIFY結果：
 - fail-closed、snapshot鮮度確認、完全full pullによる再確認、verified read-back、rollback経路を維持した。
 - recovery完了だけでは通常同期readyとせず、confirmed復帰後も別の明示的な通常同期確認を必要とする設計どおりに動作した。
 
+## 2026-07-22 2026-07-11 remote-only cleanup対象調査
+
+- 対象日は2026-07-11、内容は「PC通常同期テスト」であり、過去の同期テストデータとして確認した。
+- iPhone側では通常差異のremote-onlyとして表示されたが、採用候補確認は`remote_only_candidate_start_prerequisite_invalid`で安全停止した。
+- この状態ではSaved Recovery State由来の`remote_only_active` candidateが成立しておらず、直接採用、直接remote削除、通常削除へ進む入口も存在しない。
+- これは同期処理自体の失敗ではなく、通常差異としては検出できる一方で復旧candidateの開始条件を満たさないcleanup境界の事例である。
+- body mismatchの実機確認準備とは分離し、対象を変更せず保留することとした。
+- 調査ではDayMemo、同期metadata、remote recordを変更していない。
+
 ## 2026-07-23 Phase3-6 body mismatch remote採用・Sync Audit完了
 
 - 2026-08-04の`body_mismatch`を実機確認した。開始時はlocal本文が`[TEST] BodyMismatch_PC`、remote本文が`[TEST] BodyMismatch_Start`、metadata v5、`recovery_required`、cursor 25、pending・localDeleteIntent・pushBlockなしだった。
@@ -2846,3 +2855,20 @@ cleanup後VERIFY結果：
 - 設定画面はcommit `f5cd254bf4220c5a11baf0cc2086cb314b90a338`（`style: compact HootoDay settings spacing`）で全体を圧縮し、commit `6b266efaf9d88b6230e9986ad51e5f7b423828e4`（`style: compact HootoDay cloud sync panel`）で同期状態／作業カード、差異カード、行間、ボタン余白を追加圧縮した。
 - 追加圧縮では同期カードpaddingを約14.4pxから7px、カード間隔を16pxから5px、差異カードpaddingを9〜12pxから6〜8px、ボタン上marginを8pxから4pxへ変更した。主要ボタン44px、iPhone側48px、2列表示、折返し、ライト／ダーク、PC／iPhoneの横overflowなしを維持し、実機スクリーンショットで明確な縦縮小を確認して現状を採用した。
 - 次段階はPhase3-6 body mismatchのlocal採用ルートを実機確認する。
+
+## 2026-07-24 Sync Stabilization Audit・保守モード移行
+
+- body mismatchのremote採用とlocal採用を実機で完走した。local採用では2026-08-04のlocal／remote本文がともに`[TEST] BodyMismatch_LocalAdopt`となり、RPC結果確認、post-send verification、metadata cleanup、差異0件、`baselineStatus = confirmed`、`normal_sync_complete`まで確認した。
+- 正式経路を、通常同期確認、新規local-only送信、body mismatch remote採用、body mismatch local採用、通常削除、Recovery Bridge／checkpoint、Saved Recovery State確認、各operationのmetadata cleanupへ一本化した。
+- body mismatch local採用の通常連続操作は、`localとremoteを比較 → local採用候補を確認 → local本文を同期先へ反映 → local採用結果を確定`の4操作とした。送信結果読取、post-send verification、metadata cleanupは4操作目の内部で実行する。
+- 完了stageで共通disabled文言が併記される不具合を解消し、completeでは成功結果だけを表示する。checking、disabled、blocked／failed、completeを混在させない。
+- candidate choiceの正本はHookのcandidate snapshot＋resultとし、requested choice、snapshot choice、result choice、safetyの完全一致時だけreadyとする。remote fallbackとchoice省略を許可しない。
+- 旧`DayMemoSyncGuide`、旧`DayMemoBodyMismatchComparison`、未接続だったlocal-only discard Hookを削除した。統合レスポンシブUIと同じHookを旧UIが同時操作する経路を残さない。
+- Hook単位の詳細カードに残っていたhandlerを伴わない`nextAction`文言を削除した。通常操作は`recoveryNavigation`のlabel・eligibility・handlerを正本とし、途中再読み込み時も現在stageに必要な明示操作だけを表示する。
+- A（解消済み）：transient snapshot混同、confirmed tombstone対応漏れ、local-only preflight行き止まり、candidate choice誤接続、body mismatch recovery pending validator不整合、candidate consume後の表示逆戻り。
+- B（今回解消）：completeとdisabled文言の同時表示、旧UIの重複操作、未接続nextAction表示、未使用local-only discard経路。
+- C（互換維持）：metadata V3／V4読込、V4／V5 migration、旧保存データのvalidator投影、rollbackに必要な保存処理。
+- D（実利用で再現時のみ対応）：candidate未成立の過去テストデータcleanup、理論上の全競合・全通信失敗の専用UI。
+- E（凍結を妨げる未解決問題）：なし。
+- metadata V5 validator、workspace binding、pending lifecycle、operation ID冪等性、破壊操作直前full pull、対象外不変確認、confirmed tombstone厳格比較、RPC結果検証、verified read-back、compare-and-write、rollback、pushBlock、自動retry・自動送信禁止を維持した。
+- 同期機能は安定化完了として保守モードへ移す。今後は実利用で再現した問題だけを最小修正し、開発の主軸を手帳／健康／在庫管理へ戻す。
