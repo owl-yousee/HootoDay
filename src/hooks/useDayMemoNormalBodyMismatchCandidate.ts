@@ -39,10 +39,25 @@ export interface DayMemoNormalBodyMismatchCandidateResult {
   candidate: DayMemoNormalBodyMismatchChoice | null
   safety: DayMemoNormalBodyMismatchSafety
   localAndRemoteVerified: boolean
+  failureReason: string | null
+  stopStage: string
+  diagnostics: DayMemoNormalBodyMismatchDiagnostics
   persistentStateChanged: false
   rpcSent: false
   checkedAt: string
   nextAction: string
+}
+
+export interface DayMemoNormalBodyMismatchDiagnostics {
+  savedStateConfirmed: boolean
+  metadataValid: boolean
+  workspaceMatched: boolean
+  localSnapshotMatched: boolean
+  fullPullSucceeded: boolean
+  cursorMatched: boolean
+  remoteBaselineMatched: boolean
+  bodyMismatchConfirmed: boolean
+  snapshotRevision: number | null
 }
 
 export interface DayMemoNormalBodyMismatchCandidateSnapshot {
@@ -95,6 +110,31 @@ function nextAction(safety: DayMemoNormalBodyMismatchSafety): string {
   return '永続状態を変更せず、checkpoint確認から安全条件を再確認してください。'
 }
 
+function failureReason(safety: DayMemoNormalBodyMismatchSafety): string | null {
+  if (safety === 'normal_body_mismatch_compare_ready'
+    || safety === 'normal_body_mismatch_candidate_local'
+    || safety === 'normal_body_mismatch_candidate_remote') return null
+  const reasons: Partial<Record<DayMemoNormalBodyMismatchSafety, string>> = {
+    normal_body_mismatch_checkpoint_missing: 'saved_state_missing',
+    normal_body_mismatch_verification_stale: 'metadata_or_local_changed',
+    normal_body_mismatch_workspace_mismatch: 'workspace_changed',
+    normal_body_mismatch_cursor_invalid: 'cursor_changed',
+    normal_body_mismatch_remote_invalid: 'full_pull_failed',
+    normal_body_mismatch_remote_changed: 'difference_changed',
+    normal_body_mismatch_target_missing: 'body_mismatch_not_found',
+    normal_body_mismatch_target_mismatch: 'baseline_mismatch',
+    normal_body_mismatch_local_invalid: 'local_changed',
+    normal_body_mismatch_prerequisite_missing: 'baseline_status_invalid',
+  }
+  return reasons[safety] ?? 'unknown'
+}
+
+const EMPTY_DIAGNOSTICS: DayMemoNormalBodyMismatchDiagnostics = {
+  savedStateConfirmed: false, metadataValid: false, workspaceMatched: false,
+  localSnapshotMatched: false, fullPullSucceeded: false, cursorMatched: false,
+  remoteBaselineMatched: false, bodyMismatchConfirmed: false, snapshotRevision: null,
+}
+
 export function useDayMemoNormalBodyMismatchCandidate({ dayMemos, isConfigured, isSignedIn, connection, reactMetadata,
   savedRecoveryResult }: Input) {
   const [selectedDate, setSelectedDateState] = useState('')
@@ -104,6 +144,7 @@ export function useDayMemoNormalBodyMismatchCandidate({ dayMemos, isConfigured, 
   const [result, setResult] = useState<DayMemoNormalBodyMismatchCandidateResult | null>(null)
   const runIdRef = useRef(0)
   const snapshotRevisionRef = useRef(0)
+  const diagnosticsRef = useRef<DayMemoNormalBodyMismatchDiagnostics>(EMPTY_DIAGNOSTICS)
   const comparisonSnapshotRef = useRef<Omit<DayMemoNormalBodyMismatchCandidateSnapshot, 'candidate'> | null>(null)
   const candidateSnapshotRef = useRef<DayMemoNormalBodyMismatchCandidateSnapshot | null>(null)
   const signature = useMemo(() => localSignature(dayMemos), [dayMemos])
@@ -120,6 +161,8 @@ export function useDayMemoNormalBodyMismatchCandidate({ dayMemos, isConfigured, 
 
   const finish = useCallback((safety: DayMemoNormalBodyMismatchSafety, date: string | null = selectedDate, candidate: DayMemoNormalBodyMismatchChoice | null = null, verified = false) => {
     setResult({ date, candidate, safety, localAndRemoteVerified: verified, persistentStateChanged: false, rpcSent: false,
+      failureReason: failureReason(safety), stopStage: safety,
+      diagnostics: { ...diagnosticsRef.current },
       checkedAt: new Date().toISOString(), nextAction: nextAction(safety) })
   }, [selectedDate])
 
@@ -141,6 +184,7 @@ export function useDayMemoNormalBodyMismatchCandidate({ dayMemos, isConfigured, 
   const compare = useCallback(async () => {
     if (!eligible || checking || !supabaseClient || !connectionIsEligible(connection) || !selectedDate) return
     const runId = ++runIdRef.current
+    diagnosticsRef.current = { ...EMPTY_DIAGNOSTICS, savedStateConfirmed: savedStateReady }
     comparisonSnapshotRef.current = null; candidateSnapshotRef.current = null
     setChecking(true); setComparison(null); setChoice(null); setResult(null)
     try {
@@ -154,7 +198,9 @@ export function useDayMemoNormalBodyMismatchCandidate({ dayMemos, isConfigured, 
         finish('normal_body_mismatch_verification_stale'); return
       }
       const metadata = loaded.metadata
+      diagnosticsRef.current.metadataValid = true
       if (metadata.workspaceId !== connection.workspaceId) { finish('normal_body_mismatch_workspace_mismatch'); return }
+      diagnosticsRef.current.workspaceMatched = true
       if (metadata.baselineStatus !== 'recovery_required' || metadata.baselineConfirmedAt !== null) { finish('normal_body_mismatch_prerequisite_missing'); return }
       if (metadata.pendingOperation) { finish('normal_body_mismatch_pending_remaining'); return }
       if (Object.keys(metadata.localDeleteIntents).length) { finish('normal_body_mismatch_intent_remaining'); return }
@@ -162,10 +208,12 @@ export function useDayMemoNormalBodyMismatchCandidate({ dayMemos, isConfigured, 
       if (localSignature(stored.memos) !== signature || localSignature(dayMemos) !== signature) {
         finish('normal_body_mismatch_verification_stale'); return
       }
+      diagnosticsRef.current.localSnapshotMatched = true
       const local = stored.memos.find((memo) => memo.date === selectedDate)
       if (!local || !isStoredDayMemo(local)) { finish('normal_body_mismatch_local_invalid'); return }
       const pulled = await pullAllDayMemoSyncRecords(supabaseClient, connection.workspaceId, () => runIdRef.current === runId).catch(() => null)
       if (!pulled || pulled.status !== 'complete') { finish('normal_body_mismatch_remote_invalid'); return }
+      diagnosticsRef.current.fullPullSucceeded = true
       const after = loadDayMemoSyncMetadataAny(window.localStorage)
       const afterStored = readDayMemoStorageSnapshot(window.localStorage)
       if (runIdRef.current !== runId || after.status !== 'ready' || after.raw !== loaded.raw
@@ -173,6 +221,7 @@ export function useDayMemoNormalBodyMismatchCandidate({ dayMemos, isConfigured, 
         finish('normal_body_mismatch_verification_stale'); return
       }
       if (pulled.maxChangeSequence !== metadata.lastPulledChangeSequence) { finish('normal_body_mismatch_cursor_invalid'); return }
+      diagnosticsRef.current.cursorMatched = true
       const remoteByDate = new Map(pulled.records.map((record) => [record.entityId, record]))
       if (remoteByDate.size !== pulled.records.length) { finish('normal_body_mismatch_remote_invalid'); return }
       const remote = remoteByDate.get(selectedDate)
@@ -189,11 +238,13 @@ export function useDayMemoNormalBodyMismatchCandidate({ dayMemos, isConfigured, 
         || local.content === remote.payload.content) {
         finish('normal_body_mismatch_target_mismatch'); return
       }
+      diagnosticsRef.current.remoteBaselineMatched = true
       const localByDate = new Map(stored.memos.map((memo) => [memo.date, memo]))
       const dates = [...new Set([...localByDate.keys(), ...remoteByDate.keys(), ...Object.keys(metadata.baselines)])].sort()
       const classifications = new Map(dates.map((date) => [date, classifyDayMemoNormalDifference(
         localByDate.get(date) ?? null, remoteByDate.get(date) ?? null, metadata.baselines[date] ?? null)]))
       if (classifications.get(selectedDate) !== 'body_mismatch') { finish('normal_body_mismatch_target_mismatch'); return }
+      diagnosticsRef.current.bodyMismatchConfirmed = true
       if ([...classifications.values()].some((value) => ['revision_lineage_mismatch', 'active_tombstone_mismatch', 'unknown'].includes(value))) {
         finish('normal_body_mismatch_remote_changed'); return
       }
@@ -204,6 +255,7 @@ export function useDayMemoNormalBodyMismatchCandidate({ dayMemos, isConfigured, 
       }
       const checkedAt = new Date().toISOString()
       const snapshotRevision = ++snapshotRevisionRef.current
+      diagnosticsRef.current.snapshotRevision = snapshotRevision
       comparisonSnapshotRef.current = { date: selectedDate, metadataRaw: loaded.raw,
         localStorageSerialized: stored.serialized, workspaceId: connection.workspaceId, cursor: metadata.lastPulledChangeSequence,
         fullPullMaxSequence: pulled.maxChangeSequence, snapshotRevision,

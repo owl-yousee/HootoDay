@@ -45,6 +45,17 @@ export function DayMemoBodyMismatchComparison({ candidate, disabled = false }: P
             <li>local／remote確認：{candidate.result.localAndRemoteVerified ? '確認済み' : '未確認'}</li>
             <li>永続変更：なし</li><li>RPC送信：なし</li>
             <li>確認日時：{new Date(candidate.result.checkedAt).toLocaleString('ja-JP')}</li>
+            <li>停止段階：{candidate.result.stopStage}</li>
+            <li>failureReason：{candidate.result.failureReason ?? 'なし'}</li>
+            <li>Saved Recovery State：{candidate.result.diagnostics.savedStateConfirmed ? '確認済み' : '未確認'}</li>
+            <li>metadata：{candidate.result.diagnostics.metadataValid ? '確認済み' : '未確認／不一致'}</li>
+            <li>workspace：{candidate.result.diagnostics.workspaceMatched ? '一致' : '未確認／不一致'}</li>
+            <li>local snapshot：{candidate.result.diagnostics.localSnapshotMatched ? '一致' : '未確認／不一致'}</li>
+            <li>full pull：{candidate.result.diagnostics.fullPullSucceeded ? '完了' : '未完了'}</li>
+            <li>cursor：{candidate.result.diagnostics.cursorMatched ? '一致' : '未確認／不一致'}</li>
+            <li>remote／baseline：{candidate.result.diagnostics.remoteBaselineMatched ? '一致' : '未確認／不一致'}</li>
+            <li>body mismatch再分類：{candidate.result.diagnostics.bodyMismatchConfirmed ? '確認済み' : '未確認'}</li>
+            <li>snapshot revision：{candidate.result.diagnostics.snapshotRevision ?? '未生成'}</li>
           </ul>
           <p>{candidate.result.nextAction}</p>
         </div>

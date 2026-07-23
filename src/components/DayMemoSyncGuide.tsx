@@ -82,6 +82,8 @@ export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, b
   const index = items.findIndex(([date]) => date === activeDate)
   const checkpointReady = checkpoint.result?.safety === 'normal_difference_checkpoint_unresolved_ready'
   const comparisonCurrent = bodyCandidate.comparison?.date === activeDate
+  const comparisonFailed = bodyCandidate.result?.date === activeDate
+    && bodyCandidate.result.failureReason !== null
   const candidateCurrent = bodyCandidate.result?.date === activeDate
     && ['normal_body_mismatch_candidate_local', 'normal_body_mismatch_candidate_remote'].includes(bodyCandidate.result.safety)
   const remoteCurrent = bodyRemoteAdoption.result?.date === activeDate
@@ -307,6 +309,36 @@ export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, b
               <button type="button" className="health-primary-button cloud-sync-button" onClick={() => {
                 bodyRemoteAdoption.discard(); bodyCandidate.discard(); checkpoint.discard(); saved.discard()
               }}>次の差異へ</button>
+            </> : comparisonFailed && bodyCandidate.result ? <>
+              <h5>比較を安全に完了できませんでした</h5>
+              <p>失敗結果は、明示的に再確認または破棄するまで保持されます。</p>
+              <ul className="cloud-day-memo-preview-summary">
+                <li>比較判定：blocked</li>
+                <li>対象：{bodyCandidate.result.date ?? activeDate}</li>
+                <li>分類：body_mismatch</li>
+                <li>停止段階：{bodyCandidate.result.stopStage}</li>
+                <li>failureReason：{bodyCandidate.result.failureReason}</li>
+                <li>Saved Recovery State：{bodyCandidate.result.diagnostics.savedStateConfirmed ? '確認済み' : '未確認'}</li>
+                <li>metadata：{bodyCandidate.result.diagnostics.metadataValid ? '確認済み' : '未確認／不一致'}</li>
+                <li>workspace：{bodyCandidate.result.diagnostics.workspaceMatched ? '一致' : '未確認／不一致'}</li>
+                <li>local snapshot：{bodyCandidate.result.diagnostics.localSnapshotMatched ? '一致' : '未確認／不一致'}</li>
+                <li>full pull：{bodyCandidate.result.diagnostics.fullPullSucceeded ? '完了' : '未完了'}</li>
+                <li>cursor：{bodyCandidate.result.diagnostics.cursorMatched ? '一致' : '未確認／不一致'}</li>
+                <li>remote／baseline：{bodyCandidate.result.diagnostics.remoteBaselineMatched ? '一致' : '未確認／不一致'}</li>
+                <li>body mismatch再分類：{bodyCandidate.result.diagnostics.bodyMismatchConfirmed ? '確認済み' : '未確認'}</li>
+                <li>snapshot revision：{bodyCandidate.result.diagnostics.snapshotRevision ?? '未生成'}</li>
+                <li>永続変更：なし</li><li>自動retry：なし</li>
+              </ul>
+              <div className="iphone-sync-guide-actions">
+                <button type="button" className="health-primary-button cloud-sync-button"
+                  disabled={bodyCandidate.checking} onClick={() => { void bodyCandidate.compare() }}>
+                  localとremoteを再確認
+                </button>
+                <button type="button" className="health-secondary-button cloud-sync-button"
+                  disabled={saved.checking} onClick={startSavedStateCheck}>保存後の同期状態から再確認</button>
+                <button type="button" className="health-secondary-button cloud-sync-button"
+                  onClick={bodyCandidate.discard}>比較結果を閉じる</button>
+              </div>
             </> : !comparisonCurrent ? <>
               <h5>内容を比較します</h5>
               <p>このiPhoneと同期先の内容を読み取り専用で表示します。</p>
