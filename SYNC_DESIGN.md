@@ -2121,3 +2121,10 @@ Candidate checking now catches unexpected failures into a `failed` result and co
 - V3／V4は旧保存データの読込、validator投影、V4/V5明示migration、rollbackのために残す。通常運用の正本はV5で、通常削除入口もV5 lifecycleを優先する。互換データが利用対象からなくなりmigration/rollback不要を確認できた時だけ削除可能とする。
 - confirmed tombstoneはpayloadなし、deletedAt、revision、sequence、server timestamp、`baselineLocalUpdatedAt = null`の厳格一致時だけ正常とする。
 - 欠落0、正式経路一致、途中再開、choice正本一本化、V5 validator、read-back、rollback、fail-closed、自動retry／自動送信なしを満たし、型・lint・build・diff check成功後に完成・保守モードとする。
+
+### 保守モードの恒久境界
+
+- 正式経路、安全工程対応表、途中再開、candidate choice、nextAction descriptor、表示状態、V3／V4互換境界は本節までを完成時の正本とする。通常運用はmetadata V5を使用し、互換処理を新機能の入口にしない。
+- 同期工程の追加は実利用で再現した欠落または不具合がある場合に限る。静的監査で確認できる事項を新しい人間向けボタンへ変換せず、同一snapshotの重複full pull、説明だけのnextAction、内部Hook単位のstageを再導入しない。
+- 保守修正でも、破壊操作直前のverified確認、対象外不変、RPC結果検証、verified read-back、compare-and-write、rollback、confirmed tombstone厳格比較、自動retry／自動送信禁止を維持する。
+- candidate未成立の古いテストデータcleanup、理論上の全競合・全通信失敗専用UIは完成条件に含めない。実利用で必要性が確認されるまでは追加せず、HootoDay本体機能を優先する。

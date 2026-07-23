@@ -2883,3 +2883,10 @@ cleanup後VERIFY結果：
 - checkpoint保存後は`recovery_required` metadata、local採用送信後はrecovery pendingと保存済みoperation結果、remote採用local反映後は保存済みlocalとrecovery metadata、delete RPC後はdelete pending／intentと保存済みoperation結果から明示的に再開する。どの経路も自動retry、自動送信、自動採用を行わない。
 - V3／V4は読込、validator投影、明示migration、rollbackの互換境界として残す。通常削除を含む正式運用はmetadata V5を正本とし、旧V3 delete intentは互換データだけに限定する。
 - Final Reconciliation後の欠落分類は0件。metadata形式、SQL、RPC定義、full pull方針、confirmed tombstone比較、安全条件は変更していない。型、lint、production build、diff check成功をもって同期機能を正式完成とし、実利用で再現した問題だけを最小修正する保守モードへ移行する。
+
+### 保守モード移行の最終確定
+
+- 安全工程対応表、正式経路、途中再開、candidate choice正本、complete表示、V3／V4互換境界が現行コードと一致することを最終確認した。主要正常経路は実機完走済みで、監査開始時の欠落1件は解消され、修正後の欠落工程は0件である。
+- 関連commitは`d12906431b121f0039c4bdd747a31669f6889160`（`fix: restore delete recovery after reload`）と`eb689dfa918fb2859c428fb1b7ab7f2dbb6e4c73`（`docs: record sync final reconciliation`）である。
+- 同期機能は正式完成として保守モードへ移行する。以後は実利用で再現した問題だけを既存のfail-closed、verified snapshot、read-back、rollback境界内で最小修正し、理論上の全競合／通信失敗専用UI、新しい細分化stage、確認ボタン、metadata version、SQLは追加しない。
+- candidate未成立の古いテストデータcleanupと理論上の全競合・全通信失敗専用UIは既知制限として残す。必要になった場合だけ実利用の再現事実を基準に扱い、開発の主軸は手帳・健康・在庫管理本体へ戻す。
