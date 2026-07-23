@@ -473,6 +473,20 @@ function isPendingOperationV5(value: unknown): value is DayMemoPendingOperationV
     && isIsoDateTime(value.baseRemoteUpdatedAt) && value.baseRemoteState === 'active'
 }
 
+export function recoveryPendingMatchesMetadataBaseline(
+  pending: DayMemoPendingOperationV5,
+  baselines: DayMemoSyncMetadataV5['baselines'],
+): boolean {
+  if (pending.kind !== 'upsert' || pending.operationMode === 'normal') return true
+  const baseline = baselines[pending.date] ?? null
+  if (pending.operationMode === 'local_only_recovery') return baseline === null
+  return Boolean(baseline && baseline.deletedAt === null
+    && baseline.remoteRevision === pending.baseRevision
+    && baseline.remoteChangeSequence === pending.baseChangeSequence
+    && baseline.remoteUpdatedAt === pending.baseRemoteUpdatedAt
+    && baseline.baselineLocalUpdatedAt !== null)
+}
+
 export function isDayMemoSyncMetadataV5(value: unknown): value is DayMemoSyncMetadataV5 {
   if (!isRecord(value) || value.version !== 5) return false
   if (JSON.stringify(Object.keys(value).sort()) !== JSON.stringify([
@@ -499,7 +513,8 @@ export function isDayMemoSyncMetadataV5(value: unknown): value is DayMemoSyncMet
   if (candidate.pendingOperation?.kind === 'upsert' && candidate.localDeleteIntents[candidate.pendingOperation.date]) return false
   if (candidate.pendingOperation?.kind === 'upsert' && candidate.pendingOperation.operationMode !== 'normal') {
     if (candidate.baselineStatus !== 'recovery_required' || candidate.baselineConfirmedAt !== null
-      || candidate.baselines[candidate.pendingOperation.date] || Object.keys(candidate.localDeleteIntents).length !== 0
+      || !recoveryPendingMatchesMetadataBaseline(candidate.pendingOperation, candidate.baselines)
+      || Object.keys(candidate.localDeleteIntents).length !== 0
       || candidate.pushBlock !== null || candidate.pendingOperation.baseChangeSequence > candidate.lastPulledChangeSequence) return false
   }
   return true
