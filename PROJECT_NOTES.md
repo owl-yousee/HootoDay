@@ -2832,3 +2832,17 @@ cleanup後VERIFY結果：
 - 自動同期、自動candidate生成、自動採用、自動削除、自動送信、自動retryは行われていない。
 - fail-closed、snapshot鮮度確認、完全full pullによる再確認、verified read-back、rollback経路を維持した。
 - recovery完了だけでは通常同期readyとせず、confirmed復帰後も別の明示的な通常同期確認を必要とする設計どおりに動作した。
+
+## 2026-07-23 Phase3-6 body mismatch remote採用・Sync Audit完了
+
+- 2026-08-04の`body_mismatch`を実機確認した。開始時はlocal本文が`[TEST] BodyMismatch_PC`、remote本文が`[TEST] BodyMismatch_Start`、metadata v5、`recovery_required`、cursor 25、pending・localDeleteIntent・pushBlockなしだった。
+- local／remote比較、remote採用候補確認、採用内容確認、採用準備、実行前確認、対象1件のlocal反映、採用結果確定までを明示操作で完了した。remoteとSupabase DayMemoには書き込まず、operation IDも生成していない。
+- 最終的にlocal／remote本文はともに`[TEST] BodyMismatch_Start`となり、local verified read-back、対象外local不変、反映後full pull、metadata cleanupとverified read-backに成功した。`baselineStatus = confirmed`、baseline比較confirmed、cursor整合、pending・intent・pushBlockなし、差異0件、`normal_sync_complete`、通常同期readyを確認した。
+- commit `26868a7d04f872e863737d3be82a0d4cd643e45b`（`feat: complete body mismatch remote adoption flow`）で、対象日1件のlocal compare-and-write、read-back、rollback、反映後確認、metadata cleanup candidate、metadata compare-and-write／read-back／rollback、confirmed復帰を完成させた。
+- Sync Auditでは、remote採用前に重複していた内容確認・準備・実行前確認を、破壊操作直前のverified確認へ統合した。remote採用完了までを7操作から4操作へ、pre-apply full pullを最大5回から2回へ削減した。
+- 現在の操作は、`localとremoteを比較 → remote採用候補を確認 → remote本文をこの端末へ反映 → remote採用結果を確定`である。比較snapshot生成時とlocal反映直前だけfull pullし、反映後確定のfull pullは従来どおり維持する。
+- commit `411e4a770d27e3dd53462bfcb24989affdbc1b1b`（`refactor: streamline HootoDay sync recovery actions`）で、PC／iPhoneを同じ`verifyAndApplyRemote()`とaction descriptorへ統一し、handlerのないnextAction表示を廃止した。checking中は「処理中です…」とし、blocked／failed時だけ停止理由を保持する。
+- metadata／local／workspace／cursor、remote／baseline、対象外差異、confirmed tombstoneの厳格確認、破壊操作直前snapshot、local・metadataのcompare-and-write、verified read-back、rollback、自動retry・自動送信禁止は維持した。
+- 設定画面はcommit `f5cd254bf4220c5a11baf0cc2086cb314b90a338`（`style: compact HootoDay settings spacing`）で全体を圧縮し、commit `6b266efaf9d88b6230e9986ad51e5f7b423828e4`（`style: compact HootoDay cloud sync panel`）で同期状態／作業カード、差異カード、行間、ボタン余白を追加圧縮した。
+- 追加圧縮では同期カードpaddingを約14.4pxから7px、カード間隔を16pxから5px、差異カードpaddingを9〜12pxから6〜8px、ボタン上marginを8pxから4pxへ変更した。主要ボタン44px、iPhone側48px、2列表示、折返し、ライト／ダーク、PC／iPhoneの横overflowなしを維持し、実機スクリーンショットで明確な縦縮小を確認して現状を採用した。
+- 次段階はPhase3-6 body mismatchのlocal採用ルートを実機確認する。

@@ -2052,3 +2052,16 @@ Candidate checking now catches unexpected failures into a `failed` result and co
 - 各境界でfail-closed、snapshot鮮度確認、完全full pull再確認、verified read-back、rollbackを維持した。
 - candidate確認、local反映、反映後確認、metadata保存は独立したstageであり、前段成功から後段処理を自動実行しない。
 - recovery完了またはconfirmed保存だけで通常同期readyを推測せず、別の明示的な通常同期確認成功を`normal_sync_ready`の条件として維持する。
+
+## 2026-07-23 Sync Audit後の同期工程・表示原則
+
+- 同じverified snapshotで安全に判断できる連続したread-only工程は統合する。過去のUI結果やtransient previewを根拠にせず、metadata、workspace、local signature、remote fingerprint、baseline、cursor、対象外差異を束ねた操作時snapshotだけを再利用する。
+- verified snapshotを再利用できるのは、対象日・分類・workspace・metadata fingerprint・local signature・cursor・baselineおよび対象外差異が一致し、snapshotの用途と次の操作が同一lifecycle内に限定される場合だけとする。境界を越えた状態変化や鮮度切れはfail-closedとする。
+- local置換、remote送信、削除等の破壊操作の直前には最新状態を再確認する。変更後はverified read-backを行い、必要なread-only full pull、差異解消確認、cleanup candidate、metadata compare-and-write／read-backを別の明示操作で完了する。
+- full pullは安全境界ごとに必要な最小回数へ抑える。同じ状態を説明するためだけの重複full pullを追加せず、比較snapshot生成、破壊操作直前確認、変更後確定の責務を明確に分ける。
+- 次操作のlabel、eligibility、handlerは同一action descriptorから生成する。handlerのない説明専用nextActionを表示せず、PCの`ThemeSettings`とiPhoneの`DayMemoSyncGuide`は同じaction model、実行関数、ボタン名を使用する。
+- checking中は処理中であることだけを示して連打を禁止する。blocked／failed時だけ安全な停止理由と再確認操作を保持し、一時的なsnapshot失効風メッセージや古い中間結果を縦に積み上げない。
+- 失敗後の再確認はユーザーの明示操作とし、失効した候補・preflight snapshotを破棄して、候補確認または通常同期確認から再開する。自動full pull、自動retry、自動送信、自動採用は行わない。
+- active baselineとconfirmed tombstoneは種別ごとに厳格比較する。confirmed tombstoneもrevision、sequence、deletedAt、server timestamp、payload状態、`baselineLocalUpdatedAt = null`の全一致を必要とし、不明・不一致tombstoneは許可しない。
+- 同期パネルは現在状態、現在の対象、直近結果、実行可能な主操作を中心に表示する。過去工程をカードとして累積せず、外側containerと主要カードの役割を分け、説明文・箇条書き・stage ID・共有・診断の余白を抑える。
+- 個人利用アプリとして、同じ安全証拠を繰り返し確認させる過剰な工程は避ける。ただし明示操作、破壊操作直前確認、変更後read-back、rollback、fail-closed、confirmed tombstone比較、自動retry禁止は省略しない。
