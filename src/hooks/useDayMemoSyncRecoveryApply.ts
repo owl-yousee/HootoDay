@@ -42,8 +42,25 @@ function connectionIsEligible(connection: SyncConnection | null): boolean {
 
 function snapshotIsConsistent(snapshot: DayMemoRemoteAppliedRecoverySnapshot): boolean {
   const pending = snapshot.pendingOperation
+  if (snapshot.operationKind === 'delete') {
+    return pending.kind === 'delete'
+      && pendingCanRecover(pending.status)
+      && pending.date === snapshot.date
+      && snapshot.localMemo === null
+      && snapshot.remotePayload === null
+      && snapshot.remoteRevision === pending.baseRevision + 1
+      && Number.isSafeInteger(snapshot.remoteChangeSequence)
+      && snapshot.remoteChangeSequence > snapshot.previousChangeSequence
+      && snapshot.deletedAt !== null
+      && !Number.isNaN(Date.parse(snapshot.deletedAt))
+      && !Number.isNaN(Date.parse(snapshot.remoteUpdatedAt))
+      && snapshot.conflict === false
+  }
   return pendingCanRecover(pending.status)
+    && pending.kind === 'upsert'
     && pending.date === snapshot.date
+    && snapshot.localMemo !== null
+    && snapshot.remotePayload !== null
     && snapshot.localMemo.date === snapshot.date
     && pending.preparedLocalUpdatedAt === snapshot.localMemo.updatedAt
     && snapshot.remotePayload.date === snapshot.date
@@ -96,30 +113,46 @@ export function useDayMemoSyncRecoveryApply({
       || stored.status !== 'ready'
       || stored.serialized !== snapshot.localStorageSerialized
       || localSignature(stored.memos) !== localSignature(dayMemos)
-      || stored.memos.filter((memo) => memo.date === snapshot.date).length !== 1
-      || localSignature([stored.memos.find((memo) => memo.date === snapshot.date)!]) !== localSignature([snapshot.localMemo])) {
+      || (snapshot.operationKind === 'upsert'
+        ? stored.memos.filter((memo) => memo.date === snapshot.date).length !== 1
+          || snapshot.localMemo === null
+          || localSignature([stored.memos.find((memo) => memo.date === snapshot.date)!])
+            !== localSignature([snapshot.localMemo])
+        : stored.memos.some((memo) => memo.date === snapshot.date)
+          || loaded.metadata.localDeleteIntents[snapshot.date]?.operationId !== snapshot.pendingOperation.operationId)) {
       setState('error')
       setSafeErrorMessage('確認後に同期情報またはDayMemoが変化したため、復旧できません。再送は行っていません。')
       return
     }
     const confirmedAt = new Date().toISOString()
+    const remainingIntents = { ...loaded.metadata.localDeleteIntents }
+    if (snapshot.operationKind === 'delete') delete remainingIntents[snapshot.date]
+    const nextBaseline = snapshot.operationKind === 'delete' ? {
+      date: snapshot.date,
+      remoteRevision: snapshot.remoteRevision,
+      remoteChangeSequence: snapshot.remoteChangeSequence,
+      remoteUpdatedAt: snapshot.remoteUpdatedAt,
+      baselineLocalUpdatedAt: null,
+      deletedAt: snapshot.deletedAt,
+    } : {
+      date: snapshot.date,
+      remoteRevision: snapshot.remoteRevision,
+      remoteChangeSequence: snapshot.remoteChangeSequence,
+      remoteUpdatedAt: snapshot.remotePayload!.updatedAt,
+      baselineLocalUpdatedAt: snapshot.localMemo!.updatedAt,
+      deletedAt: null,
+    }
     const next: DayMemoSyncMetadataV5 = {
       ...loaded.metadata,
       baselines: {
         ...loaded.metadata.baselines,
-        [snapshot.date]: {
-          date: snapshot.date,
-          remoteRevision: snapshot.remoteRevision,
-          remoteChangeSequence: snapshot.remoteChangeSequence,
-          remoteUpdatedAt: snapshot.remotePayload.updatedAt,
-          baselineLocalUpdatedAt: snapshot.localMemo.updatedAt,
-          deletedAt: null,
-        },
+        [snapshot.date]: nextBaseline,
       },
       lastPulledChangeSequence: Math.max(loaded.metadata.lastPulledChangeSequence, snapshot.remoteChangeSequence),
       baselineStatus: 'confirmed',
       baselineConfirmedAt: confirmedAt,
       pendingOperation: null,
+      localDeleteIntents: remainingIntents,
       lastSuccessfulSyncAt: confirmedAt,
     }
     if (!isDayMemoSyncMetadataV5(next)) {

@@ -80,7 +80,7 @@ export function buildBodyMismatchCandidateUiModel(
   return choice === 'local'
     ? { choice, title: 'local採用候補：ready', nextAction: BODY_MISMATCH_LOCAL_ACTIONS.apply,
       showLocalAction: true, showRemoteAction: false } as const
-    : { choice, title: 'remote採用候補：ready', nextAction: 'remote採用内容を確認',
+    : { choice, title: 'remote採用候補：ready', nextAction: BODY_MISMATCH_REMOTE_ACTIONS.apply,
       showLocalAction: false, showRemoteAction: true } as const
 }
 

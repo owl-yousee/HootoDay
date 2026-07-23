@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabaseClient } from '../lib/supabaseClient'
 import type { DayMemo } from '../types/dayMemo'
-import type { DayMemoNormalUpsertPendingOperationV5, DayMemoPendingOperationV2, DayMemoPendingOperationV5, DayMemoSyncMetadataV5 } from '../types/dayMemoSync'
+import type { DayMemoNormalUpsertPendingOperationV5, DayMemoPendingOperationV5, DayMemoSyncMetadataV5 } from '../types/dayMemoSync'
 import type { SyncConnection } from '../types/sync'
 import { readDayMemoStorageSnapshot } from '../utils/dayMemoStorage'
+import { normalizeDayMemoSyncOperationResult } from '../utils/dayMemoSyncOperationResult'
 import { pullAllDayMemoSyncRecords, type RemoteDayMemoRecord } from '../utils/dayMemoSyncPull'
 import { loadDayMemoSyncMetadataAny } from '../utils/dayMemoSyncStorage'
 import { isUuid } from '../utils/syncConnectionStorage'
@@ -21,16 +22,18 @@ export type DayMemoSyncRecoveryCheckResult =
   | { date: string; classification: Exclude<DayMemoSyncRecoveryClassification, 'remote_applied'> }
 
 export interface DayMemoRemoteAppliedRecoverySnapshot {
+  operationKind: 'upsert' | 'delete'
   workspaceId: string
   date: string
   remoteRevision: number
   remoteChangeSequence: number
-  remotePayload: DayMemo
-  deletedAt: null
+  remoteUpdatedAt: string
+  remotePayload: DayMemo | null
+  deletedAt: string | null
   conflict: false
-  pendingOperation: DayMemoPendingOperationV2
+  pendingOperation: DayMemoPendingOperationV5
   metadataRaw: string
-  localMemo: DayMemo
+  localMemo: DayMemo | null
   localStorageSerialized: string
   previousChangeSequence: number
   checkedAt: string
@@ -64,8 +67,14 @@ function connectionIsEligible(connection: SyncConnection | null): boolean {
       || (connection.deviceRole === 'child' && connection.workspaceRole === 'member' && connection.pairingStatus === 'member')))
 }
 
-function isCheckablePending(pending: DayMemoPendingOperationV5 | null): pending is DayMemoNormalUpsertPendingOperationV5 {
-  return Boolean(pending?.kind === 'upsert' && pending.operationMode === 'normal' && (
+type CheckablePending = DayMemoNormalUpsertPendingOperationV5
+  | Extract<DayMemoPendingOperationV5, { kind: 'delete' }>
+
+function isCheckablePending(pending: DayMemoPendingOperationV5 | null): pending is CheckablePending {
+  return Boolean(pending && (
+    (pending.kind === 'upsert' && pending.operationMode === 'normal')
+    || pending.kind === 'delete'
+  ) && (
     pending.status === 'conflict'
     || pending.status === 'response_unknown'
     || pending.status === 'recovery_required'
@@ -88,13 +97,39 @@ function requestPayloadMatches(remote: RemoteDayMemoRecord, memo: DayMemo): bool
 
 function classifyRemote(
   metadata: DayMemoSyncMetadataV5,
-  pending: DayMemoPendingOperationV2,
-  memo: DayMemo,
+  pending: CheckablePending,
+  memo: DayMemo | null,
   records: RemoteDayMemoRecord[],
 ): DayMemoSyncRecoveryClassification {
   const remote = targetRemote(records, pending.date)
   const baseline = metadata.baselines[pending.date]
 
+  if (pending.kind === 'delete') {
+    const intent = metadata.localDeleteIntents[pending.date]
+    if (remote && baseline
+      && baseline.deletedAt === null
+      && baseline.remoteRevision === pending.baseRevision
+      && intent?.operationId === pending.operationId
+      && intent.baselineRevision === baseline.remoteRevision
+      && intent.baselineChangeSequence === baseline.remoteChangeSequence
+      && remote.deletedAt !== null
+      && remote.payload === null
+      && remote.revision === pending.baseRevision + 1
+      && remote.changeSequence > baseline.remoteChangeSequence) {
+      return 'remote_applied'
+    }
+    if (remote && baseline
+      && baseline.deletedAt === null
+      && remote.deletedAt === null
+      && remote.payload !== null
+      && remote.revision === baseline.remoteRevision
+      && remote.changeSequence === baseline.remoteChangeSequence
+      && remote.payload.updatedAt === baseline.remoteUpdatedAt) {
+      return 'remote_not_applied'
+    }
+    return 'conflict_detected'
+  }
+  if (!memo) return 'unknown'
   if (remote
     && remote.revision === pending.baseRevision + 1
     && remote.changeSequence > (baseline?.remoteChangeSequence ?? metadata.lastPulledChangeSequence)
@@ -191,7 +226,11 @@ export function useDayMemoSyncRecoveryCheck({
     const stored = readDayMemoStorageSnapshot(window.localStorage)
     const localMatchesReact = stored.status === 'ready' && localSignature(stored.memos) === currentLocalSignature
     const targetMemos = stored.status === 'ready' ? stored.memos.filter((memo) => memo.date === pending.date) : []
-    if (!localMatchesReact || targetMemos.length !== 1 || targetMemos[0].updatedAt !== pending.preparedLocalUpdatedAt) {
+    const targetLocalValid = pending.kind === 'delete'
+      ? targetMemos.length === 0
+        && loaded.metadata.localDeleteIntents[pending.date]?.operationId === pending.operationId
+      : targetMemos.length === 1 && targetMemos[0].updatedAt === pending.preparedLocalUpdatedAt
+    if (!localMatchesReact || !targetLocalValid) {
       setState('checked')
       setResult({ date: pending.date, classification: 'unknown' })
       return
@@ -218,7 +257,7 @@ export function useDayMemoSyncRecoveryCheck({
       setResult({ date: pending.date, classification: 'unknown' })
       return
     }
-    const classification = classifyRemote(afterPull.metadata, pending, targetMemos[0], pulled.records)
+    const classification = classifyRemote(afterPull.metadata, pending, targetMemos[0] ?? null, pulled.records)
     const remote = targetRemote(pulled.records, pending.date)
     if (classification === 'conflict_detected') {
       setConflictSummary({
@@ -233,24 +272,65 @@ export function useDayMemoSyncRecoveryCheck({
       })
     }
     if (classification === 'remote_applied') {
-      if (!remote?.payload || remote.deletedAt !== null) {
+      if (!remote || (pending.kind === 'upsert' && (!remote.payload || remote.deletedAt !== null))
+        || (pending.kind === 'delete' && (remote.payload !== null || remote.deletedAt === null))) {
         setResult({ date: pending.date, classification: 'unknown' })
         setState('checked')
         return
       }
+      if (pending.kind === 'delete') {
+        let responseData: unknown
+        try {
+          const response = await supabaseClient.rpc('hooto_day_get_sync_operation_result', {
+            target_operation_id: pending.operationId,
+            target_workspace_id: connection.workspaceId,
+            target_entity_type: 'day_memo',
+            target_entity_id: pending.date,
+            target_operation_kind: 'delete',
+          })
+          if (response.error) throw new Error('operation_result_read_failed')
+          responseData = response.data
+        } catch {
+          setResult({ date: pending.date, classification: 'unknown' })
+          setState('checked')
+          return
+        }
+        const operationResult = normalizeDayMemoSyncOperationResult(responseData)
+        const latestMetadata = loadDayMemoSyncMetadataAny(window.localStorage)
+        const latestLocal = readDayMemoStorageSnapshot(window.localStorage)
+        if (!operationResult || !operationResult.found
+          || operationResult.resultStatus !== 'applied' || operationResult.conflict
+          || operationResult.workspaceId !== connection.workspaceId
+          || operationResult.entityId !== pending.date || operationResult.operationKind !== 'delete'
+          || operationResult.requestBaseRevision !== pending.baseRevision
+          || operationResult.resultRevision !== remote.revision
+          || operationResult.resultChangeSequence !== remote.changeSequence
+          || operationResult.resultServerUpdatedAt !== remote.serverUpdatedAt
+          || operationResult.resultDeletedAt !== remote.deletedAt
+          || operationResult.resultPayload !== null
+          || latestMetadata.status !== 'ready' || latestMetadata.raw !== loaded.raw
+          || latestLocal.status !== 'ready' || latestLocal.serialized !== afterStored.serialized
+          || latestLocal.memos.some((memo) => memo.date === pending.date)) {
+          setResult({ date: pending.date, classification: 'unknown' })
+          setState('checked')
+          return
+        }
+      }
       const previousChangeSequence = afterPull.metadata.baselines[pending.date]?.remoteChangeSequence
         ?? afterPull.metadata.lastPulledChangeSequence
       appliedSnapshotRef.current = {
+        operationKind: pending.kind,
         workspaceId: connection.workspaceId,
         date: pending.date,
         remoteRevision: remote.revision,
         remoteChangeSequence: remote.changeSequence,
-        remotePayload: { ...remote.payload },
-        deletedAt: null,
+        remoteUpdatedAt: remote.serverUpdatedAt,
+        remotePayload: remote.payload ? { ...remote.payload } : null,
+        deletedAt: remote.deletedAt,
         conflict: false,
         pendingOperation: { ...pending },
         metadataRaw: afterPull.raw,
-        localMemo: { ...targetMemos[0] },
+        localMemo: targetMemos[0] ? { ...targetMemos[0] } : null,
         localStorageSerialized: afterStored.serialized,
         previousChangeSequence,
         checkedAt: new Date().toISOString(),
@@ -272,9 +352,9 @@ export function useDayMemoSyncRecoveryCheck({
     const snapshot = appliedSnapshotRef.current
     return snapshot ? {
       ...snapshot,
-      remotePayload: { ...snapshot.remotePayload },
+      remotePayload: snapshot.remotePayload ? { ...snapshot.remotePayload } : null,
       pendingOperation: { ...snapshot.pendingOperation },
-      localMemo: { ...snapshot.localMemo },
+      localMemo: snapshot.localMemo ? { ...snapshot.localMemo } : null,
     } : null
   }, [])
 
