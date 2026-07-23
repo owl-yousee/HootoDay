@@ -2087,3 +2087,37 @@ Candidate checking now catches unexpected failures into a `failed` result and co
 - metadata V3／V4読込、V4／V5 migration、保存データvalidatorの互換投影は既存データ読込のため残す。通常運用の正本はmetadata V5であり、旧UIや未接続Hookは互換処理として扱わない。
 - completeでは成功結果だけを表示する。checkingは処理中表示、disabledは操作不可理由、blocked／failedは停止理由とし、completeと共通disabled文言を併記しない。
 - 保守モードでは、metadata version、同期方式、SQL、新しい細分化stageや確認ボタンを追加しない。実利用で再現した問題だけを既存の明示操作、fail-closed、read-back、rollback境界内で最小修正する。
+
+## Sync Final Reconciliation：安全工程対応表
+
+| 正式経路 | 明示操作／入口 | verified確認 | 永続変更・検証 | cleanup／完了 | 再読み込み後 |
+|---|---|---|---|---|---|
+| 通常同期 | 通常同期状態を確認 | pull previewのfull pull、metadata・workspace・local・cursor・baseline、正式差異分類 | なし | 差異0、confirmed、pending／intent／pushBlockなし | metadataから再確認 |
+| 新規local-only | 候補 → preflight → 準備 → 送信 | 対象baseline/remoteなし、対象外active/confirmed tombstone厳格比較 | ID 1回、pending、upsert RPC validation、verified metadata save | baseline追加、cursor、pending解消、confirmed | normal upsert recovery check/apply |
+| body mismatch remote | 比較 → remote候補 → local反映 → 確定 | candidate一致、破壊直前full pull、metadata/workspace/local/remote/baseline/cursor/対象外 | 対象local 1件compare-and-write、local read-back、rollback | 反映後full pull、metadata read-back、差異0ならconfirmed | 永続local＋recovery metadataから再分類 |
+| body mismatch local | 比較 → local候補 → remote反映 → 確定 | choice/snapshot/result/safety、Saved Recovery State、preflight | ID 1回、pending、upsert RPC validation、二重送信guard | operation result、remote read-back、cleanup、pending解消、confirmed | recovery pending＋保存済みoperation result |
+| 通常削除 | V5候補 → 準備 → metadata → local削除 → remote確認 → delete → cleanup | verified delete snapshot、対象外active/tombstone、pending/intent同一ID | local read-back、delete RPC validation、cleanup compare-and-write/read-back/rollback | tombstone baseline、cursor、pending/intent解消、confirmed | delete pending/intent＋保存済みoperation result＋remote tombstone |
+| Bridge/checkpoint | 復旧準備 → 候補確認 → 明示保存 | 全差異、V5、workspace、local、pending/intent/pushBlock、full pull、cursor、baseline | status-onlyはbaseline/cursor不変、normalも検証候補だけ保存、read-back/rollback | candidateは自動生成せずSaved Recovery State待ち | `recovery_required` metadata |
+| Saved Recovery State | 保存後状態を確認 | metadata、workspace、local、full pull、cursor、全baseline | なし | unresolved classifications再構築 | 保存済みmetadataから再確認 |
+| cleanup／通常復帰 | 結果確定、最終確認、通常同期確認 | operation result、post-send pull、current state鮮度 | V5 validator、compare-and-write、read-back、rollback | baseline/cursor/pending/intent整理後に別の通常同期確認 | 永続pending/checkpointまたはconfirmed metadata |
+
+共通順序は`最新状態確認 → 対象／対象外確認 → 明示承認 → 1件の書込み → 結果検証 → fail-closed／rollback → metadata cleanup → 通常同期再確認`である。read-only確認と保存、candidate生成と採用、RPC成功とcleanupを混同しない。
+
+### 過去工程の3分類
+
+- **統合済み**：remote採用内容確認、準備、実行前確認は独立ボタンではなく`verifyAndApplyRemote()`から実行する`prepareRemote()`と`applyRemote()`に統合した。local採用のprepare／preflight／sendも1つの明示操作内で順序と結果を検証する。安全確認、full pull、対象外不変、read-backは残す。
+- **意図的に削除**：同一snapshotの説明目的の重複full pull、handlerのないnextAction、旧同期ガイド、重複candidate state、通常UIへ積み上がる旧詳細操作、未使用local-only discard。
+- **欠落**：監査開始時はnormal delete RPC成功後の再読み込み回収が欠落していた。既存復旧Hookへdelete operation resultとtombstone検証を追加して解消した。修正後は0件。
+
+### candidate choice、表示、途中再開
+
+- choice正本は`useDayMemoNormalBodyMismatchCandidate`のcandidate snapshot＋resultだけである。requested choice、snapshot、result、safetyが不一致なら`candidate_choice_mismatch`で停止し、choice省略、remote fallback、local／remote同時readyを許可しない。
+- remote候補の次操作labelは実handlerと同じ「remote本文をこの端末へ反映」とする。completeは成功結果だけ、checkingは処理中、blocked／failedだけ停止理由を表示する。
+- checkpoint保存後はV5 `recovery_required`、local採用送信後はrecovery pending＋operation result、remote採用local反映後は永続local＋recovery metadata、delete RPC後はdelete pending＋intent＋保存済みdelete result＋tombstone、cleanup後はconfirmed metadataを再開根拠とする。
+- React refだけを再開根拠にしない。保存済み状態と新しいread-only取得から再構築し、自動retry、自動送信、自動採用、自動cleanupは行わない。
+
+### V3／V4互換境界と完成基準
+
+- V3／V4は旧保存データの読込、validator投影、V4/V5明示migration、rollbackのために残す。通常運用の正本はV5で、通常削除入口もV5 lifecycleを優先する。互換データが利用対象からなくなりmigration/rollback不要を確認できた時だけ削除可能とする。
+- confirmed tombstoneはpayloadなし、deletedAt、revision、sequence、server timestamp、`baselineLocalUpdatedAt = null`の厳格一致時だけ正常とする。
+- 欠落0、正式経路一致、途中再開、choice正本一本化、V5 validator、read-back、rollback、fail-closed、自動retry／自動送信なしを満たし、型・lint・build・diff check成功後に完成・保守モードとする。

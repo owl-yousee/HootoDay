@@ -2872,3 +2872,14 @@ cleanup後VERIFY結果：
 - E（凍結を妨げる未解決問題）：なし。
 - metadata V5 validator、workspace binding、pending lifecycle、operation ID冪等性、破壊操作直前full pull、対象外不変確認、confirmed tombstone厳格比較、RPC結果検証、verified read-back、compare-and-write、rollback、pushBlock、自動retry・自動送信禁止を維持した。
 - 同期機能は安定化完了として保守モードへ移す。今後は実利用で再現した問題だけを最小修正し、開発の主軸を手帳／健康／在庫管理へ戻す。
+
+## 2026-07-24 Sync Final Reconciliation
+
+- 現行コード、正式仕様、主要経路の実機完走記録を照合し、通常同期、新規local-only、body mismatchのremote／local採用、通常削除、Recovery Bridge、checkpoint、Saved Recovery State、metadata cleanup、confirmed tombstone復帰について、verified snapshot、明示操作、書込み、結果検証、fail-closed、rollback、cleanup、通常同期復帰の対応先を確認した。
+- remote採用は「比較 → remote候補確認 → remote本文をこの端末へ反映 → remote採用結果を確定」の4操作を正式経路とする。候補確認後の次操作文言を実handlerと同じ「remote本文をこの端末へ反映」へ統一した。旧内容確認／準備／実行前確認の安全処理は`verifyAndApplyRemote()`、`prepareRemote()`、`applyRemote()`内の最新full pull、metadata／workspace／local／remote／baseline／cursor／対象外差異確認へ統合済みである。
+- 通常削除はRPC成功からcleanup確定までの通常操作中は安全だったが、RPC成功直後の再読み込みではcleanup snapshotがReact refだけにあり、既存途中再開Hookがnormal upsert専用だったため回収不能だった。これは監査で見つかった唯一の安全工程欠落である。
+- 既存の明示的な「同期先の状態を確認 → 同期情報を復旧」経路をnormal deleteにも対応させた。metadata V5、delete pending、localDeleteIntent、operation ID、local不在、active baseline、read-only full pull、保存済みdelete operation結果、remote tombstoneのrevision／sequence／server timestamp／deletedAtを一致確認し、成功時だけtombstone baseline、cursor、confirmed timestampを保存してpending／intentを解消する。既存compare-and-write／verified read-back／rollbackを再利用し、自動送信、自動retry、新operation ID、新ボタンは追加していない。
+- 過去工程は、(1) 統合済み：remote採用内容確認／準備／実行前確認、local採用preflight／send、delete cleanup candidate、(2) 意図的に削除：重複full pull、説明だけのnextAction、旧同期ガイド、重複candidate UI、未使用local-only discard、(3) 欠落：監査時に見つかったdelete RPC後再開1件、と分類した。欠落1件は上記修正後に0件となった。
+- checkpoint保存後は`recovery_required` metadata、local採用送信後はrecovery pendingと保存済みoperation結果、remote採用local反映後は保存済みlocalとrecovery metadata、delete RPC後はdelete pending／intentと保存済みoperation結果から明示的に再開する。どの経路も自動retry、自動送信、自動採用を行わない。
+- V3／V4は読込、validator投影、明示migration、rollbackの互換境界として残す。通常削除を含む正式運用はmetadata V5を正本とし、旧V3 delete intentは互換データだけに限定する。
+- Final Reconciliation後の欠落分類は0件。metadata形式、SQL、RPC定義、full pull方針、confirmed tombstone比較、安全条件は変更していない。型、lint、production build、diff check成功をもって同期機能を正式完成とし、実利用で再現した問題だけを最小修正する保守モードへ移行する。
