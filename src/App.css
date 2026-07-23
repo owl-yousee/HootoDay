@@ -866,6 +866,10 @@
 .inventory-card dl { margin: 12px 0; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
 .inventory-card dl div { padding: 8px; border-radius: 9px; background: var(--color-surface-soft); }
 .inventory-card dt { color: var(--color-text-muted); font-size: .7rem; }.inventory-card dd { margin: 2px 0 0; font-weight: 800; }.inventory-card dd.is-zero,.inventory-warning { color: var(--color-danger); }
+.inventory-sales-summary { margin: 8px 0 10px; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+.inventory-sales-summary div { min-width: 0; padding: 8px; border: 1px solid var(--color-border); border-radius: 9px; background: var(--color-surface-soft); }
+.inventory-sales-summary span,.inventory-sales-summary small { display: block; color: var(--color-text-muted); font-size: .7rem; }
+.inventory-sales-summary strong { display: block; margin-top: 2px; overflow-wrap: anywhere; font-size: .9rem; }
 .inventory-actions { display: flex; gap: 7px; flex-wrap: wrap; }
 .inventory-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }.inventory-section-heading p { margin: 3px 0; color: var(--color-text-muted); }.inventory-total { font-weight: 800; color: var(--color-primary); }
 .inventory-row { padding: 10px 2px; display: grid; grid-template-columns: minmax(120px,1fr) minmax(180px,2fr) auto; gap: 10px; border-bottom: 1px solid var(--color-border); font-size: .82rem; }.inventory-row:last-child{border-bottom:0}
