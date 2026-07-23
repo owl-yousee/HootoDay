@@ -192,6 +192,20 @@ const IDLE_NORMAL_SYNC_CHECK_UI: NormalSyncCheckUiResult = {
 }
 const NORMAL_SYNC_CHECK_MIN_VISIBLE_MS = 700
 
+type BodyMismatchComparisonRun = {
+  runId: number
+  requestedDate: string
+  startedAt: string
+  completedAt: string | null
+  status: 'checking' | 'ready' | 'blocked' | 'failed'
+  result: ReturnType<typeof useDayMemoNormalBodyMismatchCandidate>['result']
+  comparison: ReturnType<typeof useDayMemoNormalBodyMismatchCandidate>['comparison']
+  metadataCursor: number | null
+  persistentChange: false
+  supabaseWrite: false
+  autoRetry: false
+}
+
 const SYNC_STAGE_IDS: Record<SyncRecoveryUiStage, string> = {
   checkpoint_check: 'recovery_difference_check', body_mismatch_compare: 'recovery_body_mismatch_compare',
   candidate_prepare: 'recovery_candidate_prepare', preflight: 'recovery_preflight', send: 'recovery_writing',
@@ -621,6 +635,9 @@ export function ThemeSettings({
   const [normalDifferenceRecoveryBridge, setNormalDifferenceRecoveryBridge]
     = useState<NormalDifferenceRecoveryBridgeSnapshot | null>(null)
   const [normalSyncCheckUi, setNormalSyncCheckUi] = useState<NormalSyncCheckUiResult>(IDLE_NORMAL_SYNC_CHECK_UI)
+  const [lastBodyMismatchComparisonRun, setLastBodyMismatchComparisonRun]
+    = useState<BodyMismatchComparisonRun | null>(null)
+  const bodyMismatchComparisonRunIdRef = useRef(0)
   const normalSyncCheckStartedAtRef = useRef(0)
   const normalSyncCheckTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => { setSelectedMismatchDate('') }, [dayMemoNormalDifferenceRecoveryPlan.result?.checkedAt])
@@ -850,6 +867,34 @@ export function ThemeSettings({
     ?? (recoveryNavigation.stage === 'normal_state_check' ? dayMemoPullPreview.normalStateCheckDisabledReason : null)
     ?? (navigationCanExecute ? null : '現在のsnapshotまたは前提条件を安全に確認できないため実行できません。')
 
+  const runBodyMismatchComparison = async (date: string) => {
+    const runId = ++bodyMismatchComparisonRunIdRef.current
+    const startedAt = new Date().toISOString()
+    dayMemoNormalBodyMismatchCandidate.discard()
+    setLastBodyMismatchComparisonRun({ runId, requestedDate: date, startedAt, completedAt: null,
+      status: 'checking', result: null, comparison: null,
+      metadataCursor: syncMetadata?.lastPulledChangeSequence ?? null,
+      persistentChange: false, supabaseWrite: false, autoRetry: false })
+    try {
+      await dayMemoNormalBodyMismatchCandidate.compare(date)
+      if (bodyMismatchComparisonRunIdRef.current !== runId) return
+      const result = dayMemoNormalBodyMismatchCandidate.getLatestResult()
+      const comparison = dayMemoNormalBodyMismatchCandidate.getLatestComparison()
+      setLastBodyMismatchComparisonRun({ runId, requestedDate: date, startedAt,
+        completedAt: new Date().toISOString(),
+        status: result?.safety === 'normal_body_mismatch_compare_ready' && comparison
+          ? 'ready' : result ? 'blocked' : 'failed',
+        result, comparison, metadataCursor: syncMetadata?.lastPulledChangeSequence ?? null,
+        persistentChange: false, supabaseWrite: false, autoRetry: false })
+    } catch {
+      if (bodyMismatchComparisonRunIdRef.current !== runId) return
+      setLastBodyMismatchComparisonRun({ runId, requestedDate: date, startedAt,
+        completedAt: new Date().toISOString(), status: 'failed', result: null, comparison: null,
+        metadataCursor: syncMetadata?.lastPulledChangeSequence ?? null,
+        persistentChange: false, supabaseWrite: false, autoRetry: false })
+    }
+  }
+
   const runRecoveryNavigationAction = () => {
     const date = recoveryNavigation.targetDate
     if (recoveryNavigation.stage !== 'normal_state_check' && normalSyncCheckUi.status !== 'idle') {
@@ -863,7 +908,7 @@ export function ThemeSettings({
       case 'candidate_prepare': if (date) void dayMemoRecoveryLocalOnlyPreparation.prepare(date); break
       case 'body_mismatch_compare':
         if (!date) break
-        void dayMemoNormalBodyMismatchCandidate.compare(date)
+        void runBodyMismatchComparison(date)
         break
       case 'preflight': void dayMemoBodyMismatchRecoveryPreflight.check(); break
       case 'send': void dayMemoBodyMismatchRecoverySend.send(); break
@@ -1286,7 +1331,10 @@ export function ThemeSettings({
                         ? new Date(dayMemoSavedRecoveryStateCheck.result.checkedAt).toLocaleString('ja-JP') : '未実施'}</li>
                     </ul>
                     <button type="button" className="health-primary-button cloud-sync-button"
-                      onClick={() => setRecoveryWorkOpen((current) => !current)}>
+                      onClick={() => setRecoveryWorkOpen((current) => {
+                        if (current) setLastBodyMismatchComparisonRun(null)
+                        return !current
+                      })}>
                       {recoveryWorkOpen ? (isRecoveryMetadata ? '復旧作業を閉じる' : '同期作業を閉じる')
                         : (isRecoveryMetadata ? '復旧作業を続ける' : '同期作業を続ける')}
                     </button>
@@ -1673,6 +1721,69 @@ export function ThemeSettings({
                             <p className="cloud-sync-note">adoption未実行／永続変更なし／自動retryなし</p>
                           </div>
                         ) : null}
+                      {lastBodyMismatchComparisonRun ? (
+                        <div className={`cloud-day-memo-preview-result is-${lastBodyMismatchComparisonRun.status}`}
+                          role={lastBodyMismatchComparisonRun.status === 'checking' || lastBodyMismatchComparisonRun.status === 'ready' ? 'status' : 'alert'}>
+                          <h5>直近の比較実行結果</h5>
+                          <ul className="cloud-day-memo-preview-summary">
+                            <li>実行ID：{lastBodyMismatchComparisonRun.runId}</li>
+                            <li>対象：{lastBodyMismatchComparisonRun.requestedDate}</li>
+                            <li>分類：body_mismatch</li>
+                            <li>判定：{lastBodyMismatchComparisonRun.status}</li>
+                            <li>実行開始：{new Date(lastBodyMismatchComparisonRun.startedAt).toLocaleString('ja-JP')}</li>
+                            <li>実行完了：{lastBodyMismatchComparisonRun.completedAt
+                              ? new Date(lastBodyMismatchComparisonRun.completedAt).toLocaleString('ja-JP') : '確認中'}</li>
+                            <li>metadata cursor：{lastBodyMismatchComparisonRun.metadataCursor ?? '未確認'}</li>
+                            <li>Supabase書き込み：なし</li><li>永続変更：なし</li><li>自動retry：なし</li>
+                          </ul>
+                          {lastBodyMismatchComparisonRun.status === 'checking' ? (
+                            <p>localとremoteを読み取り専用で確認しています…</p>
+                          ) : lastBodyMismatchComparisonRun.status === 'ready' && lastBodyMismatchComparisonRun.comparison ? <>
+                            <ul className="cloud-day-memo-preview-summary">
+                              <li>remote／baseline：一致</li><li>local更新：あり</li>
+                              <li>baseline変更：なし</li><li>cursor変更：なし</li>
+                              <li>local変更：なし</li><li>remote変更：なし</li><li>candidate生成：なし</li>
+                            </ul>
+                            <label>local本文<textarea readOnly rows={6} value={lastBodyMismatchComparisonRun.comparison.localContent} /></label>
+                            <label>remote本文<textarea readOnly rows={6} value={lastBodyMismatchComparisonRun.comparison.remoteContent} /></label>
+                            <p>次操作：remote採用候補を確認／local採用候補を確認</p>
+                          </> : lastBodyMismatchComparisonRun.result ? <>
+                            <ul className="cloud-day-memo-preview-summary">
+                              <li>failureReason：{lastBodyMismatchComparisonRun.result.failureReason ?? 'unknown'}</li>
+                              <li>内部safety：{lastBodyMismatchComparisonRun.result.safety}</li>
+                              <li>停止段階：{lastBodyMismatchComparisonRun.result.stopStage}</li>
+                              <li>Saved Recovery State：{lastBodyMismatchComparisonRun.result.diagnostics.savedStateConfirmed ? '確認済み' : '未確認'}</li>
+                              <li>metadata：{lastBodyMismatchComparisonRun.result.diagnostics.metadataValid ? '確認済み' : '未確認／不一致'}</li>
+                              <li>workspace：{lastBodyMismatchComparisonRun.result.diagnostics.workspaceMatched ? '一致' : '未確認／不一致'}</li>
+                              <li>local snapshot：{lastBodyMismatchComparisonRun.result.diagnostics.localSnapshotMatched ? '一致' : '未確認／不一致'}</li>
+                              <li>full pull：{lastBodyMismatchComparisonRun.result.diagnostics.fullPullSucceeded ? '完了' : '未完了'}</li>
+                              <li>cursor：{lastBodyMismatchComparisonRun.result.diagnostics.cursorMatched ? '一致' : '未確認／不一致'}</li>
+                              <li>remote／baseline：{lastBodyMismatchComparisonRun.result.diagnostics.remoteBaselineMatched ? '一致' : '未確認／不一致'}</li>
+                              <li>body mismatch再分類：{lastBodyMismatchComparisonRun.result.diagnostics.bodyMismatchConfirmed ? '確認済み' : '未確認'}</li>
+                              <li>snapshot revision：{lastBodyMismatchComparisonRun.result.diagnostics.snapshotRevision ?? '未生成'}</li>
+                            </ul>
+                          </> : <p>比較処理を開始できませんでした。failureReason：unknown</p>}
+                          {lastBodyMismatchComparisonRun.status !== 'checking' ? <>
+                            <button type="button" className="health-primary-button cloud-sync-button"
+                              onClick={() => { void runBodyMismatchComparison(lastBodyMismatchComparisonRun.requestedDate) }}>
+                              localとremoteを再確認
+                            </button>
+                            <button type="button" className="health-secondary-button cloud-sync-button"
+                              disabled={dayMemoSavedRecoveryStateCheck.checking}
+                              onClick={() => {
+                                setLastBodyMismatchComparisonRun(null)
+                                dayMemoNormalBodyMismatchCandidate.discard()
+                                dayMemoSavedRecoveryStateCheck.discard()
+                                void dayMemoSavedRecoveryStateCheck.check()
+                              }}>保存後の同期状態から再確認</button>
+                            <button type="button" className="health-secondary-button cloud-sync-button"
+                              onClick={() => {
+                                setLastBodyMismatchComparisonRun(null)
+                                dayMemoNormalBodyMismatchCandidate.discard()
+                              }}>比較結果を閉じる</button>
+                          </> : null}
+                        </div>
+                      ) : null}
                       <p>{recoveryNavigation.description}</p>
                       {recoveryNavigation.stage === 'normal_local_only_recheck' ? (
                         <div className="cloud-day-memo-preview-result is-blocked" role="status">
@@ -1707,9 +1818,13 @@ export function ThemeSettings({
                             通常同期状態から再確認
                           </button>
                         ) : null}
-                        {normalSyncCheckUi.status !== 'checking' && !navigationCanExecute && navigationDisabledReason
+                        {normalSyncCheckUi.status !== 'checking'
+                          && !dayMemoNormalBodyMismatchCandidate.checking
+                          && !lastBodyMismatchComparisonRun
+                          && !navigationCanExecute && navigationDisabledReason
                           ? <p className="cloud-sync-note">{navigationDisabledReason}</p> : null}
                         {recoveryNavigation.stage === 'body_mismatch_compare'
+                          && !lastBodyMismatchComparisonRun
                           && dayMemoNormalBodyMismatchCandidate.result?.failureReason
                           && dayMemoNormalBodyMismatchCandidate.result.date === recoveryNavigation.targetDate ? (
                             <div className="cloud-day-memo-preview-result is-blocked" role="alert">

@@ -142,6 +142,8 @@ export function useDayMemoNormalBodyMismatchCandidate({ dayMemos, isConfigured, 
   const [comparison, setComparison] = useState<DayMemoNormalBodyMismatchComparison | null>(null)
   const [choice, setChoice] = useState<DayMemoNormalBodyMismatchChoice | null>(null)
   const [result, setResult] = useState<DayMemoNormalBodyMismatchCandidateResult | null>(null)
+  const resultRef = useRef<DayMemoNormalBodyMismatchCandidateResult | null>(null)
+  const comparisonValueRef = useRef<DayMemoNormalBodyMismatchComparison | null>(null)
   const runIdRef = useRef(0)
   const snapshotRevisionRef = useRef(0)
   const diagnosticsRef = useRef<DayMemoNormalBodyMismatchDiagnostics>(EMPTY_DIAGNOSTICS)
@@ -160,16 +162,21 @@ export function useDayMemoNormalBodyMismatchCandidate({ dayMemos, isConfigured, 
     && reactMetadata?.version === 5 && savedStateReady && bodyMismatchDates.length === 1)
 
   const finish = useCallback((safety: DayMemoNormalBodyMismatchSafety, date: string | null = selectedDate, candidate: DayMemoNormalBodyMismatchChoice | null = null, verified = false) => {
-    setResult({ date, candidate, safety, localAndRemoteVerified: verified, persistentStateChanged: false, rpcSent: false,
+    const next = { date, candidate, safety, localAndRemoteVerified: verified, persistentStateChanged: false as const, rpcSent: false as const,
       failureReason: failureReason(safety), stopStage: safety,
       diagnostics: { ...diagnosticsRef.current },
-      checkedAt: new Date().toISOString(), nextAction: nextAction(safety) })
+      checkedAt: new Date().toISOString(), nextAction: nextAction(safety) }
+    resultRef.current = next
+    setResult(next)
+    return next
   }, [selectedDate])
 
   const discard = useCallback(() => {
     runIdRef.current += 1
     comparisonSnapshotRef.current = null
     candidateSnapshotRef.current = null
+    comparisonValueRef.current = null
+    resultRef.current = null
     setSelectedDateState(''); setComparison(null); setChoice(null); setResult(null); setChecking(false)
   }, [])
 
@@ -178,6 +185,8 @@ export function useDayMemoNormalBodyMismatchCandidate({ dayMemos, isConfigured, 
     comparisonSnapshotRef.current = null
     candidateSnapshotRef.current = null
     setSelectedDateState(bodyMismatchDates.includes(date) ? date : '')
+    comparisonValueRef.current = null
+    resultRef.current = null
     setComparison(null); setChoice(null); setResult(null); setChecking(false)
   }, [bodyMismatchDates])
 
@@ -190,6 +199,7 @@ export function useDayMemoNormalBodyMismatchCandidate({ dayMemos, isConfigured, 
     const fail = (safety: DayMemoNormalBodyMismatchSafety) => finish(safety, targetDate)
     diagnosticsRef.current = { ...EMPTY_DIAGNOSTICS, savedStateConfirmed: savedStateReady }
     comparisonSnapshotRef.current = null; candidateSnapshotRef.current = null
+    comparisonValueRef.current = null; resultRef.current = null
     setChecking(true); setComparison(null); setChoice(null); setResult(null)
     try {
       if (!savedStateReady || !savedRecoveryResult
@@ -269,10 +279,12 @@ export function useDayMemoNormalBodyMismatchCandidate({ dayMemos, isConfigured, 
         baselineLocalUpdatedAt: targetBaseline.baselineLocalUpdatedAt,
         localMemo: { ...local }, remoteRecord: { ...remote, payload: { ...remote.payload } }, baselineStatus: 'recovery_required',
         classifications: Object.fromEntries(classifications), checkedAt }
-      setComparison({ date: targetDate, localContent: local.content, remoteContent: remote.payload.content,
+      const comparisonValue = { date: targetDate, localContent: local.content, remoteContent: remote.payload.content,
         localUpdatedAt: local.updatedAt, remoteUpdatedAt: remote.payload.updatedAt,
         localCharacterCount: local.content.length, remoteCharacterCount: remote.payload.content.length,
-        remoteRevision: remote.revision, remoteChangeSequence: remote.changeSequence, checkedAt })
+        remoteRevision: remote.revision, remoteChangeSequence: remote.changeSequence, checkedAt }
+      comparisonValueRef.current = comparisonValue
+      setComparison(comparisonValue)
       finish('normal_body_mismatch_compare_ready', targetDate, null, true)
     } finally { if (runIdRef.current === runId) setChecking(false) }
   }, [bodyMismatchDates, checking, connection, dayMemos, eligible, finish, reactMetadata,
@@ -323,8 +335,14 @@ export function useDayMemoNormalBodyMismatchCandidate({ dayMemos, isConfigured, 
     setComparison(null)
     setChoice(null)
     setResult(null)
+    comparisonValueRef.current = null
+    resultRef.current = null
   }, [])
 
+  const getLatestResult = useCallback(() => resultRef.current, [])
+  const getLatestComparison = useCallback(() => comparisonValueRef.current, [])
+
   return { eligible, bodyMismatchDates, selectedDate, setSelectedDate, checking, comparison, choice, setChoice: selectChoice, clearChoice,
-    result, compare, confirmCandidate, discard, getCandidateSnapshot, consumeCandidateSnapshot }
+    result, compare, confirmCandidate, discard, getCandidateSnapshot, consumeCandidateSnapshot,
+    getLatestResult, getLatestComparison }
 }
