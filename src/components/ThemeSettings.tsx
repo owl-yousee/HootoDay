@@ -1134,6 +1134,16 @@ export function ThemeSettings({
     }
   }
 
+  const finalizeBodyMismatchRemoteAdoption = async () => {
+    const result = await dayMemoBodyMismatchRemoteAdoption.finalizeRemoteAdoption()
+    if (!result?.normalSyncReady || result.differenceCount !== 0
+      || result.baselineStatus !== 'confirmed' || !result.metadataReadBackVerified) return
+    dayMemoSavedRecoveryStateCheck.discard()
+    setNormalSyncCheckUi({ status: 'success', stageId: 'normal_sync_complete', differenceCount: 0,
+      normalSyncReady: true, message: 'remote採用と同期情報の確定が完了しました。',
+      nextAction: '同期作業を閉じる', checkedAt: new Date().toISOString() })
+  }
+
   const runRecoveryNavigationAction = () => {
     const date = recoveryNavigation.targetDate
     if (recoveryNavigation.stage !== 'normal_state_check' && normalSyncCheckUi.status !== 'idle') {
@@ -2182,6 +2192,14 @@ export function ThemeSettings({
                                       {lastBodyMismatchComparisonRun.remoteFinalCheck.status === 'ready' ? <>
                                         <p>local反映対象：この対象日の1件だけです。対象外localは変更しません。</p>
                                         <p>次操作：remote本文をこの端末へ反映</p>
+                                        {dayMemoBodyMismatchRemoteAdoption.canApply ? (
+                                          <button type="button" className="health-primary-button cloud-sync-button"
+                                            disabled={dayMemoBodyMismatchRemoteAdoption.running}
+                                            onClick={() => { void dayMemoBodyMismatchRemoteAdoption.applyRemote() }}>
+                                            {dayMemoBodyMismatchRemoteAdoption.running
+                                              ? 'remote本文を反映中…' : 'remote本文をこの端末へ反映'}
+                                          </button>
+                                        ) : null}
                                       </> : <div className="iphone-sync-guide-actions">
                                         <button type="button" className="health-primary-button cloud-sync-button"
                                           onClick={() => { void verifyBodyMismatchRemoteAdoptionExecution() }}>
@@ -2197,6 +2215,58 @@ export function ThemeSettings({
                                         </button>
                                       </div>}
                                     </>}
+                                  </div>
+                                ) : null}
+                                {dayMemoBodyMismatchRemoteAdoption.stage === 'local_saved'
+                                  || dayMemoBodyMismatchRemoteAdoption.stage === 'completed'
+                                  || dayMemoBodyMismatchRemoteAdoption.stage === 'blocked' ? (
+                                  <div className={`cloud-day-memo-preview-result is-${dayMemoBodyMismatchRemoteAdoption.stage === 'completed'
+                                    ? 'ready' : dayMemoBodyMismatchRemoteAdoption.stage === 'blocked' ? 'blocked' : 'checking'}`}
+                                    role={dayMemoBodyMismatchRemoteAdoption.stage === 'blocked' ? 'alert' : 'status'}>
+                                    <h6>remote採用：{dayMemoBodyMismatchRemoteAdoption.stage === 'completed'
+                                      ? '完了' : dayMemoBodyMismatchRemoteAdoption.stage === 'blocked' ? '安全停止' : 'local反映完了'}</h6>
+                                    <ul className="cloud-day-memo-preview-summary">
+                                      <li>対象：{dayMemoBodyMismatchRemoteAdoption.result?.date ?? lastBodyMismatchComparisonRun.requestedDate}</li>
+                                      <li>採用元：remote</li>
+                                      <li>local変更：{dayMemoBodyMismatchRemoteAdoption.result?.localChanged ? 'あり' : 'なし'}</li>
+                                      <li>local verified read-back：{dayMemoBodyMismatchRemoteAdoption.result?.localReadBackVerified ? '成功' : '未完了'}</li>
+                                      <li>remote変更：なし</li><li>Supabase書き込み：なし</li>
+                                      <li>反映後確認：{dayMemoBodyMismatchRemoteAdoption.result?.postApplyVerified ? '完了' : '未実行'}</li>
+                                      <li>metadata cleanup：{dayMemoBodyMismatchRemoteAdoption.result?.metadataSaved ? '完了' : '未実行'}</li>
+                                      <li>metadata read-back：{dayMemoBodyMismatchRemoteAdoption.result?.metadataReadBackVerified ? '成功' : '未実行'}</li>
+                                      <li>baselineStatus：{dayMemoBodyMismatchRemoteAdoption.result?.baselineStatus ?? 'recovery_required'}</li>
+                                      <li>差異：{dayMemoBodyMismatchRemoteAdoption.result?.differenceCount ?? '未確認'}件</li>
+                                      <li>通常同期ready：{dayMemoBodyMismatchRemoteAdoption.result?.normalSyncReady ? 'はい' : 'いいえ'}</li>
+                                      <li>pending／intent：作成なし</li><li>operation ID：生成なし</li><li>自動retry：なし</li>
+                                      {dayMemoBodyMismatchRemoteAdoption.result?.rollbackAttempted ? (
+                                        <li>rollback：{dayMemoBodyMismatchRemoteAdoption.result.rollbackSucceeded ? '成功' : '失敗／状態確認が必要'}</li>
+                                      ) : null}
+                                      {dayMemoBodyMismatchRemoteAdoption.stage === 'blocked' ? (
+                                        <li>failureReason：{dayMemoBodyMismatchRemoteAdoption.result?.safety ?? 'unknown'}</li>
+                                      ) : null}
+                                    </ul>
+                                    {dayMemoBodyMismatchRemoteAdoption.stage === 'local_saved' ? <>
+                                      <p>local本文の反映とread-backが完了しました。次の明示操作で、反映後確認・metadata cleanup・通常同期ready確認をまとめて実行します。</p>
+                                      <button type="button" className="health-primary-button cloud-sync-button"
+                                        disabled={dayMemoBodyMismatchRemoteAdoption.running}
+                                        onClick={() => { void finalizeBodyMismatchRemoteAdoption() }}>
+                                        {dayMemoBodyMismatchRemoteAdoption.running
+                                          ? 'remote採用結果を確認中…' : 'remote採用結果を確定'}
+                                      </button>
+                                    </> : dayMemoBodyMismatchRemoteAdoption.stage === 'completed' ? <>
+                                      <p>remote採用：完了</p>
+                                      <p>次操作：同期作業を閉じる</p>
+                                    </> : <div className="iphone-sync-guide-actions">
+                                      <button type="button" className="health-primary-button cloud-sync-button"
+                                        disabled={dayMemoBodyMismatchRemoteAdoption.running}
+                                        onClick={() => { void finalizeBodyMismatchRemoteAdoption() }}>
+                                        remote採用結果を再確認
+                                      </button>
+                                      <button type="button" className="health-secondary-button cloud-sync-button"
+                                        onClick={() => { void runBodyMismatchComparison(lastBodyMismatchComparisonRun.requestedDate) }}>
+                                        保存後の同期状態から再確認
+                                      </button>
+                                    </div>}
                                   </div>
                                 ) : null}
                               </div>

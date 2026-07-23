@@ -34,6 +34,15 @@ export interface BodyMismatchRemoteAdoptionResult {
   baselineVerified: boolean
   cursorVerified: boolean
   differencesVerified: boolean
+  localReadBackVerified: boolean
+  rollbackAttempted: boolean
+  rollbackSucceeded: boolean
+  postApplyVerified: boolean
+  metadataSaved: boolean
+  metadataReadBackVerified: boolean
+  baselineStatus: 'recovery_required' | 'confirmed' | null
+  normalSyncReady: boolean
+  differenceCount: number | null
   checkedAt: string
 }
 
@@ -118,7 +127,7 @@ export function useDayMemoBodyMismatchRemoteAdoption(input: Input) {
   const applied = useRef<ApplySnapshot | null>(null)
   const candidate = input.getCandidateSnapshot()
   const canApply = Boolean(input.isConfigured && input.isSignedIn && eligibleConnection(input.connection)
-    && candidate?.candidate === 'remote' && stage === 'idle' && !running)
+    && candidate?.candidate === 'remote' && execution.current && stage === 'execution_ready' && !running)
 
   const finish = useCallback((next: BodyMismatchRemoteAdoptionStage, safety: string, values: Partial<BodyMismatchRemoteAdoptionResult> = {}) => {
     const nextResult = { stage: next, date: null, safety, remainingCount: null, localChanged: false,
@@ -126,6 +135,9 @@ export function useDayMemoBodyMismatchRemoteAdoption(input: Input) {
       preparationCreated: false, comparisonRunId: null, candidateRevision: null, contentRevision: null,
       preparationRevision: null, finalVerificationRevision: null, metadataVerified: false, workspaceVerified: false, localVerified: false,
       remoteVerified: false, baselineVerified: false, cursorVerified: false, differencesVerified: false,
+      localReadBackVerified: false, rollbackAttempted: false, rollbackSucceeded: false,
+      postApplyVerified: false, metadataSaved: false, metadataReadBackVerified: false,
+      baselineStatus: null, normalSyncReady: false, differenceCount: null,
       checkedAt: new Date().toISOString(), ...values }
     resultRef.current = nextResult
     setStage(next)
@@ -135,7 +147,9 @@ export function useDayMemoBodyMismatchRemoteAdoption(input: Input) {
   const block = useCallback((safety: string, date: string | null,
     localState: BodyMismatchRemoteAdoptionResult['localState'] = 'unchanged') => {
     input.consumeCandidateSnapshot()
-    finish('blocked', safety, { date, localState, localChanged: localState === 'saved' })
+    finish('blocked', safety, { date, localState, localChanged: localState === 'saved',
+      rollbackAttempted: localState === 'rolled_back' || localState === 'uncertain',
+      rollbackSucceeded: localState === 'rolled_back' })
   }, [finish, input])
 
   const prepareRemote = useCallback(async (request: BodyMismatchRemoteAdoptionPreparationRequest) => {
@@ -365,9 +379,9 @@ export function useDayMemoBodyMismatchRemoteAdoption(input: Input) {
   }, [finish, input, stage])
 
   const applyRemote = useCallback(async () => {
-    const snapshot = input.getCandidateSnapshot()
-    if (!canApply || !snapshot || snapshot.candidate !== 'remote' || inFlight.current) return
-    if (!window.confirm(`${snapshot.date} の同期先の内容をこのiPhoneへ反映します。このiPhoneの同日内容は置き換わりますが、同期先へは書き込みません。反映しますか？`)) return
+    const verified = execution.current
+    const snapshot = verified?.preparation.source ?? null
+    if (!canApply || !verified || !snapshot || snapshot.candidate !== 'remote' || inFlight.current) return
     inFlight.current = true; setRunning(true)
     let localWriteCompleted = false
     try {
@@ -375,7 +389,8 @@ export function useDayMemoBodyMismatchRemoteAdoption(input: Input) {
       const metadata = loadDayMemoSyncMetadataAny(window.localStorage)
       const local = readDayMemoStorageSnapshot(window.localStorage)
       if (metadata.status !== 'ready' || !isDayMemoSyncMetadataV5(metadata.metadata) || local.status !== 'ready'
-        || metadata.raw !== snapshot.metadataRaw || local.serialized !== snapshot.localStorageSerialized
+        || metadata.raw !== verified.metadataRaw || metadata.raw !== snapshot.metadataRaw
+        || local.serialized !== verified.localStorageSerialized || local.serialized !== snapshot.localStorageSerialized
         || !input.reactMetadata || !same(input.reactMetadata, metadata.metadata) || !same(input.dayMemos, local.memos)
         || !eligibleConnection(input.connection) || input.connection.workspaceId !== snapshot.workspaceId
         || metadata.metadata.baselineStatus !== 'recovery_required' || metadata.metadata.baselineConfirmedAt !== null
@@ -393,6 +408,9 @@ export function useDayMemoBodyMismatchRemoteAdoption(input: Input) {
         block('body_mismatch_remote_source_changed', snapshot.date); return
       }
       const next = local.memos.map((memo) => memo.date === snapshot.date ? { ...snapshot.remoteRecord.payload! } : memo)
+      if (!same(next, verified.preparation.localAfter)) {
+        block('execution_snapshot_expired', snapshot.date); return
+      }
       const backup = saveDayMemoPullApplyBackup(window.localStorage, snapshot.workspaceId, local.memos,
         { replaceExistingForSameWorkspace: true })
       if (backup !== 'saved' && backup !== 'reused') {
@@ -414,13 +432,129 @@ export function useDayMemoBodyMismatchRemoteAdoption(input: Input) {
       }
       localWriteCompleted = true
       applied.current = { source: snapshot, localAfter: next, localRawAfter: readBack.serialized, candidateMetadata: null }
+      execution.current = null
       input.adoptVerifiedStoredDayMemos(next.map((memo) => ({ ...memo })))
       input.consumeCandidateSnapshot()
-      finish('local_saved', 'body_mismatch_remote_local_saved', { date: snapshot.date, localChanged: true, localState: 'saved' })
+      finish('local_saved', 'body_mismatch_remote_local_saved', { date: snapshot.date,
+        localChanged: true, localState: 'saved', localReadBackVerified: true })
     } catch {
       block('body_mismatch_remote_unexpected_failure', snapshot.date, localWriteCompleted ? 'uncertain' : 'unchanged')
     } finally { inFlight.current = false; setRunning(false) }
   }, [block, canApply, finish, input])
+
+  const finalizeRemoteAdoption = useCallback(async () => {
+    const snapshot = applied.current
+    if (!snapshot || (stage !== 'local_saved' && stage !== 'blocked') || inFlight.current || !supabaseClient
+      || !eligibleConnection(input.connection)) return resultRef.current
+    inFlight.current = true
+    setRunning(true)
+    const currentRun = ++runId.current
+    try {
+      const metadata = loadDayMemoSyncMetadataAny(window.localStorage)
+      const local = readDayMemoStorageSnapshot(window.localStorage)
+      if (metadata.status !== 'ready' || !isDayMemoSyncMetadataV5(metadata.metadata) || local.status !== 'ready'
+        || metadata.raw !== snapshot.source.metadataRaw || local.serialized !== snapshot.localRawAfter
+        || !same(local.memos, snapshot.localAfter) || !same(input.dayMemos, snapshot.localAfter)
+        || !input.reactMetadata || !same(input.reactMetadata, metadata.metadata)
+        || input.connection.workspaceId !== snapshot.source.workspaceId
+        || metadata.metadata.baselineStatus !== 'recovery_required' || metadata.metadata.baselineConfirmedAt !== null
+        || metadata.metadata.pendingOperation || metadata.metadata.pushBlock
+        || Object.keys(metadata.metadata.localDeleteIntents).length) {
+        block('post_apply_verification_failed', snapshot.source.date, 'saved'); return resultRef.current
+      }
+      const pulled = await pullAllDayMemoSyncRecords(supabaseClient, snapshot.source.workspaceId,
+        () => runId.current === currentRun).catch(() => null)
+      const afterMetadata = loadDayMemoSyncMetadataAny(window.localStorage)
+      const afterLocal = readDayMemoStorageSnapshot(window.localStorage)
+      if (!pulled || pulled.status !== 'complete' || afterMetadata.status !== 'ready'
+        || afterMetadata.raw !== metadata.raw || afterLocal.status !== 'ready'
+        || afterLocal.serialized !== local.serialized
+        || pulled.maxChangeSequence !== metadata.metadata.lastPulledChangeSequence) {
+        block('post_apply_full_pull_failed', snapshot.source.date, 'saved'); return resultRef.current
+      }
+      const remoteByDate = new Map(pulled.records.map((record) => [record.entityId, record]))
+      if (remoteByDate.size !== pulled.records.length) {
+        block('sequence_invalid', snapshot.source.date, 'saved'); return resultRef.current
+      }
+      const target = remoteByDate.get(snapshot.source.date)
+      const targetLocal = local.memos.find((memo) => memo.date === snapshot.source.date) ?? null
+      if (!target || !targetLocal || target.deletedAt !== null || !target.payload
+        || !same(target, snapshot.source.remoteRecord) || !same(targetLocal, target.payload)) {
+        block('post_apply_verification_failed', snapshot.source.date, 'saved'); return resultRef.current
+      }
+      const localByDate = new Map(local.memos.map((memo) => [memo.date, memo]))
+      const dates = [...new Set([...localByDate.keys(), ...remoteByDate.keys(), ...Object.keys(metadata.metadata.baselines)])].sort()
+      for (const date of dates) {
+        if (date === snapshot.source.date) continue
+        const classification = classifyDayMemoNormalDifference(localByDate.get(date) ?? null,
+          remoteByDate.get(date) ?? null, metadata.metadata.baselines[date] ?? null)
+        if (classification !== snapshot.source.classifications[date]) {
+          block(metadata.metadata.baselines[date]?.deletedAt != null
+            ? 'confirmed_tombstone_mismatch' : 'difference_changed', snapshot.source.date, 'saved')
+          return resultRef.current
+        }
+      }
+      const now = new Date().toISOString()
+      const baselines = { ...metadata.metadata.baselines, [snapshot.source.date]: {
+        date: snapshot.source.date, remoteRevision: target.revision,
+        remoteChangeSequence: target.changeSequence, remoteUpdatedAt: target.payload.updatedAt,
+        baselineLocalUpdatedAt: targetLocal.updatedAt, deletedAt: null } }
+      const recoveryCandidate: DayMemoSyncMetadataV5 = { ...metadata.metadata, baselines,
+        lastPulledChangeSequence: pulled.maxChangeSequence, baselineStatus: 'recovery_required', baselineConfirmedAt: null }
+      if (!isDayMemoSyncMetadataV5(recoveryCandidate)) {
+        block('cleanup_candidate_failed', snapshot.source.date, 'saved'); return resultRef.current
+      }
+      const differenceCount = dates.filter((date) => classifyDayMemoNormalDifference(localByDate.get(date) ?? null,
+        remoteByDate.get(date) ?? null, recoveryCandidate.baselines[date] ?? null) !== 'exact_match_baseline_confirmed').length
+      const candidateMetadata: DayMemoSyncMetadataV5 = differenceCount === 0
+        ? { ...recoveryCandidate, baselineStatus: 'confirmed', baselineConfirmedAt: now,
+          pendingOperation: null, lastSuccessfulSyncAt: now }
+        : recoveryCandidate
+      if (!isDayMemoSyncMetadataV5(candidateMetadata)) {
+        block('cleanup_candidate_failed', snapshot.source.date, 'saved'); return resultRef.current
+      }
+      const saved = replaceDayMemoSyncMetadataV2(window.localStorage, candidateMetadata, metadata.raw)
+      if (saved !== 'saved') {
+        finish('blocked', saved === 'rollback_failed' ? 'cleanup_rollback_failed' : 'cleanup_write_failed', {
+          date: snapshot.source.date, localChanged: true, localState: 'saved', postApplyVerified: true,
+          rollbackAttempted: saved === 'rollback_failed', rollbackSucceeded: false, differenceCount })
+        return resultRef.current
+      }
+      const readBack = loadDayMemoSyncMetadataAny(window.localStorage)
+      if (readBack.status !== 'ready' || !isDayMemoSyncMetadataV5(readBack.metadata)
+        || !same(readBack.metadata, candidateMetadata)) {
+        const rollback = readBack.status === 'ready'
+          ? replaceDayMemoSyncMetadataV2(window.localStorage, metadata.metadata, readBack.raw) : 'rollback_failed'
+        finish('blocked', rollback === 'saved' ? 'cleanup_read_back_failed' : 'cleanup_rollback_failed', {
+          date: snapshot.source.date, localChanged: true, localState: 'saved', postApplyVerified: true,
+          rollbackAttempted: true, rollbackSucceeded: rollback === 'saved', differenceCount })
+        return resultRef.current
+      }
+      const normalSyncReady = differenceCount === 0 && readBack.metadata.baselineStatus === 'confirmed'
+        && Boolean(readBack.metadata.baselineConfirmedAt) && !readBack.metadata.pendingOperation
+        && !readBack.metadata.pushBlock && Object.keys(readBack.metadata.localDeleteIntents).length === 0
+      input.adoptVerifiedMetadata(readBack.metadata)
+      applied.current = null
+      preparation.current = null
+      execution.current = null
+      return finish('completed', normalSyncReady ? 'body_mismatch_remote_completed_normal_sync_ready'
+        : 'body_mismatch_remote_completed_remaining_differences', {
+        date: snapshot.source.date, remainingCount: differenceCount, localChanged: true,
+        metadataChanged: true, localState: 'saved', localReadBackVerified: true,
+        postApplyVerified: true, metadataSaved: true, metadataReadBackVerified: true,
+        baselineStatus: readBack.metadata.baselineStatus === 'confirmed' ? 'confirmed' : 'recovery_required',
+        normalSyncReady, differenceCount,
+        metadataVerified: true, workspaceVerified: true, localVerified: true,
+        remoteVerified: true, baselineVerified: true, cursorVerified: true,
+        differencesVerified: true })
+    } catch {
+      block('unknown', snapshot.source.date, 'saved')
+      return resultRef.current
+    } finally {
+      inFlight.current = false
+      setRunning(false)
+    }
+  }, [block, finish, input, stage])
 
   const verifyAfterApply = useCallback(async () => {
     const snapshot = applied.current
@@ -504,5 +638,5 @@ export function useDayMemoBodyMismatchRemoteAdoption(input: Input) {
   return { stage, running, result, canPrepare: stage === 'idle' && Boolean(candidate), canApply,
     canVerifyPreparation: stage === 'preparation_ready', canVerify: stage === 'local_saved', canSave: stage === 'metadata_ready',
     prepareRemote, verifyPreparedRemote, getPreparationSnapshot, getExecutionSnapshot,
-    applyRemote, verifyAfterApply, saveMetadata, discard }
+    applyRemote, finalizeRemoteAdoption, verifyAfterApply, saveMetadata, discard }
 }

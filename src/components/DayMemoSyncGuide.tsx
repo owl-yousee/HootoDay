@@ -372,7 +372,7 @@ export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, b
                 <p>この操作ではiPhoneの内容だけを変更します。同期先は変更しません。</p>
                 <p className="cloud-sync-note">iPhoneのデータ変更：あり／同期先への書き込み：なし／metadata変更：反映後確認であり／自動retry：なし</p>
                 <button type="button" className="health-primary-button cloud-sync-button" disabled={!bodyRemoteAdoption.canApply || bodyRemoteAdoption.running}
-                  onClick={() => { void bodyRemoteAdoption.applyRemote() }}>{bodyRemoteAdoption.running ? '反映しています…' : 'この内容を反映する'}</button>
+                  onClick={() => { void bodyRemoteAdoption.applyRemote() }}>{bodyRemoteAdoption.running ? 'remote本文を反映中…' : 'remote本文をこの端末へ反映'}</button>
                 <button type="button" className="health-secondary-button cloud-sync-button" onClick={bodyCandidate.clearChoice}>選び直す</button>
               </>}
             </>
