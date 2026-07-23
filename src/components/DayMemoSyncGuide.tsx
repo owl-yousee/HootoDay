@@ -106,8 +106,10 @@ export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, b
     bodyLocalPreparation.discard()
     bodyCandidate.confirmCandidate(choice, bodyCandidate.result?.diagnostics.snapshotRevision ?? undefined)
   }
-  const bodyMismatchLocalCandidateAction = bodyMismatchCandidateAction('local', confirmBodyMismatchChoice)
-  const bodyMismatchRemoteCandidateAction = bodyMismatchCandidateAction('remote', confirmBodyMismatchChoice)
+  const bodyMismatchLocalCandidateAction = bodyMismatchCandidateAction('local',
+    () => confirmBodyMismatchChoice('local'))
+  const bodyMismatchRemoteCandidateAction = bodyMismatchCandidateAction('remote',
+    () => confirmBodyMismatchChoice('remote'))
 
   const savedReady = saved.result?.safety === 'normal_difference_checkpoint_saved_state_ready'
   const currentStage = remoteOnlyCurrent ? `同期先のみデータ：${remoteOnly.stage}`

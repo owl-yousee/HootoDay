@@ -25,24 +25,34 @@ export const BODY_MISMATCH_REMOTE_ACTIONS = {
 
 export type BodyMismatchRemoteActionKey = keyof typeof BODY_MISMATCH_REMOTE_ACTIONS
 
-export interface BodyMismatchCandidateAction {
-  key: `candidate_${DayMemoNormalBodyMismatchChoice}`
-  choice: DayMemoNormalBodyMismatchChoice
-  label: (typeof BODY_MISMATCH_CANDIDATE_ACTIONS)[DayMemoNormalBodyMismatchChoice]
+export interface BodyMismatchCandidateAction<Choice extends DayMemoNormalBodyMismatchChoice> {
+  key: `candidate_${Choice}`
+  choice: Choice
+  label: (typeof BODY_MISMATCH_CANDIDATE_ACTIONS)[Choice]
   handler: () => void
 }
 
-export function bodyMismatchCandidateAction(
-  choice: DayMemoNormalBodyMismatchChoice,
-  handler: (choice: DayMemoNormalBodyMismatchChoice) => void,
+export function bodyMismatchCandidateAction<Choice extends DayMemoNormalBodyMismatchChoice>(
+  choice: Choice,
+  handler: () => void,
   eligible = true,
-): BodyMismatchCandidateAction | null {
+): BodyMismatchCandidateAction<Choice> | null {
   return eligible ? {
     key: `candidate_${choice}`,
     choice,
     label: BODY_MISMATCH_CANDIDATE_ACTIONS[choice],
-    handler: () => handler(choice),
+    handler,
   } : null
+}
+
+export function resolveReadyBodyMismatchCandidateChoice(
+  status: 'checking' | 'ready' | 'blocked' | 'failed' | null | undefined,
+  result: { candidate: DayMemoNormalBodyMismatchChoice | null; safety: string } | null | undefined,
+): DayMemoNormalBodyMismatchChoice | null {
+  if (status !== 'ready' || !result?.candidate) return null
+  if (result.candidate === 'local' && result.safety === 'normal_body_mismatch_candidate_local') return 'local'
+  if (result.candidate === 'remote' && result.safety === 'normal_body_mismatch_candidate_remote') return 'remote'
+  return null
 }
 
 export function bodyMismatchRemoteAction(

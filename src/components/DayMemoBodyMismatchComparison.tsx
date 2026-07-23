@@ -8,10 +8,11 @@ interface Props {
 
 export function DayMemoBodyMismatchComparison({ candidate, disabled = false }: Props) {
   if (!candidate.eligible) return null
-  const selectedAction = candidate.choice
-    ? bodyMismatchCandidateAction(candidate.choice, (choice) => {
+  const selectedChoice = candidate.choice
+  const selectedAction = selectedChoice
+    ? bodyMismatchCandidateAction(selectedChoice, () => {
       const revision = candidate.result?.diagnostics.snapshotRevision
-      candidate.confirmCandidate(choice, revision ?? undefined)
+      candidate.confirmCandidate(selectedChoice, revision ?? undefined)
     }, !disabled)
     : null
   return (
