@@ -331,7 +331,7 @@ export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, b
               </ul>
               <div className="iphone-sync-guide-actions">
                 <button type="button" className="health-primary-button cloud-sync-button"
-                  disabled={bodyCandidate.checking} onClick={() => { void bodyCandidate.compare() }}>
+                  disabled={bodyCandidate.checking} onClick={() => { void bodyCandidate.compare(activeDate) }}>
                   localとremoteを再確認
                 </button>
                 <button type="button" className="health-secondary-button cloud-sync-button"
@@ -343,8 +343,8 @@ export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, b
               <h5>内容を比較します</h5>
               <p>このiPhoneと同期先の内容を読み取り専用で表示します。</p>
               <button type="button" className="health-primary-button cloud-sync-button" disabled={bodyCandidate.checking}
-                onClick={() => { if (bodyCandidate.selectedDate !== activeDate) bodyCandidate.setSelectedDate(activeDate); else void bodyCandidate.compare() }}>
-                {bodyCandidate.selectedDate !== activeDate ? 'この日付を比較対象にする' : bodyCandidate.checking ? '内容を比較中…' : '内容を比較'}
+                onClick={() => { void bodyCandidate.compare(activeDate) }}>
+                {bodyCandidate.checking ? '内容を比較中…' : '内容を比較'}
               </button>
             </> : <>
               <div className="iphone-sync-guide-comparison">

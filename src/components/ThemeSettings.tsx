@@ -863,8 +863,7 @@ export function ThemeSettings({
       case 'candidate_prepare': if (date) void dayMemoRecoveryLocalOnlyPreparation.prepare(date); break
       case 'body_mismatch_compare':
         if (!date) break
-        if (dayMemoNormalBodyMismatchCandidate.selectedDate !== date) dayMemoNormalBodyMismatchCandidate.setSelectedDate(date)
-        else void dayMemoNormalBodyMismatchCandidate.compare()
+        void dayMemoNormalBodyMismatchCandidate.compare(date)
         break
       case 'preflight': void dayMemoBodyMismatchRecoveryPreflight.check(); break
       case 'send': void dayMemoBodyMismatchRecoverySend.send(); break
@@ -1710,6 +1709,45 @@ export function ThemeSettings({
                         ) : null}
                         {normalSyncCheckUi.status !== 'checking' && !navigationCanExecute && navigationDisabledReason
                           ? <p className="cloud-sync-note">{navigationDisabledReason}</p> : null}
+                        {recoveryNavigation.stage === 'body_mismatch_compare'
+                          && dayMemoNormalBodyMismatchCandidate.result?.failureReason
+                          && dayMemoNormalBodyMismatchCandidate.result.date === recoveryNavigation.targetDate ? (
+                            <div className="cloud-day-memo-preview-result is-blocked" role="alert">
+                              <h5>比較を安全に完了できませんでした</h5>
+                              <ul className="cloud-day-memo-preview-summary">
+                                <li>比較判定：blocked</li>
+                                <li>対象：{dayMemoNormalBodyMismatchCandidate.result.date}</li>
+                                <li>分類：body_mismatch</li>
+                                <li>内部safety：{dayMemoNormalBodyMismatchCandidate.result.safety}</li>
+                                <li>停止段階：{dayMemoNormalBodyMismatchCandidate.result.stopStage}</li>
+                                <li>failureReason：{dayMemoNormalBodyMismatchCandidate.result.failureReason}</li>
+                                <li>Saved Recovery State：{dayMemoNormalBodyMismatchCandidate.result.diagnostics.savedStateConfirmed ? '確認済み' : '未確認'}</li>
+                                <li>metadata：{dayMemoNormalBodyMismatchCandidate.result.diagnostics.metadataValid ? '確認済み' : '未確認／不一致'}</li>
+                                <li>workspace：{dayMemoNormalBodyMismatchCandidate.result.diagnostics.workspaceMatched ? '一致' : '未確認／不一致'}</li>
+                                <li>local snapshot：{dayMemoNormalBodyMismatchCandidate.result.diagnostics.localSnapshotMatched ? '一致' : '未確認／不一致'}</li>
+                                <li>full pull：{dayMemoNormalBodyMismatchCandidate.result.diagnostics.fullPullSucceeded ? '完了' : '未完了'}</li>
+                                <li>cursor：{dayMemoNormalBodyMismatchCandidate.result.diagnostics.cursorMatched ? '一致' : '未確認／不一致'}</li>
+                                <li>remote／baseline：{dayMemoNormalBodyMismatchCandidate.result.diagnostics.remoteBaselineMatched ? '一致' : '未確認／不一致'}</li>
+                                <li>body mismatch再分類：{dayMemoNormalBodyMismatchCandidate.result.diagnostics.bodyMismatchConfirmed ? '確認済み' : '未確認'}</li>
+                                <li>snapshot revision：{dayMemoNormalBodyMismatchCandidate.result.diagnostics.snapshotRevision ?? '未生成'}</li>
+                                <li>Supabase書き込み：なし</li><li>永続変更：なし</li><li>自動retry：なし</li>
+                              </ul>
+                              <button type="button" className="health-primary-button cloud-sync-button"
+                                disabled={dayMemoNormalBodyMismatchCandidate.checking}
+                                onClick={() => { if (recoveryNavigation.targetDate) void dayMemoNormalBodyMismatchCandidate.compare(recoveryNavigation.targetDate) }}>
+                                localとremoteを再確認
+                              </button>
+                              <button type="button" className="health-secondary-button cloud-sync-button"
+                                disabled={dayMemoSavedRecoveryStateCheck.checking}
+                                onClick={() => {
+                                  dayMemoNormalBodyMismatchCandidate.discard()
+                                  dayMemoSavedRecoveryStateCheck.discard()
+                                  void dayMemoSavedRecoveryStateCheck.check()
+                                }}>保存後の同期状態から再確認</button>
+                              <button type="button" className="health-secondary-button cloud-sync-button"
+                                onClick={dayMemoNormalBodyMismatchCandidate.discard}>比較結果を閉じる</button>
+                            </div>
+                          ) : null}
                       </>}
                       {normalSyncCheckUi.status !== 'idle' ? <div className={`cloud-day-memo-preview-result is-${normalSyncCheckUi.status}`} role="status" aria-live="polite">
                         <h5>{normalSyncCheckUi.status === 'checking' ? '同期状態を確認しています…'

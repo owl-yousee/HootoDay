@@ -181,82 +181,86 @@ export function useDayMemoNormalBodyMismatchCandidate({ dayMemos, isConfigured, 
     setComparison(null); setChoice(null); setResult(null); setChecking(false)
   }, [bodyMismatchDates])
 
-  const compare = useCallback(async () => {
-    if (!eligible || checking || !supabaseClient || !connectionIsEligible(connection) || !selectedDate) return
+  const compare = useCallback(async (requestedDate?: string) => {
+    const targetDate = requestedDate ?? selectedDate
+    if (!eligible || checking || !supabaseClient || !connectionIsEligible(connection)
+      || !targetDate || !bodyMismatchDates.includes(targetDate)) return
     const runId = ++runIdRef.current
+    setSelectedDateState(targetDate)
+    const fail = (safety: DayMemoNormalBodyMismatchSafety) => finish(safety, targetDate)
     diagnosticsRef.current = { ...EMPTY_DIAGNOSTICS, savedStateConfirmed: savedStateReady }
     comparisonSnapshotRef.current = null; candidateSnapshotRef.current = null
     setChecking(true); setComparison(null); setChoice(null); setResult(null)
     try {
       if (!savedStateReady || !savedRecoveryResult
-        || savedRecoveryResult.unresolvedClassifications[selectedDate] !== 'body_mismatch'
-        || bodyMismatchDates.length !== 1) { finish('normal_body_mismatch_checkpoint_missing'); return }
+        || savedRecoveryResult.unresolvedClassifications[targetDate] !== 'body_mismatch'
+        || bodyMismatchDates.length !== 1) { fail('normal_body_mismatch_checkpoint_missing'); return }
       const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
       const stored = readDayMemoStorageSnapshot(window.localStorage)
       if (loaded.status !== 'ready' || !isDayMemoSyncMetadataV5(loaded.metadata) || !reactMetadata
         || JSON.stringify(loaded.metadata) !== JSON.stringify(reactMetadata) || stored.status !== 'ready') {
-        finish('normal_body_mismatch_verification_stale'); return
+        fail('normal_body_mismatch_verification_stale'); return
       }
       const metadata = loaded.metadata
       diagnosticsRef.current.metadataValid = true
-      if (metadata.workspaceId !== connection.workspaceId) { finish('normal_body_mismatch_workspace_mismatch'); return }
+      if (metadata.workspaceId !== connection.workspaceId) { fail('normal_body_mismatch_workspace_mismatch'); return }
       diagnosticsRef.current.workspaceMatched = true
-      if (metadata.baselineStatus !== 'recovery_required' || metadata.baselineConfirmedAt !== null) { finish('normal_body_mismatch_prerequisite_missing'); return }
-      if (metadata.pendingOperation) { finish('normal_body_mismatch_pending_remaining'); return }
-      if (Object.keys(metadata.localDeleteIntents).length) { finish('normal_body_mismatch_intent_remaining'); return }
-      if (metadata.pushBlock) { finish('normal_body_mismatch_push_blocked'); return }
+      if (metadata.baselineStatus !== 'recovery_required' || metadata.baselineConfirmedAt !== null) { fail('normal_body_mismatch_prerequisite_missing'); return }
+      if (metadata.pendingOperation) { fail('normal_body_mismatch_pending_remaining'); return }
+      if (Object.keys(metadata.localDeleteIntents).length) { fail('normal_body_mismatch_intent_remaining'); return }
+      if (metadata.pushBlock) { fail('normal_body_mismatch_push_blocked'); return }
       if (localSignature(stored.memos) !== signature || localSignature(dayMemos) !== signature) {
-        finish('normal_body_mismatch_verification_stale'); return
+        fail('normal_body_mismatch_verification_stale'); return
       }
       diagnosticsRef.current.localSnapshotMatched = true
-      const local = stored.memos.find((memo) => memo.date === selectedDate)
-      if (!local || !isStoredDayMemo(local)) { finish('normal_body_mismatch_local_invalid'); return }
+      const local = stored.memos.find((memo) => memo.date === targetDate)
+      if (!local || !isStoredDayMemo(local)) { fail('normal_body_mismatch_local_invalid'); return }
       const pulled = await pullAllDayMemoSyncRecords(supabaseClient, connection.workspaceId, () => runIdRef.current === runId).catch(() => null)
-      if (!pulled || pulled.status !== 'complete') { finish('normal_body_mismatch_remote_invalid'); return }
+      if (!pulled || pulled.status !== 'complete') { fail('normal_body_mismatch_remote_invalid'); return }
       diagnosticsRef.current.fullPullSucceeded = true
       const after = loadDayMemoSyncMetadataAny(window.localStorage)
       const afterStored = readDayMemoStorageSnapshot(window.localStorage)
       if (runIdRef.current !== runId || after.status !== 'ready' || after.raw !== loaded.raw
         || afterStored.status !== 'ready' || afterStored.serialized !== stored.serialized || localSignature(dayMemos) !== signature) {
-        finish('normal_body_mismatch_verification_stale'); return
+        fail('normal_body_mismatch_verification_stale'); return
       }
-      if (pulled.maxChangeSequence !== metadata.lastPulledChangeSequence) { finish('normal_body_mismatch_cursor_invalid'); return }
+      if (pulled.maxChangeSequence !== metadata.lastPulledChangeSequence) { fail('normal_body_mismatch_cursor_invalid'); return }
       diagnosticsRef.current.cursorMatched = true
       const remoteByDate = new Map(pulled.records.map((record) => [record.entityId, record]))
-      if (remoteByDate.size !== pulled.records.length) { finish('normal_body_mismatch_remote_invalid'); return }
-      const remote = remoteByDate.get(selectedDate)
-      if (!remote) { finish('normal_body_mismatch_target_missing'); return }
-      if (remote.deletedAt !== null || !remote.payload || remote.payload.date !== selectedDate) {
-        finish('normal_body_mismatch_remote_changed'); return
+      if (remoteByDate.size !== pulled.records.length) { fail('normal_body_mismatch_remote_invalid'); return }
+      const remote = remoteByDate.get(targetDate)
+      if (!remote) { fail('normal_body_mismatch_target_missing'); return }
+      if (remote.deletedAt !== null || !remote.payload || remote.payload.date !== targetDate) {
+        fail('normal_body_mismatch_remote_changed'); return
       }
-      const targetBaseline = metadata.baselines[selectedDate] ?? null
+      const targetBaseline = metadata.baselines[targetDate] ?? null
       if (!targetBaseline || targetBaseline.deletedAt !== null
         || !remoteRecordMatchesConfirmedBaseline(remote, targetBaseline)) {
-        finish('normal_body_mismatch_target_mismatch'); return
+        fail('normal_body_mismatch_target_mismatch'); return
       }
       if (local.updatedAt === targetBaseline.baselineLocalUpdatedAt
         || local.content === remote.payload.content) {
-        finish('normal_body_mismatch_target_mismatch'); return
+        fail('normal_body_mismatch_target_mismatch'); return
       }
       diagnosticsRef.current.remoteBaselineMatched = true
       const localByDate = new Map(stored.memos.map((memo) => [memo.date, memo]))
       const dates = [...new Set([...localByDate.keys(), ...remoteByDate.keys(), ...Object.keys(metadata.baselines)])].sort()
       const classifications = new Map(dates.map((date) => [date, classifyDayMemoNormalDifference(
         localByDate.get(date) ?? null, remoteByDate.get(date) ?? null, metadata.baselines[date] ?? null)]))
-      if (classifications.get(selectedDate) !== 'body_mismatch') { finish('normal_body_mismatch_target_mismatch'); return }
+      if (classifications.get(targetDate) !== 'body_mismatch') { fail('normal_body_mismatch_target_mismatch'); return }
       diagnosticsRef.current.bodyMismatchConfirmed = true
       if ([...classifications.values()].some((value) => ['revision_lineage_mismatch', 'active_tombstone_mismatch', 'unknown'].includes(value))) {
-        finish('normal_body_mismatch_remote_changed'); return
+        fail('normal_body_mismatch_remote_changed'); return
       }
       const unresolvedDates = [...classifications].filter(([, value]) => UNRESOLVED.has(value)).map(([date]) => date).sort()
       if (JSON.stringify(Object.fromEntries(unresolvedDates.map((date) => [date, classifications.get(date)])))
           !== JSON.stringify(savedRecoveryResult.unresolvedClassifications)) {
-        finish('normal_body_mismatch_remote_changed'); return
+        fail('normal_body_mismatch_remote_changed'); return
       }
       const checkedAt = new Date().toISOString()
       const snapshotRevision = ++snapshotRevisionRef.current
       diagnosticsRef.current.snapshotRevision = snapshotRevision
-      comparisonSnapshotRef.current = { date: selectedDate, metadataRaw: loaded.raw,
+      comparisonSnapshotRef.current = { date: targetDate, metadataRaw: loaded.raw,
         localStorageSerialized: stored.serialized, workspaceId: connection.workspaceId, cursor: metadata.lastPulledChangeSequence,
         fullPullMaxSequence: pulled.maxChangeSequence, snapshotRevision,
         baselineRemoteRevision: targetBaseline.remoteRevision,
@@ -265,13 +269,13 @@ export function useDayMemoNormalBodyMismatchCandidate({ dayMemos, isConfigured, 
         baselineLocalUpdatedAt: targetBaseline.baselineLocalUpdatedAt,
         localMemo: { ...local }, remoteRecord: { ...remote, payload: { ...remote.payload } }, baselineStatus: 'recovery_required',
         classifications: Object.fromEntries(classifications), checkedAt }
-      setComparison({ date: selectedDate, localContent: local.content, remoteContent: remote.payload.content,
+      setComparison({ date: targetDate, localContent: local.content, remoteContent: remote.payload.content,
         localUpdatedAt: local.updatedAt, remoteUpdatedAt: remote.payload.updatedAt,
         localCharacterCount: local.content.length, remoteCharacterCount: remote.payload.content.length,
         remoteRevision: remote.revision, remoteChangeSequence: remote.changeSequence, checkedAt })
-      finish('normal_body_mismatch_compare_ready', selectedDate, null, true)
+      finish('normal_body_mismatch_compare_ready', targetDate, null, true)
     } finally { if (runIdRef.current === runId) setChecking(false) }
-  }, [bodyMismatchDates.length, checking, connection, dayMemos, eligible, finish, reactMetadata,
+  }, [bodyMismatchDates, checking, connection, dayMemos, eligible, finish, reactMetadata,
     savedRecoveryResult, savedStateReady, selectedDate, signature])
 
   const confirmCandidate = useCallback(() => {
