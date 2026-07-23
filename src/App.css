@@ -852,7 +852,7 @@
 .inventory-page { width: 100%; min-width: 0; }
 .inventory-tabs { margin-bottom: 14px; display: flex; gap: 7px; flex-wrap: wrap; }
 .inventory-tabs button, .inventory-actions button { min-height: 38px; padding: 7px 12px; border: 1px solid var(--color-border); border-radius: 10px; color: var(--color-text); background: var(--color-surface); font: inherit; font-weight: 700; cursor: pointer; }
-.inventory-tabs button[aria-current="page"] { border-color: var(--color-primary); color: var(--color-on-primary); background: var(--color-primary); }
+.inventory-tabs button[aria-pressed="true"] { border-color: var(--color-primary); color: var(--color-on-primary); background: var(--color-primary); }
 .inventory-toolbar { margin-bottom: 14px; padding: 14px; display: flex; align-items: end; gap: 12px; flex-wrap: wrap; border: 1px solid var(--color-border); border-radius: var(--radius-medium); background: var(--color-surface); }
 .inventory-toolbar label:not(.inventory-check) { min-width: min(100%, 250px); display: grid; gap: 6px; color: var(--color-text-muted); font-size: .78rem; font-weight: 700; }
 .inventory-toolbar input, .inventory-dialog input, .inventory-dialog select, .inventory-dialog textarea { width: 100%; max-width: 100%; min-width: 0; padding: 9px 10px; border: 1px solid var(--color-border); border-radius: 9px; color: var(--color-text); background: var(--color-surface-soft); font: inherit; box-sizing: border-box; }
