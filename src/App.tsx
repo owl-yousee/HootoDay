@@ -50,7 +50,6 @@ import { useDayMemoBodyMismatchRecoveryPostSendVerification } from './hooks/useD
 import { useDayMemoBodyMismatchRecoveryCheckpointSave } from './hooks/useDayMemoBodyMismatchRecoveryCheckpointSave'
 import { useDayMemoSavedRecoveryStateCheck } from './hooks/useDayMemoSavedRecoveryStateCheck'
 import { useDayMemoRecoveryLocalOnlyPreparation } from './hooks/useDayMemoRecoveryLocalOnlyPreparation'
-import { useDayMemoRecoveryLocalOnlyDiscard } from './hooks/useDayMemoRecoveryLocalOnlyDiscard'
 import { useDayMemoRecoveryRemoteOnlyAdoption } from './hooks/useDayMemoRecoveryRemoteOnlyAdoption'
 import { useDayMemoRecoveryFinalization } from './hooks/useDayMemoRecoveryFinalization'
 import { useDayMemoNormalMetadataRepair } from './hooks/useDayMemoNormalMetadataRepair'
@@ -313,15 +312,6 @@ function App() {
     reactMetadata: dayMemoSyncBaseline.metadata?.version === 5 ? dayMemoSyncBaseline.metadata : null,
     savedRecoveryResult: dayMemoSavedRecoveryStateCheck.result,
     adoptVerifiedMetadata: dayMemoSyncBaseline.adoptVerifiedMetadata,
-  })
-  const dayMemoRecoveryLocalOnlyDiscard = useDayMemoRecoveryLocalOnlyDiscard({
-    dayMemos,
-    isConfigured: supabaseAuth.isConfigured,
-    isSignedIn: supabaseAuth.isSignedIn,
-    connection: supabaseWorkspace.connection,
-    reactMetadata: dayMemoSyncBaseline.metadata?.version === 5 ? dayMemoSyncBaseline.metadata : null,
-    savedRecoveryResult: dayMemoSavedRecoveryStateCheck.result,
-    adoptVerifiedStoredDayMemos,
   })
   const dayMemoRecoveryRemoteOnlyAdoption = useDayMemoRecoveryRemoteOnlyAdoption({
     dayMemos,
@@ -822,7 +812,6 @@ function App() {
           dayMemoBodyMismatchRecoveryCheckpointSave={dayMemoBodyMismatchRecoveryCheckpointSave}
           dayMemoSavedRecoveryStateCheck={dayMemoSavedRecoveryStateCheck}
           dayMemoRecoveryLocalOnlyPreparation={dayMemoRecoveryLocalOnlyPreparation}
-          dayMemoRecoveryLocalOnlyDiscard={dayMemoRecoveryLocalOnlyDiscard}
           dayMemoRecoveryRemoteOnlyAdoption={dayMemoRecoveryRemoteOnlyAdoption}
           dayMemoRecoveryFinalization={dayMemoRecoveryFinalization}
           dayMemoNormalMetadataRepair={dayMemoNormalMetadataRepair}

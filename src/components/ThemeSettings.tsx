@@ -3,8 +3,6 @@ import { MoonIcon } from '@phosphor-icons/react/Moon'
 import { SunIcon } from '@phosphor-icons/react/Sun'
 import { XIcon } from '@phosphor-icons/react/X'
 import { useEffect, useRef, useState, type MouseEvent, type SyntheticEvent } from 'react'
-import { DayMemoBodyMismatchComparison } from './DayMemoBodyMismatchComparison'
-import { DayMemoSyncGuide } from './DayMemoSyncGuide'
 import { DayMemoSyncDifferenceCards, type SyncDifferenceActionSelection } from './DayMemoSyncDifferenceCards'
 import { DayMemoRemoteOnlyBlockedDetails } from './DayMemoRemoteOnlyBlockedDetails'
 import { CopyTextControl } from './CopyTextControl'
@@ -44,7 +42,6 @@ import type { useDayMemoBodyMismatchRecoveryPostSendVerification } from '../hook
 import type { useDayMemoBodyMismatchRecoveryCheckpointSave } from '../hooks/useDayMemoBodyMismatchRecoveryCheckpointSave'
 import type { useDayMemoSavedRecoveryStateCheck } from '../hooks/useDayMemoSavedRecoveryStateCheck'
 import type { useDayMemoRecoveryLocalOnlyPreparation } from '../hooks/useDayMemoRecoveryLocalOnlyPreparation'
-import type { useDayMemoRecoveryLocalOnlyDiscard } from '../hooks/useDayMemoRecoveryLocalOnlyDiscard'
 import type { useDayMemoRecoveryRemoteOnlyAdoption } from '../hooks/useDayMemoRecoveryRemoteOnlyAdoption'
 import type { useDayMemoRecoveryFinalization } from '../hooks/useDayMemoRecoveryFinalization'
 import type { useDayMemoNormalMetadataRepair } from '../hooks/useDayMemoNormalMetadataRepair'
@@ -107,7 +104,6 @@ interface ThemeSettingsProps {
   dayMemoBodyMismatchRecoveryCheckpointSave: ReturnType<typeof useDayMemoBodyMismatchRecoveryCheckpointSave>
   dayMemoSavedRecoveryStateCheck: ReturnType<typeof useDayMemoSavedRecoveryStateCheck>
   dayMemoRecoveryLocalOnlyPreparation: ReturnType<typeof useDayMemoRecoveryLocalOnlyPreparation>
-  dayMemoRecoveryLocalOnlyDiscard: ReturnType<typeof useDayMemoRecoveryLocalOnlyDiscard>
   dayMemoRecoveryRemoteOnlyAdoption: ReturnType<typeof useDayMemoRecoveryRemoteOnlyAdoption>
   dayMemoRecoveryFinalization: ReturnType<typeof useDayMemoRecoveryFinalization>
   dayMemoNormalMetadataRepair: ReturnType<typeof useDayMemoNormalMetadataRepair>
@@ -633,7 +629,6 @@ export function ThemeSettings({
   dayMemoBodyMismatchRecoveryCheckpointSave,
   dayMemoSavedRecoveryStateCheck,
   dayMemoRecoveryLocalOnlyPreparation,
-  dayMemoRecoveryLocalOnlyDiscard,
   dayMemoRecoveryRemoteOnlyAdoption,
   dayMemoRecoveryFinalization,
   dayMemoNormalMetadataRepair,
@@ -1260,8 +1255,14 @@ export function ThemeSettings({
   )
   const bodyMismatchLocalFlowActive = bodyMismatchLocalFlow.stage !== 'idle'
     && bodyMismatchLocalFlow.date === lastBodyMismatchComparisonRun?.requestedDate
-  const bodyMismatchIntegratedFlowActive = Boolean(lastBodyMismatchComparisonRun
-    && recoveryNavigation.targetDate === lastBodyMismatchComparisonRun.requestedDate)
+  const bodyMismatchIntegratedFlowActive = Boolean(
+    (lastBodyMismatchComparisonRun
+      && recoveryNavigation.targetDate === lastBodyMismatchComparisonRun.requestedDate)
+    || syncMetadata?.pendingOperation?.kind === 'upsert'
+      && syncMetadata.pendingOperation.operationMode === 'body_mismatch_recovery'
+    || Object.values(dayMemoSavedRecoveryStateCheck.result?.unresolvedClassifications ?? {})
+      .includes('body_mismatch'),
+  )
 
   const runRecoveryNavigationAction = () => {
     const date = recoveryNavigation.targetDate
@@ -1660,19 +1661,6 @@ export function ThemeSettings({
             <div className="cloud-workspace-panel">
               {supabaseWorkspace.workspaceState === 'created' ? (
                 <>
-                  {syncMetadata?.baselineStatus === 'recovery_required'
-                    && supabaseWorkspace.connection?.deviceRole === 'child'
-                    && supabaseWorkspace.connection.workspaceRole === 'member' ? (
-                    <DayMemoSyncGuide metadata={syncMetadata}
-                      saved={dayMemoSavedRecoveryStateCheck}
-                      checkpoint={dayMemoNormalDifferenceRecoveryCheckpointCheck}
-                      bodyCandidate={dayMemoNormalBodyMismatchCandidate}
-                      bodyLocalPreparation={dayMemoNormalBodyMismatchLocalPreparation}
-                      bodyRemoteAdoption={dayMemoBodyMismatchRemoteAdoption}
-                      localOnly={dayMemoRecoveryLocalOnlyPreparation}
-                      localOnlyDiscard={dayMemoRecoveryLocalOnlyDiscard}
-                      remoteOnly={dayMemoRecoveryRemoteOnlyAdoption} />
-                  ) : null}
                   <div className={`cloud-day-memo-safety-panel is-${dayMemoSyncSafety.state}`} role={dayMemoSyncSafety.state === 'normal' ? 'status' : 'alert'}>
                     <h4>同期状態</h4>
                     <p><strong>{isConfirmedMetadata
@@ -2524,9 +2512,11 @@ export function ThemeSettings({
                           {selectedMismatchDate ? <p className="cloud-sync-note">選択済み：{selectedMismatchDate} / {dayMemoNormalDifferenceRecoveryPlan.result.items.find((item) => item.date === selectedMismatchDate)?.classification}。永続変更は行っていません。</p> : null}
                         </>
                       ) : <>
-                        <button type="button" className="health-primary-button cloud-sync-button"
-                          disabled={normalSyncCheckUi.status === 'checking' || !navigationCanExecute} onClick={runRecoveryNavigationAction}>
-                          {normalSyncCheckUi.status === 'checking' ? '確認しています…' : recoveryNavigation.title}</button>
+                        {recoveryNavigation.stage !== 'complete' ? (
+                          <button type="button" className="health-primary-button cloud-sync-button"
+                            disabled={normalSyncCheckUi.status === 'checking' || !navigationCanExecute} onClick={runRecoveryNavigationAction}>
+                            {normalSyncCheckUi.status === 'checking' ? '確認しています…' : recoveryNavigation.title}</button>
+                        ) : null}
                         {recoveryNavigation.stage === 'normal_local_only_recheck' ? (
                           <button type="button" className="health-secondary-button cloud-sync-button"
                             onClick={restartNormalSyncAfterLocalOnlyFailure}>
@@ -2534,6 +2524,8 @@ export function ThemeSettings({
                           </button>
                         ) : null}
                         {normalSyncCheckUi.status !== 'checking'
+                          && normalSyncCheckUi.status !== 'success'
+                          && recoveryNavigation.stage !== 'complete'
                           && !dayMemoNormalBodyMismatchCandidate.checking
                           && !lastBodyMismatchComparisonRun
                           && !navigationCanExecute && navigationDisabledReason
@@ -2922,7 +2914,6 @@ export function ThemeSettings({
                             <li>revision系譜不一致：{dayMemoRemoteAdoptionVerification.result.outside.revisionMismatch}件</li>
                             <li>確認日時：{new Date(dayMemoRemoteAdoptionVerification.result.checkedAt).toLocaleString('ja-JP')}</li>
                           </ul>
-                          <p>{dayMemoRemoteAdoptionVerification.result.nextAction}</p>
                           <button type="button" className="health-secondary-button cloud-sync-button" onClick={dayMemoRemoteAdoptionVerification.discard}>
                             採用後確認結果を破棄
                           </button>
@@ -2956,7 +2947,6 @@ export function ThemeSettings({
                             <li>rollback：{dayMemoMetadataV4Migration.result.rollbackAttempted ? '実施' : 'なし'}</li>
                             <li>確認日時：{new Date(dayMemoMetadataV4Migration.result.checkedAt).toLocaleString('ja-JP')}</li>
                           </ul>
-                          <p>{dayMemoMetadataV4Migration.result.nextAction}</p>
                           {dayMemoMetadataV4Migration.result.ready ? (
                             <button type="button" className="health-primary-button cloud-sync-button" onClick={dayMemoMetadataV4Migration.migrate}>
                               metadata v4へ移行
@@ -2992,7 +2982,6 @@ export function ThemeSettings({
                             <li>rollback：{dayMemoMetadataV5Migration.result.rollbackAttempted ? (dayMemoMetadataV5Migration.result.rollbackSucceeded ? '成功' : '確認不能') : 'なし'}</li>
                             <li>確認日時：{new Date(dayMemoMetadataV5Migration.result.checkedAt).toLocaleString('ja-JP')}</li>
                           </ul>
-                          <p>{dayMemoMetadataV5Migration.result.nextAction}</p>
                           {dayMemoMetadataV5Migration.result.ready ? (
                             <button type="button" className="health-primary-button cloud-sync-button" onClick={dayMemoMetadataV5Migration.migrate}>
                               metadata v5へ移行
@@ -3051,7 +3040,6 @@ export function ThemeSettings({
                             <li>採用後確認結果：{dayMemoLocalOperationPreparationCheck.result.verificationFresh ? '現在状態と一致' : '古い／確認不能'}</li>
                             <li>確認日時：{new Date(dayMemoLocalOperationPreparationCheck.result.checkedAt).toLocaleString('ja-JP')}</li>
                           </ul>
-                          <p>{dayMemoLocalOperationPreparationCheck.result.nextAction}</p>
                           <button type="button" className="health-secondary-button cloud-sync-button" onClick={dayMemoLocalOperationPreparationCheck.discard}>
                             準備確認結果を破棄
                           </button>
@@ -3111,7 +3099,6 @@ export function ThemeSettings({
                             <li>remote送信：未実施</li>
                             <li>確認日時：{new Date(dayMemoLocalOperationPreparation.result.checkedAt).toLocaleString('ja-JP')}</li>
                           </ul>
-                          <p>{dayMemoLocalOperationPreparation.result.nextAction}</p>
                           <button type="button" className="health-secondary-button cloud-sync-button" onClick={dayMemoLocalOperationPreparation.discard}>
                             準備結果を破棄
                           </button>
@@ -3152,7 +3139,6 @@ export function ThemeSettings({
                             <li>RPC送信：未実施</li>
                             <li>確認日時：{new Date(dayMemoLocalOperationRemoteCheck.result.checkedAt).toLocaleString('ja-JP')}</li>
                           </ul>
-                          <p>{dayMemoLocalOperationRemoteCheck.result.nextAction}</p>
                           {dayMemoLocalOperationRemoteCheck.result.sendable && dayMemoLocalOperationRemoteCheck.result.operationKind === 'upsert' ? (
                             <button type="button" className="health-secondary-button cloud-sync-button" disabled={!dayMemoLocalOperationSend.canSend} onClick={() => { void dayMemoLocalOperationSend.send('upsert') }}>
                               準備済みの保存操作を送信
@@ -3186,7 +3172,6 @@ export function ThemeSettings({
                             <li>復旧確認：{dayMemoLocalOperationSend.result.recoveryRequired ? '必要' : '不要'}</li>
                             <li>確認日時：{new Date(dayMemoLocalOperationSend.result.checkedAt).toLocaleString('ja-JP')}</li>
                           </ul>
-                          <p>{dayMemoLocalOperationSend.result.nextAction}</p>
                           <button type="button" className="health-secondary-button cloud-sync-button" onClick={dayMemoLocalOperationSend.discard}>
                             送信結果を破棄
                           </button>
@@ -3352,7 +3337,6 @@ export function ThemeSettings({
                           ) : null}
                           <p><strong>推奨復旧順序</strong></p>
                           <ol>{dayMemoNormalDifferenceRecoveryPlan.result.recommendedOrder.map((step) => <li key={step}>{step}</li>)}</ol>
-                          <p>{dayMemoNormalDifferenceRecoveryPlan.result.nextAction}</p>
                           <p className="cloud-sync-note">確認結果はReact stateだけに保持します。metadata、baseline、cursor、DayMemo、pending、intent、remoteは変更しません。RPC送信も行いません。</p>
                           <button type="button" className="health-secondary-button cloud-sync-button" onClick={dayMemoNormalDifferenceRecoveryPlan.discard}>復旧計画結果を破棄</button>
                         </div>
@@ -3400,7 +3384,6 @@ export function ThemeSettings({
                               {dayMemoNormalDifferenceRecoveryCheckpointCheck.result.unresolvedDates.map((date) => <li key={date}><strong>{date}</strong></li>)}
                             </ul>
                           ) : null}
-                          <p>{dayMemoNormalDifferenceRecoveryCheckpointCheck.result.nextAction}</p>
                           <p className="cloud-sync-note">checkpoint readyは通常同期readyではありません。cursor候補は完全一致baselineと一体で、未解決差異はrecovery_requiredのまま維持します。</p>
                           <button type="button" className="health-secondary-button cloud-sync-button" disabled={!dayMemoNormalDifferenceRecoveryCheckpointSave.canSave} onClick={() => { void dayMemoNormalDifferenceRecoveryCheckpointSave.save() }}>
                             {dayMemoNormalDifferenceRecoveryCheckpointSave.saving ? 'checkpointを保存中…' : '復旧checkpointを保存'}
@@ -3427,14 +3410,11 @@ export function ThemeSettings({
                             <li>RPC送信：なし</li>
                             <li>確認日時：{new Date(dayMemoNormalDifferenceRecoveryCheckpointSave.result.checkedAt).toLocaleString('ja-JP')}</li>
                           </ul>
-                          <p>{dayMemoNormalDifferenceRecoveryCheckpointSave.result.nextAction}</p>
                           <button type="button" className="health-secondary-button cloud-sync-button" disabled={dayMemoNormalDifferenceRecoveryCheckpointSave.saving} onClick={dayMemoNormalDifferenceRecoveryCheckpointSave.discard}>checkpoint保存結果を破棄</button>
                         </div>
                       ) : null}
                     </div>
                   ) : null}
-                  {!bodyMismatchIntegratedFlowActive ? <DayMemoBodyMismatchComparison candidate={dayMemoNormalBodyMismatchCandidate}
-                    disabled={dayMemoNormalBodyMismatchLocalPreparation.preparing} /> : null}
                   {!bodyMismatchIntegratedFlowActive
                     && (dayMemoNormalBodyMismatchLocalPreparation.eligible || dayMemoNormalBodyMismatchLocalPreparation.result) ? (
                     <div className="cloud-day-memo-baseline-panel" role="region" aria-labelledby="day-memo-body-mismatch-local-prepare-heading">
@@ -3464,7 +3444,6 @@ export function ThemeSettings({
                             <li>RPC送信：なし</li><li>通常同期ready：いいえ</li>
                             <li>確認日時：{new Date(dayMemoNormalBodyMismatchLocalPreparation.result.checkedAt).toLocaleString('ja-JP')}</li>
                           </ul>
-                          <p>{dayMemoNormalBodyMismatchLocalPreparation.result.nextAction}</p>
                           <button type="button" className="health-secondary-button cloud-sync-button" disabled={dayMemoNormalBodyMismatchLocalPreparation.preparing}
                             onClick={dayMemoNormalBodyMismatchLocalPreparation.discard}>local準備結果を破棄</button>
                         </div>
@@ -3502,7 +3481,6 @@ export function ThemeSettings({
                             <li>永続変更：なし</li><li>RPC送信：なし</li>
                             <li>確認日時：{new Date(dayMemoBodyMismatchRecoveryPreflight.result.checkedAt).toLocaleString('ja-JP')}</li>
                           </ul>
-                          <p>{dayMemoBodyMismatchRecoveryPreflight.result.nextAction}</p>
                           <button type="button" className="health-secondary-button cloud-sync-button"
                             disabled={dayMemoBodyMismatchRecoveryPreflight.checking}
                             onClick={dayMemoBodyMismatchRecoveryPreflight.discard}>送信前確認結果を破棄</button>
@@ -3544,7 +3522,6 @@ export function ThemeSettings({
                             <li>自動retry：なし</li>
                             <li>確認日時：{new Date(dayMemoBodyMismatchRecoverySend.result.checkedAt).toLocaleString('ja-JP')}</li>
                           </ul>
-                          <p>{dayMemoBodyMismatchRecoverySend.result.nextAction}</p>
                           <button type="button" className="health-secondary-button cloud-sync-button" disabled={dayMemoBodyMismatchRecoverySend.sending}
                             onClick={dayMemoBodyMismatchRecoverySend.discard}>送信結果表示を破棄</button>
                         </div>
@@ -3589,7 +3566,6 @@ export function ThemeSettings({
                             <li>自動retry：なし</li>
                             <li>確認日時：{new Date(dayMemoSavedOperationResultRead.result.checkedAt).toLocaleString('ja-JP')}</li>
                           </ul>
-                          <p>{dayMemoSavedOperationResultRead.result.nextAction}</p>
                           <button type="button" className="health-secondary-button cloud-sync-button"
                             disabled={dayMemoSavedOperationResultRead.reading}
                             onClick={dayMemoSavedOperationResultRead.discard}>取得結果を破棄</button>
@@ -3647,7 +3623,6 @@ export function ThemeSettings({
                             <li>自動retry：なし</li>
                             <li>確認日時：{new Date(dayMemoBodyMismatchRecoveryPostSendVerification.result.checkedAt).toLocaleString('ja-JP')}</li>
                           </ul>
-                          <p>{dayMemoBodyMismatchRecoveryPostSendVerification.result.nextAction}</p>
                           <button type="button" className="health-secondary-button cloud-sync-button"
                             disabled={dayMemoBodyMismatchRecoveryPostSendVerification.checking}
                             onClick={dayMemoBodyMismatchRecoveryPostSendVerification.discard}>確認結果を破棄</button>
@@ -3701,7 +3676,6 @@ export function ThemeSettings({
                             <li>verification snapshot：{dayMemoBodyMismatchRecoveryCheckpointSave.result.verificationSnapshotDiscarded ? '破棄済み' : '未消費'}</li>
                             <li>確認日時：{new Date(dayMemoBodyMismatchRecoveryCheckpointSave.result.checkedAt).toLocaleString('ja-JP')}</li>
                           </ul>
-                          <p>{dayMemoBodyMismatchRecoveryCheckpointSave.result.nextAction}</p>
                           <button type="button" className="health-secondary-button cloud-sync-button"
                             disabled={dayMemoBodyMismatchRecoveryCheckpointSave.saving}
                             onClick={dayMemoBodyMismatchRecoveryCheckpointSave.discard}>保存結果を破棄</button>
@@ -3749,7 +3723,7 @@ export function ThemeSettings({
                           </ul>
                           {dayMemoSavedRecoveryStateCheck.result.safety === 'normal_difference_checkpoint_saved_state_ready' ? (
                             <p className="cloud-day-memo-success">現在のcheckpointがbaseline・cursorへ保存済みであることを確認しました。残る差異を1件ずつ復旧できます。</p>
-                          ) : <p>{dayMemoSavedRecoveryStateCheck.result.nextAction}</p>}
+                          ) : null}
                           <button type="button" className="health-secondary-button cloud-sync-button"
                             disabled={dayMemoSavedRecoveryStateCheck.checking}
                             onClick={dayMemoSavedRecoveryStateCheck.discard}>確認結果を破棄</button>
