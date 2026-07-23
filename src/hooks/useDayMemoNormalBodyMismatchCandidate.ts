@@ -290,20 +290,24 @@ export function useDayMemoNormalBodyMismatchCandidate({ dayMemos, isConfigured, 
   }, [bodyMismatchDates, checking, connection, dayMemos, eligible, finish, reactMetadata,
     savedRecoveryResult, savedStateReady, selectedDate, signature])
 
-  const confirmCandidate = useCallback(() => {
+  const confirmCandidate = useCallback((requestedChoice?: DayMemoNormalBodyMismatchChoice, expectedSnapshotRevision?: number) => {
+    const selectedChoice = requestedChoice ?? choice
     const snapshot = comparisonSnapshotRef.current
     const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
     const stored = readDayMemoStorageSnapshot(window.localStorage)
-    if (!snapshot || !choice || !comparison || comparison.date !== snapshot.date
+    if (!snapshot || !selectedChoice || !comparison || comparison.date !== snapshot.date
+      || (expectedSnapshotRevision !== undefined && snapshot.snapshotRevision !== expectedSnapshotRevision)
       || !savedStateReady || savedRecoveryResult?.unresolvedClassifications[snapshot.date] !== 'body_mismatch'
       || !connectionIsEligible(connection) || connection.workspaceId !== snapshot.workspaceId
       || loaded.status !== 'ready' || loaded.raw !== snapshot.metadataRaw
       || stored.status !== 'ready' || stored.serialized !== snapshot.localStorageSerialized
       || localSignature(dayMemos) !== localSignature(stored.status === 'ready' ? stored.memos : [])) {
-      finish('normal_body_mismatch_verification_stale'); return
+      return finish('normal_body_mismatch_verification_stale')
     }
-    candidateSnapshotRef.current = { ...snapshot, candidate: choice }
-    finish(choice === 'local' ? 'normal_body_mismatch_candidate_local' : 'normal_body_mismatch_candidate_remote', snapshot.date, choice, true)
+    setChoice(selectedChoice)
+    candidateSnapshotRef.current = { ...snapshot, candidate: selectedChoice }
+    return finish(selectedChoice === 'local' ? 'normal_body_mismatch_candidate_local' : 'normal_body_mismatch_candidate_remote',
+      snapshot.date, selectedChoice, true)
   }, [choice, comparison, connection, dayMemos, finish, savedRecoveryResult, savedStateReady])
 
   const selectChoice = useCallback((nextChoice: DayMemoNormalBodyMismatchChoice) => {

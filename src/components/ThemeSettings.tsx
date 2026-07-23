@@ -204,6 +204,11 @@ type BodyMismatchComparisonRun = {
   persistentChange: false
   supabaseWrite: false
   autoRetry: false
+  candidateCheck: {
+    choice: 'local' | 'remote'
+    status: 'checking' | 'ready' | 'blocked' | 'failed'
+    result: ReturnType<typeof useDayMemoNormalBodyMismatchCandidate>['result']
+  } | null
 }
 
 const SYNC_STAGE_IDS: Record<SyncRecoveryUiStage, string> = {
@@ -874,7 +879,7 @@ export function ThemeSettings({
     setLastBodyMismatchComparisonRun({ runId, requestedDate: date, startedAt, completedAt: null,
       status: 'checking', result: null, comparison: null,
       metadataCursor: syncMetadata?.lastPulledChangeSequence ?? null,
-      persistentChange: false, supabaseWrite: false, autoRetry: false })
+      persistentChange: false, supabaseWrite: false, autoRetry: false, candidateCheck: null })
     try {
       await dayMemoNormalBodyMismatchCandidate.compare(date)
       if (bodyMismatchComparisonRunIdRef.current !== runId) return
@@ -885,14 +890,40 @@ export function ThemeSettings({
         status: result?.safety === 'normal_body_mismatch_compare_ready' && comparison
           ? 'ready' : result ? 'blocked' : 'failed',
         result, comparison, metadataCursor: syncMetadata?.lastPulledChangeSequence ?? null,
-        persistentChange: false, supabaseWrite: false, autoRetry: false })
+        persistentChange: false, supabaseWrite: false, autoRetry: false, candidateCheck: null })
     } catch {
       if (bodyMismatchComparisonRunIdRef.current !== runId) return
       setLastBodyMismatchComparisonRun({ runId, requestedDate: date, startedAt,
         completedAt: new Date().toISOString(), status: 'failed', result: null, comparison: null,
         metadataCursor: syncMetadata?.lastPulledChangeSequence ?? null,
-        persistentChange: false, supabaseWrite: false, autoRetry: false })
+        persistentChange: false, supabaseWrite: false, autoRetry: false, candidateCheck: null })
     }
+  }
+
+  const confirmBodyMismatchCandidate = async (choice: 'local' | 'remote') => {
+    const run = lastBodyMismatchComparisonRun
+    if (!run || run.status !== 'ready' || !run.comparison
+      || bodyMismatchComparisonRunIdRef.current !== run.runId
+      || run.requestedDate !== recoveryNavigation.targetDate) return
+    setLastBodyMismatchComparisonRun({ ...run,
+      candidateCheck: { choice, status: 'checking', result: null } })
+    await dayMemoNormalBodyMismatchCandidate.compare(run.requestedDate)
+    if (bodyMismatchComparisonRunIdRef.current !== run.runId) return
+    const comparisonResult = dayMemoNormalBodyMismatchCandidate.getLatestResult()
+    const refreshedComparison = dayMemoNormalBodyMismatchCandidate.getLatestComparison()
+    const snapshotRevision = comparisonResult?.diagnostics.snapshotRevision
+    if (comparisonResult?.safety !== 'normal_body_mismatch_compare_ready'
+      || !refreshedComparison || snapshotRevision == null) {
+      setLastBodyMismatchComparisonRun({ ...run,
+        candidateCheck: { choice, status: comparisonResult ? 'blocked' : 'failed', result: comparisonResult } })
+      return
+    }
+    const result = dayMemoNormalBodyMismatchCandidate.confirmCandidate(choice, snapshotRevision)
+    const expectedSafety = choice === 'remote'
+      ? 'normal_body_mismatch_candidate_remote' : 'normal_body_mismatch_candidate_local'
+    setLastBodyMismatchComparisonRun({ ...run, result: comparisonResult, comparison: refreshedComparison,
+      candidateCheck: { choice,
+        status: result?.safety === expectedSafety ? 'ready' : result ? 'blocked' : 'failed', result } })
   }
 
   const runRecoveryNavigationAction = () => {
@@ -1747,6 +1778,39 @@ export function ThemeSettings({
                             <label>local本文<textarea readOnly rows={6} value={lastBodyMismatchComparisonRun.comparison.localContent} /></label>
                             <label>remote本文<textarea readOnly rows={6} value={lastBodyMismatchComparisonRun.comparison.remoteContent} /></label>
                             <p>次操作：remote採用候補を確認／local採用候補を確認</p>
+                            <div className="iphone-sync-guide-actions">
+                              <button type="button" className="health-primary-button cloud-sync-button"
+                                disabled={lastBodyMismatchComparisonRun.candidateCheck?.status === 'checking'}
+                                onClick={() => { void confirmBodyMismatchCandidate('remote') }}>remote採用候補を確認</button>
+                              <button type="button" className="health-secondary-button cloud-sync-button"
+                                disabled={lastBodyMismatchComparisonRun.candidateCheck?.status === 'checking'}
+                                onClick={() => { void confirmBodyMismatchCandidate('local') }}>local採用候補を確認</button>
+                            </div>
+                            {lastBodyMismatchComparisonRun.candidateCheck ? (
+                              <div className={`cloud-day-memo-preview-result is-${lastBodyMismatchComparisonRun.candidateCheck.status}`}
+                                role={lastBodyMismatchComparisonRun.candidateCheck.status === 'ready' ? 'status' : 'alert'}>
+                                <h6>{lastBodyMismatchComparisonRun.candidateCheck.choice === 'remote'
+                                  ? 'remote採用候補' : 'local採用候補'}：{lastBodyMismatchComparisonRun.candidateCheck.status}</h6>
+                                <ul className="cloud-day-memo-preview-summary">
+                                  <li>対象：{lastBodyMismatchComparisonRun.requestedDate}</li>
+                                  <li>採用元：{lastBodyMismatchComparisonRun.candidateCheck.choice}</li>
+                                  <li>比較runId：{lastBodyMismatchComparisonRun.runId}</li>
+                                  <li>snapshot revision：{lastBodyMismatchComparisonRun.result?.diagnostics.snapshotRevision ?? '未確認'}</li>
+                                  <li>remote／baseline：一致</li>
+                                  <li>local変更：未実行</li><li>remote変更：未実行</li>
+                                  <li>metadata変更：未実行</li><li>baseline変更：未実行</li><li>cursor変更：未実行</li>
+                                  <li>pending作成：なし</li><li>intent作成：なし</li><li>operation ID生成：なし</li>
+                                  <li>Supabase書き込み：なし</li><li>永続変更：なし</li><li>自動retry：なし</li>
+                                  {lastBodyMismatchComparisonRun.candidateCheck.result?.failureReason ? (
+                                    <li>failureReason：{lastBodyMismatchComparisonRun.candidateCheck.result.failureReason}</li>
+                                  ) : null}
+                                </ul>
+                                {lastBodyMismatchComparisonRun.candidateCheck.status === 'ready' ? (
+                                  <p>次操作：{lastBodyMismatchComparisonRun.candidateCheck.choice === 'remote'
+                                    ? 'remote採用内容を確認' : 'local採用準備を確認'}</p>
+                                ) : <p>比較を再確認するか、同じ候補を明示的に再確認してください。</p>}
+                              </div>
+                            ) : null}
                           </> : lastBodyMismatchComparisonRun.result ? <>
                             <ul className="cloud-day-memo-preview-summary">
                               <li>failureReason：{lastBodyMismatchComparisonRun.result.failureReason ?? 'unknown'}</li>

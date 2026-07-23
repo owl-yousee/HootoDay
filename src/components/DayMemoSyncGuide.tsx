@@ -358,7 +358,8 @@ export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, b
                 <button type="button" className="health-primary-button cloud-sync-button" onClick={() => bodyCandidate.setChoice('remote')}>同期先の内容を使う</button>
                 {bodyCandidate.choice ? <>
                   <p>選択：{bodyCandidate.choice === 'local' ? 'このiPhoneの内容を残します' : '同期先の内容をこのiPhoneへ反映します'}</p>
-                  <button type="button" className="health-primary-button cloud-sync-button" onClick={bodyCandidate.confirmCandidate}>この候補を確定</button>
+                  <button type="button" className="health-primary-button cloud-sync-button"
+                    onClick={() => { bodyCandidate.confirmCandidate() }}>この候補を確定</button>
                   <button type="button" className="health-secondary-button cloud-sync-button" onClick={bodyCandidate.clearChoice}>選び直す</button>
                 </> : null}
               </div> : bodyCandidate.result?.candidate === 'local' ? <>

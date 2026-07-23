@@ -33,7 +33,8 @@ export function DayMemoBodyMismatchComparison({ candidate, disabled = false }: P
           <p>remote revision／change sequence：{candidate.comparison.remoteRevision}／{candidate.comparison.remoteChangeSequence}（検証済み）</p>
           <label><input type="radio" name="day-memo-body-mismatch-choice" checked={candidate.choice === 'local'} onChange={() => candidate.setChoice('local')} /> localを採用候補にする</label>
           <label><input type="radio" name="day-memo-body-mismatch-choice" checked={candidate.choice === 'remote'} onChange={() => candidate.setChoice('remote')} /> remoteを採用候補にする</label>
-          <button type="button" className="health-secondary-button cloud-sync-button" disabled={!candidate.choice || disabled} onClick={candidate.confirmCandidate}>この候補を確定</button>
+          <button type="button" className="health-secondary-button cloud-sync-button" disabled={!candidate.choice || disabled}
+            onClick={() => { candidate.confirmCandidate() }}>この候補を確定</button>
         </div>
       ) : null}
       {candidate.result ? (
