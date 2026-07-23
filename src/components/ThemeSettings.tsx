@@ -11,7 +11,7 @@ import { CopyTextControl } from './CopyTextControl'
 import { buildSyncShareText } from '../utils/syncShareText'
 import { BODY_MISMATCH_LOCAL_ACTIONS, BODY_MISMATCH_REMOTE_ACTIONS,
   bodyMismatchCandidateAction, bodyMismatchRemoteAction,
-  resolveReadyBodyMismatchCandidateChoice } from '../utils/dayMemoSyncActions'
+  buildBodyMismatchCandidateUiModel } from '../utils/dayMemoSyncActions'
 import { presentPullDifference, presentSyncDifference, withCurrentDifferenceAction } from '../utils/syncDifferencePresentation'
 import type { SupabaseAuthState, SupabaseConfigurationState } from '../hooks/useSupabaseAuth'
 import type { useDayMemoInitialUpload } from '../hooks/useDayMemoInitialUpload'
@@ -987,7 +987,7 @@ export function ThemeSettings({
     const expectedSafety = choice === 'remote'
       ? 'normal_body_mismatch_candidate_remote' : 'normal_body_mismatch_candidate_local'
     setLastBodyMismatchComparisonRun({ ...run, result: comparisonResult, comparison: refreshedComparison,
-      candidateCheck: { choice: result?.candidate ?? choice,
+      candidateCheck: { choice,
         status: result?.safety === expectedSafety && result.candidate === choice
           ? 'ready' : result ? 'blocked' : 'failed', result },
       remoteContentCheck: null, remotePreparationCheck: null, remoteFinalCheck: null })
@@ -1256,9 +1256,10 @@ export function ThemeSettings({
     () => { void confirmBodyMismatchCandidate('local') })
   const bodyMismatchRemoteCandidateAction = bodyMismatchCandidateAction('remote',
     () => { void confirmBodyMismatchCandidate('remote') })
-  const readyBodyMismatchCandidateChoice = resolveReadyBodyMismatchCandidateChoice(
+  const bodyMismatchCandidateUiModel = buildBodyMismatchCandidateUiModel(
     lastBodyMismatchComparisonRun?.candidateCheck?.status,
     lastBodyMismatchComparisonRun?.candidateCheck?.result,
+    dayMemoNormalBodyMismatchCandidate.getCandidateSnapshot(),
   )
   const bodyMismatchIntegratedFlowActive = Boolean(lastBodyMismatchComparisonRun
     && recoveryNavigation.targetDate === lastBodyMismatchComparisonRun.requestedDate)
@@ -2138,9 +2139,8 @@ export function ThemeSettings({
                             {lastBodyMismatchComparisonRun.candidateCheck ? (
                               <div className={`cloud-day-memo-preview-result is-${lastBodyMismatchComparisonRun.candidateCheck.status}`}
                                 role={lastBodyMismatchComparisonRun.candidateCheck.status === 'ready' ? 'status' : 'alert'}>
-                                <h6>{readyBodyMismatchCandidateChoice === 'remote'
-                                  ? 'remote採用候補' : readyBodyMismatchCandidateChoice === 'local'
-                                    ? 'local採用候補' : '採用候補確認'}：{lastBodyMismatchComparisonRun.candidateCheck.status}</h6>
+                                <h6>{bodyMismatchCandidateUiModel?.title
+                                  ?? `採用候補確認：${lastBodyMismatchComparisonRun.candidateCheck.status}`}</h6>
                                 <ul className="cloud-day-memo-preview-summary">
                                   <li>対象：{lastBodyMismatchComparisonRun.requestedDate}</li>
                                   <li>採用元：{lastBodyMismatchComparisonRun.candidateCheck.result?.candidate ?? '未確定'}</li>
@@ -2157,28 +2157,26 @@ export function ThemeSettings({
                                 </ul>
                                 {lastBodyMismatchComparisonRun.candidateCheck.status === 'ready' ? (
                                   <>
-                                    {readyBodyMismatchCandidateChoice === 'local' ? <>
+                                    {bodyMismatchCandidateUiModel?.choice === 'local' ? <>
                                       <label>送信予定local本文<textarea readOnly rows={4}
                                         value={lastBodyMismatchComparisonRun.comparison.localContent} /></label>
                                       <label>現在remote本文<textarea readOnly rows={4}
                                         value={lastBodyMismatchComparisonRun.comparison.remoteContent} /></label>
-                                    </> : readyBodyMismatchCandidateChoice === 'remote' ? <>
+                                    </> : bodyMismatchCandidateUiModel?.choice === 'remote' ? <>
                                       <label>現在local本文<textarea readOnly rows={4}
                                         value={lastBodyMismatchComparisonRun.comparison.localContent} /></label>
                                       <label>採用予定remote本文<textarea readOnly rows={4}
                                         value={lastBodyMismatchComparisonRun.comparison.remoteContent} /></label>
                                     </> : null}
-                                    <p>次操作：{readyBodyMismatchCandidateChoice === 'remote'
-                                      ? 'remote採用内容を確認' : readyBodyMismatchCandidateChoice === 'local'
-                                        ? BODY_MISMATCH_LOCAL_ACTIONS.apply : '候補を再確認'}</p>
-                                    {readyBodyMismatchCandidateChoice === 'remote' ? (
+                                    <p>次操作：{bodyMismatchCandidateUiModel?.nextAction ?? '候補を再確認'}</p>
+                                    {bodyMismatchCandidateUiModel?.showRemoteAction ? (
                                       <button type="button" className="health-primary-button cloud-sync-button"
                                         disabled={dayMemoBodyMismatchRemoteAdoption.running}
                                         onClick={bodyMismatchRemoteApplyAction?.handler}>
                                         {dayMemoBodyMismatchRemoteAdoption.running
                                           ? BODY_MISMATCH_REMOTE_ACTIONS.applying : bodyMismatchRemoteApplyAction?.label}
                                       </button>
-                                    ) : readyBodyMismatchCandidateChoice === 'local' ? (
+                                    ) : bodyMismatchCandidateUiModel?.showLocalAction ? (
                                       <button type="button" className="health-primary-button cloud-sync-button"
                                         disabled={bodyMismatchLocalFlow.stage === 'applying'
                                           || bodyMismatchLocalFlow.stage === 'finalizing'}
@@ -2187,7 +2185,7 @@ export function ThemeSettings({
                                           ? BODY_MISMATCH_LOCAL_ACTIONS.applying : BODY_MISMATCH_LOCAL_ACTIONS.apply}
                                       </button>
                                     ) : null}
-                                    {readyBodyMismatchCandidateChoice === 'local'
+                                    {bodyMismatchCandidateUiModel?.choice === 'local'
                                       && bodyMismatchLocalFlow.stage !== 'idle' ? (
                                         <div className={`cloud-day-memo-preview-result is-${
                                           bodyMismatchLocalFlow.stage === 'complete' || bodyMismatchLocalFlow.stage === 'applied'

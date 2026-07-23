@@ -48,11 +48,40 @@ export function bodyMismatchCandidateAction<Choice extends DayMemoNormalBodyMism
 export function resolveReadyBodyMismatchCandidateChoice(
   status: 'checking' | 'ready' | 'blocked' | 'failed' | null | undefined,
   result: { candidate: DayMemoNormalBodyMismatchChoice | null; safety: string } | null | undefined,
+  snapshot: { candidate: DayMemoNormalBodyMismatchChoice } | null | undefined,
 ): DayMemoNormalBodyMismatchChoice | null {
-  if (status !== 'ready' || !result?.candidate) return null
+  if (status !== 'ready' || !result?.candidate || snapshot?.candidate !== result.candidate) return null
   if (result.candidate === 'local' && result.safety === 'normal_body_mismatch_candidate_local') return 'local'
   if (result.candidate === 'remote' && result.safety === 'normal_body_mismatch_candidate_remote') return 'remote'
   return null
+}
+
+export function createBodyMismatchCandidateConfirmation<Snapshot extends object>(
+  requestedChoice: DayMemoNormalBodyMismatchChoice,
+  comparisonSnapshot: Snapshot,
+) {
+  const safety = requestedChoice === 'local'
+    ? 'normal_body_mismatch_candidate_local' as const
+    : 'normal_body_mismatch_candidate_remote' as const
+  return {
+    requestedChoice,
+    candidateSnapshot: { ...comparisonSnapshot, candidate: requestedChoice },
+    result: { candidate: requestedChoice, safety },
+  }
+}
+
+export function buildBodyMismatchCandidateUiModel(
+  status: 'checking' | 'ready' | 'blocked' | 'failed' | null | undefined,
+  result: { candidate: DayMemoNormalBodyMismatchChoice | null; safety: string } | null | undefined,
+  snapshot: { candidate: DayMemoNormalBodyMismatchChoice } | null | undefined,
+) {
+  const choice = resolveReadyBodyMismatchCandidateChoice(status, result, snapshot)
+  if (!choice) return null
+  return choice === 'local'
+    ? { choice, title: 'local採用候補：ready', nextAction: BODY_MISMATCH_LOCAL_ACTIONS.apply,
+      showLocalAction: true, showRemoteAction: false } as const
+    : { choice, title: 'remote採用候補：ready', nextAction: 'remote採用内容を確認',
+      showLocalAction: false, showRemoteAction: true } as const
 }
 
 export function bodyMismatchRemoteAction(

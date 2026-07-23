@@ -7,6 +7,7 @@ import { isStoredDayMemo, readDayMemoStorageSnapshot } from '../utils/dayMemoSto
 import { pullAllDayMemoSyncRecords, type RemoteDayMemoRecord } from '../utils/dayMemoSyncPull'
 import { isDayMemoSyncMetadataV5, loadDayMemoSyncMetadataAny } from '../utils/dayMemoSyncStorage'
 import { isUuid } from '../utils/syncConnectionStorage'
+import { createBodyMismatchCandidateConfirmation } from '../utils/dayMemoSyncActions'
 import { classifyDayMemoNormalDifference, remoteRecordMatchesConfirmedBaseline,
   type DayMemoNormalDifferenceClassification } from './useDayMemoNormalDifferenceRecoveryPlan'
 import type { DayMemoSavedRecoveryStateResult } from './useDayMemoSavedRecoveryStateCheck'
@@ -18,6 +19,7 @@ export type DayMemoNormalBodyMismatchSafety =
   | 'normal_body_mismatch_workspace_mismatch' | 'normal_body_mismatch_pending_remaining' | 'normal_body_mismatch_intent_remaining'
   | 'normal_body_mismatch_push_blocked' | 'normal_body_mismatch_remote_changed' | 'normal_body_mismatch_verification_stale'
   | 'normal_body_mismatch_prerequisite_missing' | 'normal_body_mismatch_unsupported' | 'normal_body_mismatch_state_unknown'
+  | 'normal_body_mismatch_candidate_choice_mismatch'
 
 export type DayMemoNormalBodyMismatchChoice = 'local' | 'remote'
 
@@ -125,6 +127,7 @@ function failureReason(safety: DayMemoNormalBodyMismatchSafety): string | null {
     normal_body_mismatch_target_mismatch: 'baseline_mismatch',
     normal_body_mismatch_local_invalid: 'local_changed',
     normal_body_mismatch_prerequisite_missing: 'baseline_status_invalid',
+    normal_body_mismatch_candidate_choice_mismatch: 'candidate_choice_mismatch',
   }
   return reasons[safety] ?? 'unknown'
 }
@@ -303,10 +306,15 @@ export function useDayMemoNormalBodyMismatchCandidate({ dayMemos, isConfigured, 
       || localSignature(dayMemos) !== localSignature(stored.status === 'ready' ? stored.memos : [])) {
       return finish('normal_body_mismatch_verification_stale')
     }
-    setChoice(selectedChoice)
-    candidateSnapshotRef.current = { ...snapshot, candidate: selectedChoice }
-    return finish(selectedChoice === 'local' ? 'normal_body_mismatch_candidate_local' : 'normal_body_mismatch_candidate_remote',
-      snapshot.date, selectedChoice, true)
+    const confirmation = createBodyMismatchCandidateConfirmation(selectedChoice, snapshot)
+    if (confirmation.requestedChoice !== confirmation.candidateSnapshot.candidate
+      || confirmation.result.candidate !== confirmation.candidateSnapshot.candidate) {
+      candidateSnapshotRef.current = null
+      return finish('normal_body_mismatch_candidate_choice_mismatch', snapshot.date, null, false)
+    }
+    setChoice(confirmation.result.candidate)
+    candidateSnapshotRef.current = confirmation.candidateSnapshot
+    return finish(confirmation.result.safety, snapshot.date, confirmation.result.candidate, true)
   }, [comparison, connection, dayMemos, finish, savedRecoveryResult, savedStateReady])
 
   const selectChoice = useCallback((nextChoice: DayMemoNormalBodyMismatchChoice) => {
