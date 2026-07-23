@@ -1085,6 +1085,21 @@ export function ThemeSettings({
       || !dayMemoNormalDifferenceRecoveryCheckpointSave.canSave) return
     void dayMemoNormalDifferenceRecoveryCheckpointSave.save()
   }
+  const saveStatusOnlyRecoveryBridgeCheckpoint = () => {
+    if (!normalDifferenceRecoveryBridge) return
+    const selection = dayMemoNormalDifferenceRecoveryCheckpointCheck.prepareBridgeNormalSaveSelection(
+      normalDifferenceRecoveryBridge.differences,
+    )
+    if (!selection || selection.checkpointMethod !== 'status-only') return
+    dayMemoNormalDifferenceRecoveryCheckpointSave.discard()
+    setNormalDifferenceRecoveryBridge((current) => current ? { ...current, saveSelection: selection } : null)
+    void dayMemoNormalDifferenceRecoveryCheckpointSave.save()
+  }
+  const resetRecoveryBridgeCheckpoint = () => {
+    dayMemoNormalDifferenceRecoveryCheckpointCheck.discard()
+    dayMemoNormalDifferenceRecoveryCheckpointSave.discard()
+    setNormalDifferenceRecoveryBridge(null)
+  }
   const syncDifferenceDetailLines = syncDifferenceItems === null
     ? ['差異一覧：未確認']
     : syncDifferenceItems.length === 0 ? ['差異一覧：なし']
@@ -1469,7 +1484,7 @@ export function ThemeSettings({
                                             </li>
                                           ))}
                                         </ul>
-                                        <p className="cloud-sync-note">このPhaseでは確認表示だけです。checkpoint保存処理には接続していません。</p>
+                                        <p className="cloud-sync-note">保存準備を再確認した後、ユーザーの明示操作でのみmetadataへ保存します。DayMemoや同期先は変更しません。</p>
                                         <button type="button" className="health-primary-button cloud-sync-button"
                                           disabled={dayMemoNormalDifferenceRecoveryCheckpointCheck.savePreparationChecking}
                                           onClick={checkNormalDifferenceRecoveryBridgeSavePreparation}>
@@ -1515,7 +1530,14 @@ export function ThemeSettings({
                                                     ? '未確認' : preparation.sequenceValidationPassed ? '正常' : '不正'}</li>
                                                 </ul>
                                               </> : null}
-                                              {preparationReady ? (
+                                              {preparationReady ? checkpointMethod === 'status-only' ? (
+                                                <button type="button" className="health-primary-button cloud-sync-button"
+                                                  disabled={dayMemoNormalDifferenceRecoveryCheckpointSave.saving}
+                                                  onClick={saveStatusOnlyRecoveryBridgeCheckpoint}>
+                                                  {dayMemoNormalDifferenceRecoveryCheckpointSave.saving
+                                                    ? 'status-only checkpointを保存中…' : 'status-only checkpointを保存'}
+                                                </button>
+                                              ) : (
                                                 <button type="button" className="health-primary-button cloud-sync-button"
                                                   onClick={prepareNormalDifferenceRecoveryBridgeSave}>
                                                   checkpointを保存
@@ -1541,13 +1563,15 @@ export function ThemeSettings({
                                                     </ul>
                                                   ) : null}
                                                   <p className="cloud-sync-note">保存対象を確認しました。次の明示操作で既存checkpoint保存処理を実行します。</p>
-                                                  <button type="button" className="health-primary-button cloud-sync-button"
+                                                  {normalDifferenceRecoveryBridge.saveSelection.checkpointMethod !== 'status-only' ? (
+                                                    <button type="button" className="health-primary-button cloud-sync-button"
                                                     disabled={!dayMemoNormalDifferenceRecoveryCheckpointSave.canSave
                                                       || dayMemoNormalDifferenceRecoveryCheckpointSave.saving}
                                                     onClick={saveNormalDifferenceRecoveryBridgeCheckpoint}>
                                                     {dayMemoNormalDifferenceRecoveryCheckpointSave.saving
                                                       ? 'checkpointを保存中…' : 'checkpointを明示保存'}
-                                                  </button>
+                                                    </button>
+                                                  ) : null}
                                                 </div>
                                               ) : null}
                                               {normalDifferenceRecoveryBridge.saveSelection
@@ -1566,9 +1590,36 @@ export function ThemeSettings({
                                                       <li>read-back：{saveResult.readBackSucceeded ? '成功' : '未実施または失敗'}</li>
                                                       <li>rollback：{saveResult.rollbackAttempted
                                                         ? saveResult.rollbackSucceeded ? '成功' : '失敗' : '未実施'}</li>
+                                                      {normalDifferenceRecoveryBridge.saveSelection.checkpointMethod === 'status-only'
+                                                        && saveResult.succeeded ? <>
+                                                          <li>status-only checkpoint保存：完了</li>
+                                                          <li>verified read-back：完了</li>
+                                                          <li>baseline変更：なし</li>
+                                                          <li>cursor変更：なし</li>
+                                                          <li>local変更：なし</li>
+                                                          <li>remote変更：なし</li>
+                                                          <li>pending作成：なし</li>
+                                                          <li>intent作成：なし</li>
+                                                          <li>candidate生成：なし</li>
+                                                        </> : null}
+                                                      {!saveResult.succeeded ? <>
+                                                        <li>診断分類：{saveResult.failureReason ?? saveResult.safety}</li>
+                                                        <li>永続変更：{saveResult.metadataSaved
+                                                          ? saveResult.rollbackSucceeded ? 'rollback済み' : '状態確認が必要'
+                                                          : 'なし'}</li>
+                                                        <li>自動retry：なし</li>
+                                                        <li>再開方法：checkpoint候補確認から明示的に再確認</li>
+                                                      </> : null}
                                                       <li>次操作：{saveResult.succeeded
                                                         ? 'Saved Recovery State確認待ち' : saveResult.nextAction}</li>
                                                     </ul>
+                                                    {!saveResult.succeeded ? (
+                                                      <button type="button" className="health-secondary-button cloud-sync-button"
+                                                        disabled={dayMemoNormalDifferenceRecoveryCheckpointSave.saving}
+                                                        onClick={resetRecoveryBridgeCheckpoint}>
+                                                        checkpoint候補から再確認
+                                                      </button>
+                                                    ) : null}
                                                   </div>
                                                 })() : null}
                                             </div>

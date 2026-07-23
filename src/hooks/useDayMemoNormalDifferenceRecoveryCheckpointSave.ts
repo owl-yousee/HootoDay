@@ -13,7 +13,9 @@ import type { DayMemoNormalDifferenceCheckpointSnapshot } from './useDayMemoNorm
 export type DayMemoNormalDifferenceCheckpointSaveSafety =
   | 'normal_difference_checkpoint_save_ready' | 'normal_difference_checkpoint_saved'
   | 'normal_difference_checkpoint_result_missing' | 'normal_difference_checkpoint_verification_stale'
-  | 'normal_difference_checkpoint_state_changed' | 'normal_difference_checkpoint_cursor_invalid'
+  | 'normal_difference_checkpoint_state_changed' | 'normal_difference_checkpoint_metadata_changed'
+  | 'normal_difference_checkpoint_local_changed' | 'normal_difference_checkpoint_baseline_change_detected'
+  | 'normal_difference_checkpoint_cursor_invalid'
   | 'normal_difference_checkpoint_candidates_changed' | 'normal_difference_checkpoint_unresolved_changed'
   | 'normal_difference_checkpoint_pending_remaining' | 'normal_difference_checkpoint_intent_remaining'
   | 'normal_difference_checkpoint_push_blocked' | 'normal_difference_checkpoint_workspace_mismatch'
@@ -43,6 +45,10 @@ export interface DayMemoNormalDifferenceCheckpointSaveResult {
   rollbackAttempted: boolean
   rollbackSucceeded: boolean
   rpcSent: false
+  failureReason: 'metadata_changed' | 'local_changed' | 'workspace_changed' | 'cursor_changed'
+    | 'remote_changed' | 'difference_changed' | 'checkpoint_snapshot_expired'
+    | 'baseline_change_detected' | 'confirmed_tombstone_mismatch'
+    | 'write_failed' | 'read_back_failed' | 'rollback_failed' | null
   checkedAt: string
   nextAction: string
 }
@@ -68,6 +74,24 @@ function recordsEqual(left: unknown, right: unknown): boolean {
   return JSON.stringify(left) === JSON.stringify(right)
 }
 
+function snapshotCanBeSaved(
+  snapshot: DayMemoNormalDifferenceCheckpointSnapshot | null,
+): snapshot is DayMemoNormalDifferenceCheckpointSnapshot {
+  if (!snapshot || (snapshot.result.safety !== 'normal_difference_checkpoint_ready'
+    && snapshot.result.safety !== 'normal_difference_status_only_checkpoint_ready')) return false
+  const bridgeCandidateReady = snapshot.sourceBaselineStatus === 'confirmed'
+    && snapshot.result.candidateCursor !== null && snapshot.result.metadataCursor !== null
+    && (snapshot.result.candidateCursor > snapshot.result.metadataCursor
+      || snapshot.result.exactBaselineCandidateCount > 0
+      || (snapshot.result.candidateCursor === snapshot.result.metadataCursor
+        && snapshot.result.bodyMismatchDates.length > 0
+        && snapshot.result.bodyMismatchDates.length === snapshot.result.unresolvedCount))
+  return snapshot.result.unresolvedReconstructable
+    && snapshot.result.candidateBaselineStatus === 'recovery_required'
+    && snapshot.result.candidateBaselineConfirmedAtNull
+    && (snapshot.result.exactBaselineCandidateCount > 0 || bridgeCandidateReady)
+}
+
 function nextAction(safety: DayMemoNormalDifferenceCheckpointSaveSafety): string {
   if (safety === 'normal_difference_checkpoint_saved') return 'checkpointを保存しました。通常同期は再開せず、未解決差異を後続Phaseで1件ずつ確認してください。'
   if (safety === 'normal_difference_checkpoint_rollback_succeeded') return '保存前metadataへ戻しました。自動再試行せず、checkpoint条件を最初から確認してください。'
@@ -81,19 +105,7 @@ export function useDayMemoNormalDifferenceRecoveryCheckpointSave({ dayMemos, isC
   const inFlightRef = useRef(false)
   const snapshot = getReadySnapshot()
   const eligible = Boolean(isConfigured && isSignedIn && supabaseClient && connectionIsEligible(connection))
-  const bridgeNormalCandidateReady = snapshot?.sourceBaselineStatus === 'confirmed'
-    && snapshot.result.candidateCursor !== null && snapshot.result.metadataCursor !== null
-    && (snapshot.result.candidateCursor > snapshot.result.metadataCursor
-      || snapshot.result.exactBaselineCandidateCount > 0
-      || (snapshot.result.candidateCursor === snapshot.result.metadataCursor
-        && snapshot.result.bodyMismatchDates.length > 0
-        && snapshot.result.bodyMismatchDates.length === snapshot.result.unresolvedCount))
-  const canSave = Boolean(eligible && !saving
-    && (snapshot?.result.safety === 'normal_difference_checkpoint_ready'
-      || snapshot?.result.safety === 'normal_difference_status_only_checkpoint_ready')
-    && snapshot.result.unresolvedReconstructable && snapshot.result.candidateBaselineStatus === 'recovery_required'
-    && snapshot.result.candidateBaselineConfirmedAtNull
-    && (snapshot.result.exactBaselineCandidateCount > 0 || bridgeNormalCandidateReady))
+  const canSave = Boolean(eligible && !saving && snapshotCanBeSaved(snapshot))
 
   const finish = useCallback((safety: DayMemoNormalDifferenceCheckpointSaveSafety, values: Partial<DayMemoNormalDifferenceCheckpointSaveResult> = {}) => {
     setResult({ succeeded: false, beforeCursor: null, fullPullMaxSequence: null, afterCursor: null,
@@ -101,17 +113,20 @@ export function useDayMemoNormalDifferenceRecoveryCheckpointSave({ dayMemos, isC
       baselineConfirmedAtNull: false, unresolvedCount: 0, unresolvedCounts: {}, unresolvedReconstructable: false,
       normalSyncReady: false, metadataSaved: false, readBackSucceeded: false, validatorPassed: false,
       rollbackAttempted: false, rollbackSucceeded: false, rpcSent: false, checkedAt: new Date().toISOString(),
+      failureReason: null,
       ...values, safety, nextAction: nextAction(safety) })
   }, [])
 
   const save = useCallback(async () => {
-    if (inFlightRef.current || !canSave || !supabaseClient || !connectionIsEligible(connection)) return
+    if (inFlightRef.current || saving || !eligible || !supabaseClient || !connectionIsEligible(connection)) return
     const ready = getReadySnapshot()
-    if (!ready || (ready.result.safety !== 'normal_difference_checkpoint_ready'
-      && ready.result.safety !== 'normal_difference_status_only_checkpoint_ready')) {
-      finish('normal_difference_checkpoint_result_missing'); return
+    if (!snapshotCanBeSaved(ready)) {
+      finish('normal_difference_checkpoint_result_missing', { failureReason: 'checkpoint_snapshot_expired' }); return
     }
-    const accepted = window.confirm(`完全一致baseline候補${ready.result.exactBaselineCandidateCount}件を保存し、cursorを${ready.result.metadataCursor}から${ready.result.candidateCursor}へ更新します。未解決差異${ready.result.unresolvedCount}件はrecovery_requiredのまま残り、通常同期readyにはなりません。Supabase送信は行いません。保存しますか？`)
+    const statusOnly = ready.result.safety === 'normal_difference_status_only_checkpoint_ready'
+    const accepted = window.confirm(statusOnly
+      ? `status-only checkpointを保存します。baselineとcursorは変更せず、baselineStatusをconfirmedからrecovery_requiredへ変更します。未解決差異${ready.result.unresolvedCount}件はそのまま保持し、Supabase送信、candidate生成、DayMemo変更は行いません。保存しますか？`
+      : `完全一致baseline候補${ready.result.exactBaselineCandidateCount}件を保存し、cursorを${ready.result.metadataCursor}から${ready.result.candidateCursor}へ更新します。未解決差異${ready.result.unresolvedCount}件はrecovery_requiredのまま残り、通常同期readyにはなりません。Supabase送信は行いません。保存しますか？`)
     if (!accepted) return
     inFlightRef.current = true; setSaving(true); setResult(null)
     try {
@@ -128,20 +143,24 @@ export function useDayMemoNormalDifferenceRecoveryCheckpointSave({ dayMemos, isC
       }
       const metadata = loaded.metadata
       if (!reactMetadata || JSON.stringify(reactMetadata) !== loaded.raw) {
-        finish('normal_difference_checkpoint_state_changed', base); return
+        finish('normal_difference_checkpoint_metadata_changed', { ...base, failureReason: 'metadata_changed' }); return
       }
-      if (loaded.raw !== ready.metadataRaw || stored.serialized !== ready.localStorageSerialized
+      if (loaded.raw !== ready.metadataRaw) {
+        finish('normal_difference_checkpoint_verification_stale', { ...base,
+          failureReason: 'checkpoint_snapshot_expired' }); return
+      }
+      if (stored.serialized !== ready.localStorageSerialized
         || JSON.stringify(stored.memos) !== JSON.stringify(dayMemos)) {
-        finish('normal_difference_checkpoint_verification_stale', base); return
+        finish('normal_difference_checkpoint_local_changed', { ...base, failureReason: 'local_changed' }); return
       }
       if (metadata.workspaceId !== connection.workspaceId || ready.workspaceId !== connection.workspaceId) {
-        finish('normal_difference_checkpoint_workspace_mismatch', base); return
+        finish('normal_difference_checkpoint_workspace_mismatch', { ...base, failureReason: 'workspace_changed' }); return
       }
       if (metadata.pendingOperation) { finish('normal_difference_checkpoint_pending_remaining', base); return }
       if (Object.keys(metadata.localDeleteIntents).length) { finish('normal_difference_checkpoint_intent_remaining', base); return }
       if (metadata.pushBlock) { finish('normal_difference_checkpoint_push_blocked', base); return }
       if (metadata.lastPulledChangeSequence !== ready.result.metadataCursor) {
-        finish('normal_difference_checkpoint_cursor_invalid', base); return
+        finish('normal_difference_checkpoint_cursor_invalid', { ...base, failureReason: 'cursor_changed' }); return
       }
       const pulled = ready.sourceBaselineStatus === 'mismatch'
         ? { status: 'complete' as const, records: ready.remoteRecords, maxChangeSequence: ready.result.fullPullMaxSequence ?? -1 }
@@ -152,9 +171,12 @@ export function useDayMemoNormalDifferenceRecoveryCheckpointSave({ dayMemos, isC
       const afterPullMetadata = loadDayMemoSyncMetadataAny(window.localStorage)
       const afterPullLocal = readDayMemoStorageSnapshot(window.localStorage)
       if (afterPullMetadata.status !== 'ready' || afterPullMetadata.raw !== loaded.raw
-        || afterPullLocal.status !== 'ready' || afterPullLocal.serialized !== stored.serialized
+        || afterPullLocal.status !== 'ready') {
+        finish('normal_difference_checkpoint_metadata_changed', { ...base, failureReason: 'metadata_changed' }); return
+      }
+      if (afterPullLocal.serialized !== stored.serialized
         || JSON.stringify(dayMemos) !== JSON.stringify(stored.memos)) {
-        finish('normal_difference_checkpoint_state_changed', base); return
+        finish('normal_difference_checkpoint_local_changed', { ...base, failureReason: 'local_changed' }); return
       }
       if (pulled.maxChangeSequence !== ready.result.fullPullMaxSequence || !recordsEqual(pulled.records, ready.remoteRecords)) {
         const changedLocalByDate = new Map(stored.memos.map((memo) => [memo.date, memo]))
@@ -173,9 +195,19 @@ export function useDayMemoNormalDifferenceRecoveryCheckpointSave({ dayMemos, isC
           : JSON.stringify(actualUnresolved) !== JSON.stringify(ready.unresolvedClassifications)
             ? 'normal_difference_checkpoint_unresolved_changed'
             : 'normal_difference_checkpoint_verification_stale'
-        finish(safety, base); return
+        finish(safety, { ...base, failureReason: safety === 'normal_difference_checkpoint_unresolved_changed'
+          ? 'difference_changed' : 'remote_changed' }); return
       }
       const candidate = ready.candidateMetadata
+      if (statusOnly && (JSON.stringify(candidate.baselines) !== JSON.stringify(metadata.baselines)
+        || candidate.lastPulledChangeSequence !== metadata.lastPulledChangeSequence
+        || candidate.pendingOperation !== metadata.pendingOperation
+        || JSON.stringify(candidate.localDeleteIntents) !== JSON.stringify(metadata.localDeleteIntents)
+        || JSON.stringify(candidate.pushBlock) !== JSON.stringify(metadata.pushBlock)
+        || candidate.workspaceId !== metadata.workspaceId)) {
+        finish('normal_difference_checkpoint_baseline_change_detected', { ...base,
+          failureReason: 'baseline_change_detected' }); return
+      }
       if (candidate.lastPulledChangeSequence !== pulled.maxChangeSequence || candidate.baselineStatus !== 'recovery_required'
         || candidate.baselineConfirmedAt !== null || candidate.pendingOperation !== metadata.pendingOperation
         || JSON.stringify(candidate.localDeleteIntents) !== JSON.stringify(metadata.localDeleteIntents)
@@ -194,7 +226,10 @@ export function useDayMemoNormalDifferenceRecoveryCheckpointSave({ dayMemos, isC
           && (ready.sourceBaselineStatus === 'confirmed' || !candidate.baselines[date])
       })
       if (!unresolvedStillMatch || reconstructed.filter((item) => item.classification !== 'exact_match_baseline_confirmed').length !== ready.result.unresolvedCount) {
-        finish('normal_difference_checkpoint_unresolved_changed', base); return
+        const confirmedTombstoneMismatch = Object.entries(metadata.baselines).some(([date, baseline]) => baseline.deletedAt !== null
+          && reconstructed.find((item) => item.date === date)?.classification !== 'exact_match_baseline_confirmed')
+        finish('normal_difference_checkpoint_unresolved_changed', { ...base,
+          failureReason: confirmedTombstoneMismatch ? 'confirmed_tombstone_mismatch' : 'difference_changed' }); return
       }
       const saveResult = replaceDayMemoSyncMetadataV2(window.localStorage, candidate, loaded.raw)
       if (saveResult !== 'saved') {
@@ -203,6 +238,8 @@ export function useDayMemoNormalDifferenceRecoveryCheckpointSave({ dayMemos, isC
             ? 'normal_difference_checkpoint_rollback_succeeded' : 'normal_difference_checkpoint_persistence_failed', {
           ...base, rollbackAttempted: saveResult === 'rollback_failed' || saveResult === 'write_failed' || saveResult === 'readback_failed',
           rollbackSucceeded: saveResult === 'write_failed' || saveResult === 'readback_failed',
+          failureReason: saveResult === 'rollback_failed' ? 'rollback_failed'
+            : saveResult === 'readback_failed' ? 'read_back_failed' : 'write_failed',
         }); return
       }
       const readBack = loadDayMemoSyncMetadataAny(window.localStorage)
@@ -211,6 +248,7 @@ export function useDayMemoNormalDifferenceRecoveryCheckpointSave({ dayMemos, isC
         const rollback = replaceDayMemoSyncMetadataV2(window.localStorage, metadata, expectedRaw)
         finish(rollback === 'saved' ? 'normal_difference_checkpoint_rollback_succeeded' : 'normal_difference_checkpoint_rollback_failed', {
           ...base, metadataSaved: rollback !== 'saved', rollbackAttempted: true, rollbackSucceeded: rollback === 'saved',
+          failureReason: rollback === 'saved' ? 'read_back_failed' : 'rollback_failed',
         }); return
       }
       adoptVerifiedMetadata(readBack.metadata)
@@ -218,7 +256,8 @@ export function useDayMemoNormalDifferenceRecoveryCheckpointSave({ dayMemos, isC
       finish('normal_difference_checkpoint_saved', { ...base, succeeded: true, metadataSaved: true,
         readBackSucceeded: true, validatorPassed: true, unresolvedReconstructable: true })
     } finally { inFlightRef.current = false; setSaving(false) }
-  }, [adoptVerifiedMetadata, canSave, connection, consumeReadySnapshot, dayMemos, finish, getReadySnapshot, reactMetadata])
+  }, [adoptVerifiedMetadata, connection, consumeReadySnapshot, dayMemos, eligible, finish, getReadySnapshot,
+    reactMetadata, saving])
 
   const discard = useCallback(() => setResult(null), [])
   return { eligible, canSave, saving, result, save, discard }
