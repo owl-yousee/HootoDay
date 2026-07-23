@@ -6317,3 +6317,193 @@ body,
   .sync-difference-list { padding-left: 1.25rem; }
   .sync-difference-card dl > div { grid-template-columns: 1fr; gap: 2px; }
 }
+
+/* Cloud sync is information-dense. Keep controls touch-safe while removing
+   stacked spacing from its nested status, work, difference and share panels. */
+.cloud-sync-settings {
+  --sync-panel-gap: 5px;
+  --sync-card-padding-block: 7px;
+  --sync-card-padding-inline: 9px;
+  --sync-row-gap: 2px;
+  --sync-button-gap: 4px;
+  --sync-text-margin: 3px;
+}
+
+.cloud-sync-settings .settings-section-heading h3 {
+  margin-bottom: 3px;
+}
+
+.cloud-sync-settings .cloud-sync-message {
+  padding: 5px 9px;
+}
+
+.cloud-sync-settings .cloud-sync-message p,
+.cloud-sync-settings .cloud-sync-note,
+.cloud-sync-settings .cloud-workspace-panel p {
+  line-height: 1.32;
+}
+
+.cloud-sync-settings .cloud-workspace-panel {
+  margin-top: var(--sync-panel-gap);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.cloud-sync-settings .cloud-day-memo-safety-panel,
+.cloud-sync-settings .cloud-day-memo-recovery-check-panel,
+.cloud-sync-settings .cloud-day-memo-local-only-panel,
+.cloud-sync-settings .cloud-day-memo-baseline-panel,
+.cloud-sync-settings .cloud-day-memo-rebase-panel,
+.cloud-sync-settings .cloud-day-memo-update-panel {
+  margin-top: var(--sync-panel-gap);
+  padding: var(--sync-card-padding-block) var(--sync-card-padding-inline);
+}
+
+.cloud-sync-settings .cloud-day-memo-safety-panel:not(.is-normal),
+.cloud-sync-settings .cloud-day-memo-recovery-check-panel {
+  padding-block: 9px;
+}
+
+.cloud-sync-settings .cloud-day-memo-safety-panel h4,
+.cloud-sync-settings .cloud-day-memo-recovery-check-panel h4,
+.cloud-sync-settings .cloud-day-memo-local-only-panel h4,
+.cloud-sync-settings .cloud-day-memo-baseline-panel h4,
+.cloud-sync-settings .cloud-day-memo-rebase-panel h4,
+.cloud-sync-settings .cloud-day-memo-update-panel h4 {
+  margin: 0 0 var(--sync-text-margin);
+}
+
+.cloud-sync-settings .cloud-day-memo-safety-panel p,
+.cloud-sync-settings .cloud-day-memo-recovery-check-panel p,
+.cloud-sync-settings .cloud-day-memo-local-only-panel p,
+.cloud-sync-settings .cloud-day-memo-update-panel p {
+  margin: var(--sync-text-margin) 0;
+  line-height: 1.32;
+}
+
+.cloud-sync-settings .cloud-day-memo-preview-summary {
+  gap: var(--sync-row-gap) 9px;
+  margin: 3px 0;
+  padding-left: 1rem;
+  line-height: 1.28;
+}
+
+.cloud-sync-settings .cloud-sync-button,
+.cloud-sync-settings .cloud-workspace-panel .cloud-sync-button {
+  min-height: 44px;
+  margin-top: var(--sync-button-gap);
+}
+
+.cloud-sync-settings .sync-difference-panel {
+  margin: var(--sync-panel-gap) 0;
+  padding: 6px 8px;
+  border-radius: 10px;
+}
+
+.cloud-sync-settings .sync-difference-panel > h5 {
+  margin-bottom: 3px;
+}
+
+.cloud-sync-settings .sync-difference-list {
+  gap: 4px;
+  margin-top: 3px;
+  padding-left: 1.2rem;
+}
+
+.cloud-sync-settings .sync-difference-card {
+  padding: 6px 8px;
+  border-radius: 9px;
+}
+
+.cloud-sync-settings .sync-difference-card dl {
+  gap: 2px;
+  margin-top: 3px;
+  line-height: 1.3;
+}
+
+.cloud-sync-settings .sync-difference-card dl > div {
+  gap: 6px;
+}
+
+.cloud-sync-settings .sync-difference-card > button,
+.cloud-sync-settings .sync-difference-action-picker,
+.cloud-sync-settings .sync-difference-action-buttons {
+  margin-top: var(--sync-button-gap);
+}
+
+.cloud-sync-settings .sync-difference-action-picker {
+  padding: 7px 8px;
+}
+
+.cloud-sync-settings .sync-difference-action-picker p {
+  margin-bottom: var(--sync-text-margin);
+}
+
+.cloud-sync-settings .sync-difference-action-buttons {
+  gap: var(--sync-button-gap);
+  margin-bottom: var(--sync-button-gap);
+}
+
+.cloud-sync-settings .sync-stage-id {
+  margin-top: var(--sync-text-margin);
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.cloud-sync-settings .sync-copy-section,
+.cloud-sync-settings .sync-copy-control {
+  margin-top: var(--sync-panel-gap);
+}
+
+.cloud-sync-settings .sync-copy-section h5,
+.cloud-sync-settings .iphone-sync-guide-copy h5 {
+  margin: var(--sync-panel-gap) 0 2px;
+}
+
+.cloud-sync-settings .sync-copy-control > button + button {
+  margin-left: var(--sync-button-gap);
+}
+
+.cloud-sync-settings .cloud-sync-diagnostics {
+  margin-top: var(--sync-panel-gap);
+}
+
+.cloud-sync-settings .cloud-sync-diagnostics > summary {
+  padding: 5px 0;
+}
+
+.cloud-sync-settings .cloud-sync-diagnostics[open] > summary {
+  margin-bottom: 2px;
+}
+
+.cloud-sync-settings .iphone-sync-guide {
+  gap: var(--sync-panel-gap);
+  margin: var(--sync-panel-gap) 0;
+  padding: 7px 9px;
+  border-width: 1px;
+  border-radius: 11px;
+}
+
+.cloud-sync-settings .iphone-sync-guide-step,
+.cloud-sync-settings .iphone-sync-guide-comparison,
+.cloud-sync-settings .iphone-sync-guide-actions,
+.cloud-sync-settings .iphone-sync-guide-target {
+  gap: var(--sync-panel-gap);
+}
+
+.cloud-sync-settings .iphone-sync-guide-target {
+  padding: 6px 8px;
+}
+
+@media (max-width: 640px) {
+  .cloud-sync-settings .cloud-day-memo-preview-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap-inline: 7px;
+  }
+
+  .cloud-sync-settings .sync-difference-panel {
+    padding: 6px 7px;
+  }
+}
