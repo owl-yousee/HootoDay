@@ -138,6 +138,7 @@ function checkpointIdentity(metadata: ReturnType<typeof loadDayMemoSyncMetadataA
 export function useDayMemoBodyMismatchRecoveryPreflight({ dayMemos, isConfigured, isSignedIn, connection }: Input) {
   const [checking, setChecking] = useState(false)
   const [result, setResult] = useState<DayMemoBodyMismatchRecoveryPreflightResult | null>(null)
+  const resultRef = useRef<DayMemoBodyMismatchRecoveryPreflightResult | null>(null)
   const snapshotRef = useRef<DayMemoBodyMismatchRecoveryPreflightSnapshot | null>(null)
   const runIdRef = useRef(0)
   const pending = inspectPreparedRecovery(connection)
@@ -150,7 +151,7 @@ export function useDayMemoBodyMismatchRecoveryPreflight({ dayMemos, isConfigured
       changeSequenceVerified: false, remoteUpdatedAtVerified: false, payloadVerified: false,
       checkpointVerified: false, workspaceVerified: false, snapshotCreated: false,
       persistentStateChanged: false, rpcSent: false, checkedAt: new Date().toISOString(), nextAction: message(safety), ...values }
-    setResult(next); snapshotRef.current = null
+    resultRef.current = next; setResult(next); snapshotRef.current = null
     return next
   }, [])
 
@@ -264,7 +265,7 @@ export function useDayMemoBodyMismatchRecoveryPreflight({ dayMemos, isConfigured
     } finally { if (runIdRef.current === runId) setChecking(false) }
   }, [checking, connection, dayMemos, finish, isConfigured, isSignedIn])
 
-  const discard = useCallback(() => { runIdRef.current += 1; snapshotRef.current = null; setResult(null); setChecking(false) }, [])
+  const discard = useCallback(() => { runIdRef.current += 1; snapshotRef.current = null; resultRef.current = null; setResult(null); setChecking(false) }, [])
   const consumeReadySnapshot = useCallback(() => {
     runIdRef.current += 1
     snapshotRef.current = null
@@ -283,5 +284,6 @@ export function useDayMemoBodyMismatchRecoveryPreflight({ dayMemos, isConfigured
       localMemo: { ...current.localMemo }, remoteRecord: current.remoteRecord ? { ...current.remoteRecord, payload: current.remoteRecord.payload ? { ...current.remoteRecord.payload } : null } : null }
   }, [connection, dayMemos, isConfigured, isSignedIn])
 
-  return { eligible, checking, result, check, discard, getReadySnapshot, consumeReadySnapshot }
+  const getLatestResult = useCallback(() => resultRef.current, [])
+  return { eligible, checking, result, check, discard, getReadySnapshot, consumeReadySnapshot, getLatestResult }
 }

@@ -55,8 +55,8 @@ export interface DayMemoBodyMismatchRecoveryCheckpointSaveResult {
   afterBaselineCount: number
   beforeCursor: number | null
   afterCursor: number | null
-  baselineStatus: 'recovery_required' | null
-  baselineConfirmedAt: null
+  baselineStatus: 'recovery_required' | 'confirmed' | null
+  baselineConfirmedAt: string | null
   pendingCleared: boolean
   metadataSave: 'none' | 'succeeded' | 'failed'
   readBack: 'none' | 'succeeded' | 'failed' | 'mismatch'
@@ -67,7 +67,7 @@ export interface DayMemoBodyMismatchRecoveryCheckpointSaveResult {
   automaticRetry: false
   unresolvedCount: number
   unresolvedClassifications: Record<string, DayMemoNormalDifferenceClassification>
-  normalSyncReady: false
+  normalSyncReady: boolean
   verificationSnapshotDiscarded: boolean
   checkedAt: string
   nextAction: string
@@ -134,6 +134,7 @@ export function useDayMemoBodyMismatchRecoveryCheckpointSave(input: Input) {
     discardVerificationResult, adoptVerifiedMetadata } = input
   const [saving, setSaving] = useState(false)
   const [result, setResult] = useState<DayMemoBodyMismatchRecoveryCheckpointSaveResult | null>(null)
+  const resultRef = useRef<DayMemoBodyMismatchRecoveryCheckpointSaveResult | null>(null)
   const inFlightRef = useRef(false)
   const runIdRef = useRef(0)
   const snapshot = getReadySnapshot()
@@ -144,17 +145,20 @@ export function useDayMemoBodyMismatchRecoveryCheckpointSave(input: Input) {
 
   const finish = useCallback((safety: DayMemoBodyMismatchRecoveryCheckpointSaveSafety,
     values: Partial<DayMemoBodyMismatchRecoveryCheckpointSaveResult> = {}) => {
-    setResult({ safety, succeeded: false, date: null, operationMode: null,
+    const next: DayMemoBodyMismatchRecoveryCheckpointSaveResult = { safety, succeeded: false, date: null, operationMode: null,
       verificationSnapshotVerified: false, candidateMetadataVerified: false, sourceMetadataVerified: false,
       beforeBaselineCount: 0, afterBaselineCount: 0, beforeCursor: null, afterCursor: null,
       baselineStatus: null, baselineConfirmedAt: null, pendingCleared: false,
       metadataSave: 'none', readBack: 'none', rollback: 'not_run', dayMemoChanged: false,
       supabaseSent: false, fullPullCount: 0, automaticRetry: false, unresolvedCount: 0,
       unresolvedClassifications: {}, normalSyncReady: false, verificationSnapshotDiscarded: false,
-      checkedAt: new Date().toISOString(), nextAction: nextAction(safety), ...values })
+      checkedAt: new Date().toISOString(), nextAction: nextAction(safety), ...values }
+    resultRef.current = next
+    setResult(next)
+    return next
   }, [])
 
-  const save = useCallback(() => {
+  const save = useCallback((options: { skipConfirmation?: boolean } = {}) => {
     if (inFlightRef.current || saving) {
       finish('normal_body_mismatch_recovery_checkpoint_save_already_running'); return
     }
@@ -170,7 +174,7 @@ export function useDayMemoBodyMismatchRecoveryCheckpointSave(input: Input) {
       beforeBaselineCount: ready.sourceBaselineCount,
       afterBaselineCount: Object.keys(ready.candidateMetadata.baselines).length,
       beforeCursor: ready.sourceCursor, afterCursor: ready.candidateCursor,
-      baselineStatus: 'recovery_required' as const, baselineConfirmedAt: null,
+      baselineStatus: ready.candidateBaselineStatus, baselineConfirmedAt: ready.candidateBaselineConfirmedAt,
       unresolvedCount: Object.keys(ready.unresolvedClassifications).length,
       unresolvedClassifications: ready.unresolvedClassifications }
     if (!isConfigured) { finish('normal_body_mismatch_recovery_checkpoint_configuration_unavailable', base); return }
@@ -182,19 +186,19 @@ export function useDayMemoBodyMismatchRecoveryCheckpointSave(input: Input) {
     }
     if (ready.pendingLifecycleCandidate !== 'clear_after_atomic_save'
       || ready.candidateMetadata.pendingOperation !== null
-      || ready.candidateMetadata.baselineStatus !== 'recovery_required'
-      || ready.candidateMetadata.baselineConfirmedAt !== null
+      || ready.candidateMetadata.baselineStatus !== ready.candidateBaselineStatus
+      || ready.candidateMetadata.baselineConfirmedAt !== ready.candidateBaselineConfirmedAt
       || ready.candidateMetadata.lastPulledChangeSequence !== ready.candidateCursor
       || fingerprintDayMemoBaselines(ready.candidateMetadata) !== ready.candidateBaselineFingerprint
       || !isDayMemoSyncMetadataV5(ready.candidateMetadata)) {
       finish('normal_body_mismatch_recovery_checkpoint_candidate_invalid', base); return
     }
-    const accepted = window.confirm([
+    const accepted = options.skipConfirmation || window.confirm([
       `対象日：${ready.date}`,
       `baseline候補：${ready.sourceBaselineCount}件から${Object.keys(ready.candidateMetadata.baselines).length}件へ更新`,
       `cursor：${ready.sourceCursor}から${ready.candidateCursor}へ更新`,
       '対象のrecovery pendingを同じmetadata更新でクリアします。',
-      `未解決差異${Object.keys(ready.unresolvedClassifications).length}件を残し、baselineStatusはrecovery_requiredを維持します。`,
+      `未解決差異${Object.keys(ready.unresolvedClassifications).length}件、baselineStatusは${ready.candidateBaselineStatus}として保存します。`,
       'Supabase送信とfull pullは行わず、metadataだけを原子的に保存します。自動再試行はありません。',
       '保存しますか？',
     ].join('\n'))
@@ -246,12 +250,13 @@ export function useDayMemoBodyMismatchRecoveryCheckpointSave(input: Input) {
       }
       const candidate = ready.candidateMetadata
       const expectedCandidate: DayMemoSyncMetadataV5 = { ...metadata, baselines: candidate.baselines,
-        lastPulledChangeSequence: ready.candidateCursor, baselineStatus: 'recovery_required',
-        baselineConfirmedAt: null, pendingOperation: null }
+        lastPulledChangeSequence: ready.candidateCursor, baselineStatus: ready.candidateBaselineStatus,
+        baselineConfirmedAt: ready.candidateBaselineConfirmedAt, pendingOperation: null }
       if (!isDayMemoSyncMetadataV5(candidate) || candidate.workspaceId !== metadata.workspaceId
         || candidate.pendingOperation !== null || candidate.pushBlock !== metadata.pushBlock
         || !same(candidate.localDeleteIntents, metadata.localDeleteIntents)
-        || candidate.baselineStatus !== 'recovery_required' || candidate.baselineConfirmedAt !== null
+        || candidate.baselineStatus !== ready.candidateBaselineStatus
+        || candidate.baselineConfirmedAt !== ready.candidateBaselineConfirmedAt
         || candidate.lastPulledChangeSequence !== ready.candidateCursor
         || fingerprintDayMemoBaselines(candidate) !== ready.candidateBaselineFingerprint
         || !same(candidate, expectedCandidate)) {
@@ -291,8 +296,9 @@ export function useDayMemoBodyMismatchRecoveryCheckpointSave(input: Input) {
       if (readBack.raw !== expectedRaw || !same(readBack.metadata, candidate)
         || fingerprintDayMemoBaselines(readBack.metadata) !== ready.candidateBaselineFingerprint
         || readBack.metadata.lastPulledChangeSequence !== ready.candidateCursor
-        || readBack.metadata.baselineStatus !== 'recovery_required'
-        || readBack.metadata.baselineConfirmedAt !== null || readBack.metadata.pendingOperation !== null) {
+        || readBack.metadata.baselineStatus !== ready.candidateBaselineStatus
+        || readBack.metadata.baselineConfirmedAt !== ready.candidateBaselineConfirmedAt
+        || readBack.metadata.pendingOperation !== null) {
         const rollback = rollbackCandidate(expectedRaw, metadata)
         finish(rollback === 'succeeded' ? 'normal_body_mismatch_recovery_checkpoint_rollback_succeeded'
           : rollback === 'failed' ? 'normal_body_mismatch_recovery_checkpoint_rollback_failed'
@@ -306,6 +312,7 @@ export function useDayMemoBodyMismatchRecoveryCheckpointSave(input: Input) {
       finish('normal_body_mismatch_recovery_checkpoint_saved', { ...base, succeeded: true,
         verificationSnapshotVerified: true, candidateMetadataVerified: true, sourceMetadataVerified: true,
         pendingCleared: true, metadataSave: 'succeeded', readBack: 'succeeded', rollback: 'not_run',
+        normalSyncReady: ready.candidateNormalSyncReady,
         verificationSnapshotDiscarded: true })
     } catch {
       finish('normal_body_mismatch_recovery_checkpoint_unknown', { ...base,
@@ -318,6 +325,7 @@ export function useDayMemoBodyMismatchRecoveryCheckpointSave(input: Input) {
     discardVerificationResult, finish, getReadySnapshot, inspectSnapshotAvailability,
     isConfigured, isSignedIn, reactMetadata, saving])
 
-  const discard = useCallback(() => setResult(null), [])
-  return { canSave, candidateAvailability, saving, result, save, discard }
+  const discard = useCallback(() => { resultRef.current = null; setResult(null) }, [])
+  const getLatestResult = useCallback(() => resultRef.current, [])
+  return { canSave, candidateAvailability, saving, result, save, discard, getLatestResult }
 }

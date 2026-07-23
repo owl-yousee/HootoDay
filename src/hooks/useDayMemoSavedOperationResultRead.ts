@@ -192,6 +192,7 @@ function inspectEligiblePending(connection: SyncConnection | null): RecoveryPend
 export function useDayMemoSavedOperationResultRead({ dayMemos, isConfigured, isSignedIn, authUserId, connection }: Input) {
   const [reading, setReading] = useState(false)
   const [result, setResult] = useState<DayMemoSavedOperationResultReadResult | null>(null)
+  const resultRef = useRef<DayMemoSavedOperationResultReadResult | null>(null)
   const snapshotRef = useRef<DayMemoSavedOperationResultSnapshot | null>(null)
   const consumedSnapshotTokenRef = useRef<string | null>(null)
   const inFlightRef = useRef(false)
@@ -211,12 +212,13 @@ export function useDayMemoSavedOperationResultRead({ dayMemos, isConfigured, isS
       persistentStateChanged: false, remoteChanged: false, checkedAt: new Date().toISOString(),
       nextAction: nextAction(safety), ...values,
     }
+    resultRef.current = next
     setResult(next)
     if (!next.snapshotCreated) { snapshotRef.current = null; consumedSnapshotTokenRef.current = null }
     return next
   }, [])
 
-  const read = useCallback(async () => {
+  const read = useCallback(async (options: { skipConfirmation?: boolean } = {}) => {
     if (inFlightRef.current || reading) return
     const runId = ++runIdRef.current
     inFlightRef.current = true
@@ -280,7 +282,7 @@ export function useDayMemoSavedOperationResultRead({ dayMemos, isConfigured, isS
       const localFingerprint = canonicalDayMemoPayloadFingerprint(memo)
       const persistentCheckpointFingerprint = fingerprintDayMemoRecoveryCheckpoint(metadata)
       const pendingFingerprint = fingerprintDayMemoRecoveryPending(pending)
-      const accepted = window.confirm([
+      const accepted = options.skipConfirmation || window.confirm([
         `対象日：${pending.date}`,
         '既存operation IDを使用して、保存済みoperation履歴だけを読み取ります。',
         'remote更新、operation作成、revision／sequence採番は行いません。',
@@ -408,6 +410,7 @@ export function useDayMemoSavedOperationResultRead({ dayMemos, isConfigured, isS
     runIdRef.current += 1
     snapshotRef.current = null
     consumedSnapshotTokenRef.current = null
+    resultRef.current = null
     setResult(null)
     setReading(false)
   }, [])
@@ -448,6 +451,7 @@ export function useDayMemoSavedOperationResultRead({ dayMemos, isConfigured, isS
     return getReadySnapshot() ? 'ready' : 'stale'
   }, [getReadySnapshot])
 
+  const getLatestResult = useCallback(() => resultRef.current, [])
   return { eligible, reading, result, read, discard, getReadySnapshot, consumeReadySnapshot,
-    getCurrentSnapshotToken, inspectSnapshotAvailability }
+    getCurrentSnapshotToken, inspectSnapshotAvailability, getLatestResult }
 }

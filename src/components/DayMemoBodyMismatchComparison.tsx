@@ -1,4 +1,5 @@
 import type { useDayMemoNormalBodyMismatchCandidate } from '../hooks/useDayMemoNormalBodyMismatchCandidate'
+import { bodyMismatchCandidateAction } from '../utils/dayMemoSyncActions'
 
 interface Props {
   candidate: ReturnType<typeof useDayMemoNormalBodyMismatchCandidate>
@@ -7,6 +8,12 @@ interface Props {
 
 export function DayMemoBodyMismatchComparison({ candidate, disabled = false }: Props) {
   if (!candidate.eligible) return null
+  const selectedAction = candidate.choice
+    ? bodyMismatchCandidateAction(candidate.choice, (choice) => {
+      const revision = candidate.result?.diagnostics.snapshotRevision
+      candidate.confirmCandidate(choice, revision ?? undefined)
+    }, !disabled)
+    : null
   return (
     <div className="cloud-day-memo-baseline-panel" role="region" aria-labelledby="day-memo-body-mismatch-heading">
       <h4 id="day-memo-body-mismatch-heading">本文相違の比較と採用候補</h4>
@@ -34,7 +41,7 @@ export function DayMemoBodyMismatchComparison({ candidate, disabled = false }: P
           <label><input type="radio" name="day-memo-body-mismatch-choice" checked={candidate.choice === 'local'} onChange={() => candidate.setChoice('local')} /> localを採用候補にする</label>
           <label><input type="radio" name="day-memo-body-mismatch-choice" checked={candidate.choice === 'remote'} onChange={() => candidate.setChoice('remote')} /> remoteを採用候補にする</label>
           <button type="button" className="health-secondary-button cloud-sync-button" disabled={!candidate.choice || disabled}
-            onClick={() => { candidate.confirmCandidate() }}>この候補を確定</button>
+            onClick={selectedAction?.handler}>{selectedAction?.label ?? '採用候補を選択してください'}</button>
         </div>
       ) : null}
       {candidate.result ? (

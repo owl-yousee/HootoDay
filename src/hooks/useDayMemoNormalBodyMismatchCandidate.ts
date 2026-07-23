@@ -290,12 +290,11 @@ export function useDayMemoNormalBodyMismatchCandidate({ dayMemos, isConfigured, 
   }, [bodyMismatchDates, checking, connection, dayMemos, eligible, finish, reactMetadata,
     savedRecoveryResult, savedStateReady, selectedDate, signature])
 
-  const confirmCandidate = useCallback((requestedChoice?: DayMemoNormalBodyMismatchChoice, expectedSnapshotRevision?: number) => {
-    const selectedChoice = requestedChoice ?? choice
+  const confirmCandidate = useCallback((selectedChoice: DayMemoNormalBodyMismatchChoice, expectedSnapshotRevision?: number) => {
     const snapshot = comparisonSnapshotRef.current
     const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
     const stored = readDayMemoStorageSnapshot(window.localStorage)
-    if (!snapshot || !selectedChoice || !comparison || comparison.date !== snapshot.date
+    if (!snapshot || !comparison || comparison.date !== snapshot.date
       || (expectedSnapshotRevision !== undefined && snapshot.snapshotRevision !== expectedSnapshotRevision)
       || !savedStateReady || savedRecoveryResult?.unresolvedClassifications[snapshot.date] !== 'body_mismatch'
       || !connectionIsEligible(connection) || connection.workspaceId !== snapshot.workspaceId
@@ -308,7 +307,7 @@ export function useDayMemoNormalBodyMismatchCandidate({ dayMemos, isConfigured, 
     candidateSnapshotRef.current = { ...snapshot, candidate: selectedChoice }
     return finish(selectedChoice === 'local' ? 'normal_body_mismatch_candidate_local' : 'normal_body_mismatch_candidate_remote',
       snapshot.date, selectedChoice, true)
-  }, [choice, comparison, connection, dayMemos, finish, savedRecoveryResult, savedStateReady])
+  }, [comparison, connection, dayMemos, finish, savedRecoveryResult, savedStateReady])
 
   const selectChoice = useCallback((nextChoice: DayMemoNormalBodyMismatchChoice) => {
     candidateSnapshotRef.current = null

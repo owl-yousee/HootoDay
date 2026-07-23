@@ -9,7 +9,8 @@ import { DayMemoSyncDifferenceCards, type SyncDifferenceActionSelection } from '
 import { DayMemoRemoteOnlyBlockedDetails } from './DayMemoRemoteOnlyBlockedDetails'
 import { CopyTextControl } from './CopyTextControl'
 import { buildSyncShareText } from '../utils/syncShareText'
-import { BODY_MISMATCH_REMOTE_ACTIONS, bodyMismatchRemoteAction } from '../utils/dayMemoSyncActions'
+import { BODY_MISMATCH_LOCAL_ACTIONS, BODY_MISMATCH_REMOTE_ACTIONS,
+  bodyMismatchCandidateAction, bodyMismatchRemoteAction } from '../utils/dayMemoSyncActions'
 import { presentPullDifference, presentSyncDifference, withCurrentDifferenceAction } from '../utils/syncDifferencePresentation'
 import type { SupabaseAuthState, SupabaseConfigurationState } from '../hooks/useSupabaseAuth'
 import type { useDayMemoInitialUpload } from '../hooks/useDayMemoInitialUpload'
@@ -236,6 +237,13 @@ type BodyMismatchComparisonRun = {
     result: ReturnType<typeof useDayMemoBodyMismatchRemoteAdoption>['result']
     checkedAt: string | null
   } | null
+}
+
+type BodyMismatchLocalFlow = {
+  stage: 'idle' | 'applying' | 'applied' | 'finalizing' | 'complete' | 'blocked'
+  safety: string | null
+  date: string | null
+  checkedAt: string | null
 }
 
 const SYNC_STAGE_IDS: Record<SyncRecoveryUiStage, string> = {
@@ -669,6 +677,9 @@ export function ThemeSettings({
   const [normalSyncCheckUi, setNormalSyncCheckUi] = useState<NormalSyncCheckUiResult>(IDLE_NORMAL_SYNC_CHECK_UI)
   const [lastBodyMismatchComparisonRun, setLastBodyMismatchComparisonRun]
     = useState<BodyMismatchComparisonRun | null>(null)
+  const [bodyMismatchLocalFlow, setBodyMismatchLocalFlow] = useState<BodyMismatchLocalFlow>({
+    stage: 'idle', safety: null, date: null, checkedAt: null,
+  })
   const bodyMismatchComparisonRunIdRef = useRef(0)
   const normalSyncCheckStartedAtRef = useRef(0)
   const normalSyncCheckTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -914,6 +925,7 @@ export function ThemeSettings({
       dayMemoBodyMismatchRemoteAdoption.discard()
     }
     dayMemoNormalBodyMismatchCandidate.discard()
+    setBodyMismatchLocalFlow({ stage: 'idle', safety: null, date: null, checkedAt: null })
     setLastBodyMismatchComparisonRun({ runId, requestedDate: date, startedAt, completedAt: null,
       status: 'checking', result: null, comparison: null,
       metadataCursor: syncMetadata?.lastPulledChangeSequence ?? null,
@@ -946,9 +958,17 @@ export function ThemeSettings({
     if (!run || run.status !== 'ready' || !run.comparison
       || bodyMismatchComparisonRunIdRef.current !== run.runId
       || run.requestedDate !== recoveryNavigation.targetDate) return
-    if (dayMemoBodyMismatchRemoteAdoption.stage !== 'idle' && !dayMemoBodyMismatchRemoteAdoption.running) {
+    if (dayMemoBodyMismatchRemoteAdoption.running) return
+    if (dayMemoBodyMismatchRemoteAdoption.stage !== 'idle') {
       dayMemoBodyMismatchRemoteAdoption.discard()
     }
+    dayMemoNormalBodyMismatchLocalPreparation.discard()
+    dayMemoBodyMismatchRecoveryPreflight.discard()
+    dayMemoBodyMismatchRecoverySend.discard()
+    dayMemoSavedOperationResultRead.discard()
+    dayMemoBodyMismatchRecoveryPostSendVerification.discard()
+    dayMemoBodyMismatchRecoveryCheckpointSave.discard()
+    setBodyMismatchLocalFlow({ stage: 'idle', safety: null, date: run.requestedDate, checkedAt: null })
     setLastBodyMismatchComparisonRun({ ...run,
       candidateCheck: { choice, status: 'checking', result: null }, remoteContentCheck: null,
       remotePreparationCheck: null, remoteFinalCheck: null })
@@ -969,6 +989,78 @@ export function ThemeSettings({
       candidateCheck: { choice,
         status: result?.safety === expectedSafety ? 'ready' : result ? 'blocked' : 'failed', result },
       remoteContentCheck: null, remotePreparationCheck: null, remoteFinalCheck: null })
+  }
+
+  const applyBodyMismatchLocalAdoption = async () => {
+    const run = lastBodyMismatchComparisonRun
+    const candidate = dayMemoNormalBodyMismatchCandidate.getCandidateSnapshot()
+    if (!run || run.candidateCheck?.status !== 'ready' || run.candidateCheck.choice !== 'local'
+      || run.candidateCheck.result?.safety !== 'normal_body_mismatch_candidate_local'
+      || !candidate || candidate.candidate !== 'local' || candidate.date !== run.requestedDate) {
+      setBodyMismatchLocalFlow({ stage: 'blocked', safety: 'candidate_choice_mismatch',
+        date: run?.requestedDate ?? null, checkedAt: new Date().toISOString() })
+      return
+    }
+    if (!window.confirm(`${candidate.date} のlocal本文を同期先へ反映します。送信直前のread-only full pullと安全確認を行い、明示した1件だけを送信します。自動retryは行いません。実行しますか？`)) return
+    setBodyMismatchLocalFlow({ stage: 'applying', safety: null, date: candidate.date, checkedAt: null })
+    try {
+      await dayMemoNormalBodyMismatchLocalPreparation.prepare({ skipConfirmation: true })
+      const prepared = dayMemoNormalBodyMismatchLocalPreparation.getLatestResult()
+      if (!prepared?.succeeded) throw new Error(prepared?.safety ?? 'local_preparation_failed')
+      await dayMemoBodyMismatchRecoveryPreflight.check()
+      const preflight = dayMemoBodyMismatchRecoveryPreflight.getLatestResult()
+      if (!preflight?.ready || preflight.operationMode !== 'body_mismatch_recovery') {
+        throw new Error(preflight?.safety ?? 'remote_preflight_failed')
+      }
+      await dayMemoBodyMismatchRecoverySend.send({ skipConfirmation: true })
+      const sent = dayMemoBodyMismatchRecoverySend.getLatestResult()
+      if (!sent?.succeeded || !sent.rpcValidated || !sent.remoteUpdated) {
+        throw new Error(sent?.safety ?? 'remote_send_failed')
+      }
+      setBodyMismatchLocalFlow({ stage: 'applied', safety: sent.safety,
+        date: candidate.date, checkedAt: sent.checkedAt })
+    } catch (error) {
+      setBodyMismatchLocalFlow({ stage: 'blocked',
+        safety: error instanceof Error ? error.message : 'unknown',
+        date: candidate.date, checkedAt: new Date().toISOString() })
+    }
+  }
+
+  const finalizeBodyMismatchLocalAdoption = async () => {
+    const run = lastBodyMismatchComparisonRun
+    if (!run || bodyMismatchLocalFlow.stage !== 'applied'
+      || bodyMismatchLocalFlow.date !== run.requestedDate) return
+    if (!window.confirm(`${run.requestedDate} のlocal採用結果をread-backで確認し、baseline・cursor・metadataを確定します。自動retryは行いません。確定しますか？`)) return
+    setBodyMismatchLocalFlow({ stage: 'finalizing', safety: null, date: run.requestedDate, checkedAt: null })
+    try {
+      await dayMemoSavedOperationResultRead.read({ skipConfirmation: true })
+      const operationResult = dayMemoSavedOperationResultRead.getLatestResult()
+      if (operationResult?.safety !== 'normal_body_mismatch_recovery_operation_result_read_ready'
+        || !operationResult.snapshotCreated) throw new Error(operationResult?.safety ?? 'remote_result_invalid')
+      await dayMemoBodyMismatchRecoveryPostSendVerification.check({ skipConfirmation: true })
+      const verified = dayMemoBodyMismatchRecoveryPostSendVerification.getLatestResult()
+      if (verified?.safety !== 'normal_body_mismatch_recovery_post_send_ready'
+        || !verified.snapshotCreated || !verified.candidateNormalSyncReady
+        || verified.unresolvedCount !== 0 || verified.candidateBaselineStatus !== 'confirmed') {
+        throw new Error(verified?.safety ?? 'remote_read_back_failed')
+      }
+      dayMemoBodyMismatchRecoveryCheckpointSave.save({ skipConfirmation: true })
+      const saved = dayMemoBodyMismatchRecoveryCheckpointSave.getLatestResult()
+      if (!saved?.succeeded || !saved.normalSyncReady || saved.unresolvedCount !== 0
+        || saved.baselineStatus !== 'confirmed' || saved.readBack !== 'succeeded') {
+        throw new Error(saved?.safety ?? 'cleanup_read_back_failed')
+      }
+      setBodyMismatchLocalFlow({ stage: 'complete', safety: saved.safety,
+        date: run.requestedDate, checkedAt: saved.checkedAt })
+      dayMemoSavedRecoveryStateCheck.discard()
+      setNormalSyncCheckUi({ status: 'success', stageId: 'normal_sync_complete', differenceCount: 0,
+        normalSyncReady: true, message: 'local採用と同期情報の確定が完了しました。',
+        nextAction: '同期作業を閉じる', checkedAt: saved.checkedAt })
+    } catch (error) {
+      setBodyMismatchLocalFlow({ stage: 'blocked',
+        safety: error instanceof Error ? error.message : 'unknown',
+        date: run.requestedDate, checkedAt: new Date().toISOString() })
+    }
   }
 
   const verifyBodyMismatchRemoteAdoptionContent = async () => {
@@ -1158,6 +1250,10 @@ export function ThemeSettings({
     () => { void applyBodyMismatchRemoteAdoption() })
   const bodyMismatchRemoteFinalizeAction = bodyMismatchRemoteAction('finalize',
     () => { void finalizeBodyMismatchRemoteAdoption() })
+  const bodyMismatchLocalCandidateAction = bodyMismatchCandidateAction('local',
+    (choice) => { void confirmBodyMismatchCandidate(choice) })
+  const bodyMismatchRemoteCandidateAction = bodyMismatchCandidateAction('remote',
+    (choice) => { void confirmBodyMismatchCandidate(choice) })
 
   const runRecoveryNavigationAction = () => {
     const date = recoveryNavigation.targetDate
@@ -2014,10 +2110,10 @@ export function ThemeSettings({
                             <div className="iphone-sync-guide-actions">
                               <button type="button" className="health-primary-button cloud-sync-button"
                                 disabled={lastBodyMismatchComparisonRun.candidateCheck?.status === 'checking'}
-                                onClick={() => { void confirmBodyMismatchCandidate('remote') }}>remote採用候補を確認</button>
+                                onClick={bodyMismatchRemoteCandidateAction?.handler}>{bodyMismatchRemoteCandidateAction?.label}</button>
                               <button type="button" className="health-secondary-button cloud-sync-button"
                                 disabled={lastBodyMismatchComparisonRun.candidateCheck?.status === 'checking'}
-                                onClick={() => { void confirmBodyMismatchCandidate('local') }}>local採用候補を確認</button>
+                                onClick={bodyMismatchLocalCandidateAction?.handler}>{bodyMismatchLocalCandidateAction?.label}</button>
                             </div>
                             {lastBodyMismatchComparisonRun.candidateCheck ? (
                               <div className={`cloud-day-memo-preview-result is-${lastBodyMismatchComparisonRun.candidateCheck.status}`}
@@ -2041,7 +2137,7 @@ export function ThemeSettings({
                                 {lastBodyMismatchComparisonRun.candidateCheck.status === 'ready' ? (
                                   <>
                                     <p>次操作：{lastBodyMismatchComparisonRun.candidateCheck.choice === 'remote'
-                                      ? 'remote採用内容を確認' : 'local採用準備を確認'}</p>
+                                      ? 'remote採用内容を確認' : BODY_MISMATCH_LOCAL_ACTIONS.apply}</p>
                                     {lastBodyMismatchComparisonRun.candidateCheck.choice === 'remote' ? (
                                       <button type="button" className="health-primary-button cloud-sync-button"
                                         disabled={dayMemoBodyMismatchRemoteAdoption.running}
@@ -2049,7 +2145,44 @@ export function ThemeSettings({
                                         {dayMemoBodyMismatchRemoteAdoption.running
                                           ? BODY_MISMATCH_REMOTE_ACTIONS.applying : bodyMismatchRemoteApplyAction?.label}
                                       </button>
-                                    ) : null}
+                                    ) : (
+                                      <button type="button" className="health-primary-button cloud-sync-button"
+                                        disabled={bodyMismatchLocalFlow.stage === 'applying'
+                                          || bodyMismatchLocalFlow.stage === 'finalizing'}
+                                        onClick={() => { void applyBodyMismatchLocalAdoption() }}>
+                                        {bodyMismatchLocalFlow.stage === 'applying'
+                                          ? BODY_MISMATCH_LOCAL_ACTIONS.applying : BODY_MISMATCH_LOCAL_ACTIONS.apply}
+                                      </button>
+                                    )}
+                                    {lastBodyMismatchComparisonRun.candidateCheck.choice === 'local'
+                                      && bodyMismatchLocalFlow.stage !== 'idle' ? (
+                                        <div className={`cloud-day-memo-preview-result is-${
+                                          bodyMismatchLocalFlow.stage === 'complete' || bodyMismatchLocalFlow.stage === 'applied'
+                                            ? 'ready' : bodyMismatchLocalFlow.stage === 'blocked' ? 'blocked' : 'checking'}`}
+                                          role={bodyMismatchLocalFlow.stage === 'blocked' ? 'alert' : 'status'}>
+                                          <h6>local採用：{bodyMismatchLocalFlow.stage}</h6>
+                                          <ul className="cloud-day-memo-preview-summary">
+                                            <li>対象：{bodyMismatchLocalFlow.date ?? '未確認'}</li>
+                                            <li>採用元：local</li>
+                                            <li>safety：{bodyMismatchLocalFlow.safety ?? '確認中'}</li>
+                                            <li>自動retry：なし</li>
+                                            <li>operation ID：既存lifecycle内で1回だけ生成</li>
+                                          </ul>
+                                          {bodyMismatchLocalFlow.stage === 'applied' ? <>
+                                            <p>RPC結果検証まで完了しました。metadata cleanupは未実行です。</p>
+                                            <button type="button" className="health-primary-button cloud-sync-button"
+                                              onClick={() => { void finalizeBodyMismatchLocalAdoption() }}>
+                                              {BODY_MISMATCH_LOCAL_ACTIONS.finalize}
+                                            </button>
+                                          </> : null}
+                                          {bodyMismatchLocalFlow.stage === 'finalizing'
+                                            ? <p>{BODY_MISMATCH_LOCAL_ACTIONS.finalizing}</p> : null}
+                                          {bodyMismatchLocalFlow.stage === 'complete'
+                                            ? <p>local採用結果を確定しました。差異0件・通常同期readyです。</p> : null}
+                                          {bodyMismatchLocalFlow.stage === 'blocked'
+                                            ? <p>現在段階を再確認するか、保存済み状態からやり直してください。</p> : null}
+                                        </div>
+                                      ) : null}
                                   </>
                                 ) : <p>比較を再確認するか、同じ候補を明示的に再確認してください。</p>}
                                 {lastBodyMismatchComparisonRun.remoteContentCheck ? (
@@ -3491,7 +3624,7 @@ export function ThemeSettings({
                       <button type="button" className="health-secondary-button cloud-sync-button"
                         disabled={!dayMemoBodyMismatchRecoveryCheckpointSave.canSave
                           || dayMemoBodyMismatchRecoveryCheckpointSave.saving}
-                        onClick={dayMemoBodyMismatchRecoveryCheckpointSave.save}>
+                        onClick={() => { dayMemoBodyMismatchRecoveryCheckpointSave.save() }}>
                         {dayMemoBodyMismatchRecoveryCheckpointSave.saving
                           ? '検証済み候補を保存中…' : '検証済み候補をmetadataへ保存'}
                       </button>

@@ -81,6 +81,7 @@ export function useDayMemoNormalBodyMismatchLocalPreparation({ dayMemos, isConfi
   reactMetadata, savedRecoveryResult, getCandidateSnapshot, consumeCandidateSnapshot, adoptVerifiedMetadata }: Input) {
   const [preparing, setPreparing] = useState(false)
   const [result, setResult] = useState<DayMemoNormalBodyMismatchLocalPreparationResult | null>(null)
+  const resultRef = useRef<DayMemoNormalBodyMismatchLocalPreparationResult | null>(null)
   const inFlightRef = useRef(false)
   const snapshot = getCandidateSnapshot()
   const eligible = Boolean(isConfigured && isSignedIn && supabaseClient && connectionIsEligible(connection)
@@ -90,18 +91,21 @@ export function useDayMemoNormalBodyMismatchLocalPreparation({ dayMemos, isConfi
 
   const finish = useCallback((safety: DayMemoNormalBodyMismatchLocalPreparationSafety,
     values: Partial<DayMemoNormalBodyMismatchLocalPreparationResult> = {}) => {
-    setResult({ date: null, candidate: 'local', succeeded: false, safety, candidateFresh: false, remoteRechecked: false,
+    const next: DayMemoNormalBodyMismatchLocalPreparationResult = { date: null, candidate: 'local', succeeded: false, safety, candidateFresh: false, remoteRechecked: false,
       operationIdGenerated: false, pendingCreated: false, operationMode: null, dayMemoChanged: false,
       baselineChanged: false, cursorChanged: false, baselineStatus: null, normalSyncReady: false,
       metadataSaved: false, readBackSucceeded: false, validatorPassed: false, rollbackAttempted: false,
-      rollbackSucceeded: false, rpcSent: false, checkedAt: new Date().toISOString(), nextAction: nextAction(safety), ...values })
+      rollbackSucceeded: false, rpcSent: false, checkedAt: new Date().toISOString(), nextAction: nextAction(safety), ...values }
+    resultRef.current = next
+    setResult(next)
+    return next
   }, [])
 
-  const prepare = useCallback(async () => {
+  const prepare = useCallback(async (options: { skipConfirmation?: boolean } = {}) => {
     if (inFlightRef.current || !eligible || !supabaseClient || !connectionIsEligible(connection)) return
     const candidate = getCandidateSnapshot()
     if (!candidate || candidate.candidate !== 'local') { finish('normal_body_mismatch_local_candidate_missing'); return }
-    const accepted = window.confirm(`${candidate.date} のlocal候補を同期先へ上書きする準備をします。新しいoperation IDとrecovery upsert pendingを作成しますが、この時点ではSupabaseへ送信せず、DayMemo・baseline・cursorは変更しません。baselineStatusはrecovery_requiredのままです。準備しますか？`)
+    const accepted = options.skipConfirmation || window.confirm(`${candidate.date} のlocal候補を同期先へ上書きする準備をします。新しいoperation IDとrecovery upsert pendingを作成しますが、この時点ではSupabaseへ送信せず、DayMemo・baseline・cursorは変更しません。baselineStatusはrecovery_requiredのままです。準備しますか？`)
     if (!accepted) return
     inFlightRef.current = true; setPreparing(true); setResult(null)
     try {
@@ -209,6 +213,7 @@ export function useDayMemoNormalBodyMismatchLocalPreparation({ dayMemos, isConfi
   }, [adoptVerifiedMetadata, connection, consumeCandidateSnapshot, dayMemos, eligible, finish,
     getCandidateSnapshot, reactMetadata, savedRecoveryResult])
 
-  const discard = useCallback(() => setResult(null), [])
-  return { eligible, preparing, result, prepare, discard }
+  const discard = useCallback(() => { resultRef.current = null; setResult(null) }, [])
+  const getLatestResult = useCallback(() => resultRef.current, [])
+  return { eligible, preparing, result, prepare, discard, getLatestResult }
 }

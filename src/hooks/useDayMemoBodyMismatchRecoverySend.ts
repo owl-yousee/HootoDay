@@ -84,6 +84,7 @@ function nextAction(safety: DayMemoBodyMismatchRecoverySendSafety): string {
 export function useDayMemoBodyMismatchRecoverySend({ dayMemos, isConfigured, isSignedIn, connection, getReadySnapshot, consumeReadySnapshot, adoptVerifiedMetadata }: Input) {
   const [sending, setSending] = useState(false)
   const [result, setResult] = useState<DayMemoBodyMismatchRecoverySendResult | null>(null)
+  const resultRef = useRef<DayMemoBodyMismatchRecoverySendResult | null>(null)
   const inFlightRef = useRef(false)
   const attemptedRef = useRef<string | null>(null)
   const current = getReadySnapshot()
@@ -92,12 +93,15 @@ export function useDayMemoBodyMismatchRecoverySend({ dayMemos, isConfigured, isS
   const canSend = Boolean(eligible && !sending && currentToken && attemptedRef.current !== currentToken)
 
   const finish = useCallback((safety: DayMemoBodyMismatchRecoverySendSafety, values: Partial<DayMemoBodyMismatchRecoverySendResult> = {}) => {
-    setResult({ date: null, safety, succeeded: false, operationMode: null, snapshotVerified: false,
+    const next: DayMemoBodyMismatchRecoverySendResult = { date: null, safety, succeeded: false, operationMode: null, snapshotVerified: false,
       pendingVerified: false, localFresh: false, checkpointVerified: false, rpcCalled: false,
       rpcValidated: false, remoteUpdated: false, metadataSaved: false, readBackSucceeded: false,
       rollbackAttempted: false, rollbackSucceeded: false, pendingStatus: null, dayMemoChanged: false,
       baselineChanged: false, cursorChanged: false, baselineStatus: null, snapshotConsumed: false,
-      automaticRetry: false, checkedAt: new Date().toISOString(), nextAction: nextAction(safety), ...values })
+      automaticRetry: false, checkedAt: new Date().toISOString(), nextAction: nextAction(safety), ...values }
+    resultRef.current = next
+    setResult(next)
+    return next
   }, [])
 
   const persistStatus = useCallback((expectedRaw: string, metadata: DayMemoSyncMetadataV5,
@@ -112,7 +116,7 @@ export function useDayMemoBodyMismatchRecoverySend({ dayMemos, isConfigured, isS
     return readBack.status === 'ready' && isDayMemoSyncMetadataV5(readBack.metadata) && readBack.raw === JSON.stringify(next)
   }, [])
 
-  const send = useCallback(async () => {
+  const send = useCallback(async (options: { skipConfirmation?: boolean } = {}) => {
     if (inFlightRef.current) { finish('normal_body_mismatch_recovery_send_already_running'); return }
     if (!isConfigured) { finish('normal_body_mismatch_recovery_send_configuration_unavailable'); return }
     if (!isSignedIn || !supabaseClient) { finish('normal_body_mismatch_recovery_send_auth_unavailable'); return }
@@ -121,7 +125,7 @@ export function useDayMemoBodyMismatchRecoverySend({ dayMemos, isConfigured, isS
     const snapshotToken = token(snapshot)
     if (!snapshot || !snapshotToken) { finish('normal_body_mismatch_recovery_send_snapshot_missing'); return }
     if (attemptedRef.current === snapshotToken) { finish('normal_body_mismatch_recovery_send_snapshot_consumed'); return }
-    const accepted = window.confirm(`${snapshot.result.date} の確認済みlocalを同期先へ送信します。既存operation IDを使用し、Supabaseへ実際に1回送信します。自動retryは行わず、baseline・cursor・checkpointは変更しません。送信後は次Phaseでremoteを再確認します。送信しますか？`)
+    const accepted = options.skipConfirmation || window.confirm(`${snapshot.result.date} の確認済みlocalを同期先へ送信します。既存operation IDを使用し、Supabaseへ実際に1回送信します。自動retryは行わず、baseline・cursor・checkpointは変更しません。送信後は次Phaseでremoteを再確認します。送信しますか？`)
     if (!accepted) { finish('normal_body_mismatch_recovery_send_cancelled', { date: snapshot.result.date }); return }
     inFlightRef.current = true; setSending(true); setResult(null)
     try {
@@ -243,6 +247,7 @@ export function useDayMemoBodyMismatchRecoverySend({ dayMemos, isConfigured, isS
     } finally { inFlightRef.current = false; setSending(false) }
   }, [adoptVerifiedMetadata, connection, consumeReadySnapshot, dayMemos, finish, getReadySnapshot, isConfigured, isSignedIn, persistStatus])
 
-  const discard = useCallback(() => setResult(null), [])
-  return { eligible, canSend, sending, result, send, discard }
+  const discard = useCallback(() => { resultRef.current = null; setResult(null) }, [])
+  const getLatestResult = useCallback(() => resultRef.current, [])
+  return { eligible, canSend, sending, result, send, discard, getLatestResult }
 }

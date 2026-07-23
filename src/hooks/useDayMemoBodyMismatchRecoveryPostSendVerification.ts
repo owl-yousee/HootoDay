@@ -88,9 +88,9 @@ export interface DayMemoBodyMismatchRecoveryPostSendResult {
   candidateBaselineCount: number
   unresolvedCount: number
   unresolvedClassifications: Record<string, DayMemoNormalDifferenceClassification>
-  candidateBaselineStatus: 'recovery_required' | null
-  candidateBaselineConfirmedAt: null
-  candidateNormalSyncReady: false
+  candidateBaselineStatus: 'recovery_required' | 'confirmed' | null
+  candidateBaselineConfirmedAt: string | null
+  candidateNormalSyncReady: boolean
   pendingLifecycleCandidate: 'clear_after_atomic_save' | null
   snapshotCreated: boolean
   fullPullCount: 0 | 1
@@ -133,9 +133,9 @@ export interface DayMemoBodyMismatchRecoveryPostSendSnapshot {
   candidateMetadataFingerprint: string
   candidateBaselineFingerprint: string
   candidateCursor: number
-  candidateBaselineStatus: 'recovery_required'
-  candidateBaselineConfirmedAt: null
-  candidateNormalSyncReady: false
+  candidateBaselineStatus: 'recovery_required' | 'confirmed'
+  candidateBaselineConfirmedAt: string | null
+  candidateNormalSyncReady: boolean
   pendingLifecycleCandidate: 'clear_after_atomic_save'
   checkedAt: string
   runId: number
@@ -227,6 +227,7 @@ export function useDayMemoBodyMismatchRecoveryPostSendVerification(input: Input)
     inspectOperationResultSnapshotAvailability } = input
   const [checking, setChecking] = useState(false)
   const [result, setResult] = useState<DayMemoBodyMismatchRecoveryPostSendResult | null>(null)
+  const resultRef = useRef<DayMemoBodyMismatchRecoveryPostSendResult | null>(null)
   const snapshotRef = useRef<DayMemoBodyMismatchRecoveryPostSendSnapshot | null>(null)
   const consumedSnapshotTokenRef = useRef<string | null>(null)
   const inFlightRef = useRef(false)
@@ -251,12 +252,13 @@ export function useDayMemoBodyMismatchRecoveryPostSendVerification(input: Input)
       persistentStateChanged: false, rpcSent: false, checkedAt: new Date().toISOString(),
       nextAction: nextAction(safety), ...values,
     }
+    resultRef.current = next
     setResult(next)
     if (!next.snapshotCreated) { snapshotRef.current = null; consumedSnapshotTokenRef.current = null }
     return next
   }, [])
 
-  const check = useCallback(async () => {
+  const check = useCallback(async (options: { skipConfirmation?: boolean } = {}) => {
     if (inFlightRef.current || checking) { finish('normal_body_mismatch_recovery_post_send_pull_already_running'); return }
     const operationSnapshot = getOperationResultSnapshot()
     if (!operationSnapshot) {
@@ -343,7 +345,7 @@ export function useDayMemoBodyMismatchRecoveryPostSendVerification(input: Input)
       || localFingerprint !== operationSnapshot.resultPayloadFingerprint) {
       finish('normal_body_mismatch_recovery_post_send_local_changed', common); return
     }
-    const confirmed = window.confirm([
+    const confirmed = options.skipConfirmation || window.confirm([
       `対象日：${pending.date}`,
       '取得済みoperation結果とcurrent remoteを完全full pullで照合します。',
       '全未解決差異とbaseline・cursor候補を再構築します。',
@@ -451,23 +453,27 @@ export function useDayMemoBodyMismatchRecoveryPostSendVerification(input: Input)
         [pending.date]: { date: pending.date, remoteRevision: remote.revision,
           remoteChangeSequence: remote.changeSequence, remoteUpdatedAt: remote.payload.updatedAt,
           baselineLocalUpdatedAt: local.updatedAt, deletedAt: null } }
-      const candidateMetadata: DayMemoSyncMetadataV5 = { ...metadata, baselines,
-        lastPulledChangeSequence: pulled.maxChangeSequence, baselineStatus: 'recovery_required',
-        baselineConfirmedAt: null, pendingOperation: null }
-      if (!isDayMemoSyncMetadataV5(candidateMetadata)) {
-        finish('normal_body_mismatch_recovery_post_send_baseline_candidate_invalid', { ...common, fullPullCount: 1 }); return
-      }
       const reconstructed = new Map(dates.map((date) => [date, classifyDayMemoNormalDifference(
         localByDate.get(date) ?? null, remoteByDate.get(date) ?? null, baselines[date] ?? null)]))
       if (reconstructed.get(pending.date) !== 'exact_match_baseline_confirmed') {
         finish('normal_body_mismatch_recovery_post_send_baseline_candidate_invalid', { ...common, fullPullCount: 1 }); return
       }
+      const checkedAt = new Date().toISOString()
       const unresolvedClassifications = Object.fromEntries([...reconstructed.entries()].filter(([, value]) =>
         value !== 'exact_match_baseline_confirmed'))
+      const normalSyncReady = pending.operationMode === 'body_mismatch_recovery'
+        && Object.keys(unresolvedClassifications).length === 0
+      const candidateBaselineStatus = normalSyncReady ? 'confirmed' as const : 'recovery_required' as const
+      const candidateBaselineConfirmedAt = normalSyncReady ? checkedAt : null
+      const candidateMetadata: DayMemoSyncMetadataV5 = { ...metadata, baselines,
+        lastPulledChangeSequence: pulled.maxChangeSequence, baselineStatus: candidateBaselineStatus,
+        baselineConfirmedAt: candidateBaselineConfirmedAt, pendingOperation: null }
+      if (!isDayMemoSyncMetadataV5(candidateMetadata)) {
+        finish('normal_body_mismatch_recovery_post_send_baseline_candidate_invalid', { ...common, fullPullCount: 1 }); return
+      }
       if (pulled.maxChangeSequence < metadata.lastPulledChangeSequence) {
         finish('normal_body_mismatch_recovery_post_send_cursor_candidate_invalid', { ...common, fullPullCount: 1 }); return
       }
-      const checkedAt = new Date().toISOString()
       const values = { ...common, operationResultSnapshotVerified: true, localFresh: true, remoteActive: true,
         operationResultSnapshotState: 'verified' as const, metadataState: 'verified' as const,
         pendingState: 'verified' as const, checkpointState: 'verified' as const,
@@ -475,8 +481,8 @@ export function useDayMemoBodyMismatchRecoveryPostSendVerification(input: Input)
         targetResolved: true, fullPullMaxSequence: pulled.maxChangeSequence, candidateCursor: pulled.maxChangeSequence,
         candidateBaselineCount: Object.keys(baselines).length,
         unresolvedCount: Object.keys(unresolvedClassifications).length, unresolvedClassifications,
-        candidateBaselineStatus: 'recovery_required' as const, candidateBaselineConfirmedAt: null,
-        candidateNormalSyncReady: false as const, pendingLifecycleCandidate: 'clear_after_atomic_save' as const,
+        candidateBaselineStatus, candidateBaselineConfirmedAt,
+        candidateNormalSyncReady: normalSyncReady, pendingLifecycleCandidate: 'clear_after_atomic_save' as const,
         snapshotCreated: true, fullPullCount: 1 as const, checkedAt }
       const ready = finish('normal_body_mismatch_recovery_post_send_ready', values)
       const snapshotToken = `${runId}:${checkedAt}`
@@ -499,8 +505,8 @@ export function useDayMemoBodyMismatchRecoveryPostSendVerification(input: Input)
         unresolvedClassifications, candidateMetadata,
         candidateMetadataFingerprint: canonicalFingerprint(candidateMetadata),
         candidateBaselineFingerprint: fingerprintDayMemoBaselines(candidateMetadata), candidateCursor: pulled.maxChangeSequence,
-        candidateBaselineStatus: 'recovery_required', candidateBaselineConfirmedAt: null,
-        candidateNormalSyncReady: false, pendingLifecycleCandidate: 'clear_after_atomic_save',
+        candidateBaselineStatus, candidateBaselineConfirmedAt,
+        candidateNormalSyncReady: normalSyncReady, pendingLifecycleCandidate: 'clear_after_atomic_save',
         checkedAt: ready.checkedAt, runId, snapshotToken }
     } catch {
       finish('normal_body_mismatch_recovery_post_send_unknown', { ...common, fullPullCount: 1 })
@@ -514,7 +520,7 @@ export function useDayMemoBodyMismatchRecoveryPostSendVerification(input: Input)
 
   const discard = useCallback(() => {
     runIdRef.current += 1; snapshotRef.current = null; consumedSnapshotTokenRef.current = null
-    setResult(null); setChecking(false)
+    resultRef.current = null; setResult(null); setChecking(false)
   }, [])
   const inspectSnapshotAvailability = useCallback((): DayMemoBodyMismatchRecoveryPostSendSnapshotAvailability => {
     const current = snapshotRef.current
@@ -555,6 +561,7 @@ export function useDayMemoBodyMismatchRecoveryPostSendVerification(input: Input)
     consumedSnapshotTokenRef.current = snapshotToken
     return true
   }, [])
+  const getLatestResult = useCallback(() => resultRef.current, [])
   return { eligible, checking, result, check, discard, getReadySnapshot,
-    consumeReadySnapshot, inspectSnapshotAvailability }
+    consumeReadySnapshot, inspectSnapshotAvailability, getLatestResult }
 }

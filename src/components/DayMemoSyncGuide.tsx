@@ -4,7 +4,7 @@ import { DayMemoSyncDifferenceCards, type SyncDifferenceActionSelection } from '
 import { DayMemoRemoteOnlyBlockedDetails } from './DayMemoRemoteOnlyBlockedDetails'
 import { buildSyncShareText } from '../utils/syncShareText'
 import { presentSyncDifference, withCurrentDifferenceAction } from '../utils/syncDifferencePresentation'
-import { BODY_MISMATCH_REMOTE_ACTIONS, bodyMismatchRemoteAction } from '../utils/dayMemoSyncActions'
+import { BODY_MISMATCH_REMOTE_ACTIONS, bodyMismatchCandidateAction, bodyMismatchRemoteAction } from '../utils/dayMemoSyncActions'
 import type { DayMemoSyncMetadataV5 } from '../types/dayMemoSync'
 import type { useDayMemoSavedRecoveryStateCheck } from '../hooks/useDayMemoSavedRecoveryStateCheck'
 import type { useDayMemoNormalDifferenceRecoveryCheckpointCheck } from '../hooks/useDayMemoNormalDifferenceRecoveryCheckpointCheck'
@@ -100,6 +100,14 @@ export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, b
     () => { void bodyRemoteAdoption.verifyAndApplyRemote() })
   const bodyMismatchRemoteFinalizeAction = bodyMismatchRemoteAction('finalize',
     () => { void bodyRemoteAdoption.finalizeRemoteAdoption() })
+  const confirmBodyMismatchChoice = (choice: 'local' | 'remote') => {
+    if (bodyRemoteAdoption.running || bodyLocalPreparation.preparing) return
+    bodyRemoteAdoption.discard()
+    bodyLocalPreparation.discard()
+    bodyCandidate.confirmCandidate(choice, bodyCandidate.result?.diagnostics.snapshotRevision ?? undefined)
+  }
+  const bodyMismatchLocalCandidateAction = bodyMismatchCandidateAction('local', confirmBodyMismatchChoice)
+  const bodyMismatchRemoteCandidateAction = bodyMismatchCandidateAction('remote', confirmBodyMismatchChoice)
 
   const savedReady = saved.result?.safety === 'normal_difference_checkpoint_saved_state_ready'
   const currentStage = remoteOnlyCurrent ? `同期先のみデータ：${remoteOnly.stage}`
@@ -358,9 +366,9 @@ export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, b
               </div>
               {!candidateCurrent ? <div className="iphone-sync-guide-actions">
                 <button type="button" className="health-secondary-button cloud-sync-button"
-                  onClick={() => { bodyCandidate.confirmCandidate('local') }}>このiPhoneの内容を残す</button>
+                  onClick={bodyMismatchLocalCandidateAction?.handler}>{bodyMismatchLocalCandidateAction?.label}</button>
                 <button type="button" className="health-primary-button cloud-sync-button"
-                  onClick={() => { bodyCandidate.confirmCandidate('remote') }}>同期先の内容を使う</button>
+                  onClick={bodyMismatchRemoteCandidateAction?.handler}>{bodyMismatchRemoteCandidateAction?.label}</button>
               </div> : bodyCandidate.result?.candidate === 'local' ? <>
                 <h5>このiPhoneの内容を同期先へ送る準備</h5>
                 <p>この操作ではpendingを準備します。同期先への送信は次の明示操作です。</p>
