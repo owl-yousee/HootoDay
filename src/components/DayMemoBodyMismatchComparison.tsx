@@ -58,7 +58,6 @@ export function DayMemoBodyMismatchComparison({ candidate, disabled = false }: P
             <li>body mismatch再分類：{candidate.result.diagnostics.bodyMismatchConfirmed ? '確認済み' : '未確認'}</li>
             <li>snapshot revision：{candidate.result.diagnostics.snapshotRevision ?? '未生成'}</li>
           </ul>
-          <p>{candidate.result.nextAction}</p>
         </div>
       ) : null}
       <button type="button" className="health-secondary-button cloud-sync-button" disabled={disabled} onClick={candidate.discard}>比較・候補結果を破棄</button>

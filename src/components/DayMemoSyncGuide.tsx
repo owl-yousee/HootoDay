@@ -4,6 +4,7 @@ import { DayMemoSyncDifferenceCards, type SyncDifferenceActionSelection } from '
 import { DayMemoRemoteOnlyBlockedDetails } from './DayMemoRemoteOnlyBlockedDetails'
 import { buildSyncShareText } from '../utils/syncShareText'
 import { presentSyncDifference, withCurrentDifferenceAction } from '../utils/syncDifferencePresentation'
+import { BODY_MISMATCH_REMOTE_ACTIONS, bodyMismatchRemoteAction } from '../utils/dayMemoSyncActions'
 import type { DayMemoSyncMetadataV5 } from '../types/dayMemoSync'
 import type { useDayMemoSavedRecoveryStateCheck } from '../hooks/useDayMemoSavedRecoveryStateCheck'
 import type { useDayMemoNormalDifferenceRecoveryCheckpointCheck } from '../hooks/useDayMemoNormalDifferenceRecoveryCheckpointCheck'
@@ -95,6 +96,10 @@ export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, b
   const remaining = remoteOnlyCurrent ? remoteOnly.result?.unresolvedCount ?? items.length
     : bodyRemoteAdoption.result?.remainingCount ?? saved.result?.unresolvedCount ?? items.length
   const localDiscardCurrent = localOnlyDiscard.result?.date === activeDate
+  const bodyMismatchRemoteApplyAction = bodyMismatchRemoteAction('apply',
+    () => { void bodyRemoteAdoption.verifyAndApplyRemote() })
+  const bodyMismatchRemoteFinalizeAction = bodyMismatchRemoteAction('finalize',
+    () => { void bodyRemoteAdoption.finalizeRemoteAdoption() })
 
   const savedReady = saved.result?.safety === 'normal_difference_checkpoint_saved_state_ready'
   const currentStage = remoteOnlyCurrent ? `同期先のみデータ：${remoteOnly.stage}`
@@ -298,12 +303,10 @@ export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, b
                 <li>iPhoneデータ変更：あり</li><li>同期先への書き込み：なし</li>
                 <li>metadata変更：まだなし</li><li>自動retry：なし</li>
               </ul>
-              <button type="button" className="health-primary-button cloud-sync-button" disabled={!bodyRemoteAdoption.canVerify || bodyRemoteAdoption.running}
-                onClick={() => { void bodyRemoteAdoption.verifyAfterApply() }}>反映後の状態を確認</button>
-            </> : remoteCurrent && bodyRemoteAdoption.stage === 'metadata_ready' ? <>
-              <h5>同期情報を保存します</h5><p>対象日のbaselineだけを追加し、ほかの差異は残します。</p>
-              <button type="button" className="health-primary-button cloud-sync-button" disabled={!bodyRemoteAdoption.canSave || bodyRemoteAdoption.running}
-                onClick={bodyRemoteAdoption.saveMetadata}>同期情報を保存</button>
+              <button type="button" className="health-primary-button cloud-sync-button" disabled={bodyRemoteAdoption.running}
+                onClick={bodyMismatchRemoteFinalizeAction?.handler}>
+                {bodyRemoteAdoption.running ? BODY_MISMATCH_REMOTE_ACTIONS.finalizing : bodyMismatchRemoteFinalizeAction?.label}
+              </button>
             </> : remoteCurrent && bodyRemoteAdoption.stage === 'completed' ? <>
               <h5>完了しました</h5><p>{activeDate}へ同期先の内容を反映しました。残り：{remaining}件</p>
               <button type="button" className="health-primary-button cloud-sync-button" onClick={() => {
@@ -354,14 +357,10 @@ export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, b
                 <small>更新：{bodyCandidate.comparison ? new Date(bodyCandidate.comparison.remoteUpdatedAt).toLocaleString('ja-JP') : ''}</small>
               </div>
               {!candidateCurrent ? <div className="iphone-sync-guide-actions">
-                <button type="button" className="health-secondary-button cloud-sync-button" onClick={() => bodyCandidate.setChoice('local')}>このiPhoneの内容を残す</button>
-                <button type="button" className="health-primary-button cloud-sync-button" onClick={() => bodyCandidate.setChoice('remote')}>同期先の内容を使う</button>
-                {bodyCandidate.choice ? <>
-                  <p>選択：{bodyCandidate.choice === 'local' ? 'このiPhoneの内容を残します' : '同期先の内容をこのiPhoneへ反映します'}</p>
-                  <button type="button" className="health-primary-button cloud-sync-button"
-                    onClick={() => { bodyCandidate.confirmCandidate() }}>この候補を確定</button>
-                  <button type="button" className="health-secondary-button cloud-sync-button" onClick={bodyCandidate.clearChoice}>選び直す</button>
-                </> : null}
+                <button type="button" className="health-secondary-button cloud-sync-button"
+                  onClick={() => { bodyCandidate.confirmCandidate('local') }}>このiPhoneの内容を残す</button>
+                <button type="button" className="health-primary-button cloud-sync-button"
+                  onClick={() => { bodyCandidate.confirmCandidate('remote') }}>同期先の内容を使う</button>
               </div> : bodyCandidate.result?.candidate === 'local' ? <>
                 <h5>このiPhoneの内容を同期先へ送る準備</h5>
                 <p>この操作ではpendingを準備します。同期先への送信は次の明示操作です。</p>
@@ -371,8 +370,9 @@ export function DayMemoSyncGuide({ metadata, saved, checkpoint, bodyCandidate, b
                 <h5>選択内容を確認してください</h5>
                 <p>この操作ではiPhoneの内容だけを変更します。同期先は変更しません。</p>
                 <p className="cloud-sync-note">iPhoneのデータ変更：あり／同期先への書き込み：なし／metadata変更：反映後確認であり／自動retry：なし</p>
-                <button type="button" className="health-primary-button cloud-sync-button" disabled={!bodyRemoteAdoption.canApply || bodyRemoteAdoption.running}
-                  onClick={() => { void bodyRemoteAdoption.applyRemote() }}>{bodyRemoteAdoption.running ? 'remote本文を反映中…' : 'remote本文をこの端末へ反映'}</button>
+                <button type="button" className="health-primary-button cloud-sync-button" disabled={bodyRemoteAdoption.running}
+                  onClick={bodyMismatchRemoteApplyAction?.handler}>{bodyRemoteAdoption.running
+                    ? BODY_MISMATCH_REMOTE_ACTIONS.applying : bodyMismatchRemoteApplyAction?.label}</button>
                 <button type="button" className="health-secondary-button cloud-sync-button" onClick={bodyCandidate.clearChoice}>選び直す</button>
               </>}
             </>

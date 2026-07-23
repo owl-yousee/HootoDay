@@ -9,6 +9,7 @@ import { DayMemoSyncDifferenceCards, type SyncDifferenceActionSelection } from '
 import { DayMemoRemoteOnlyBlockedDetails } from './DayMemoRemoteOnlyBlockedDetails'
 import { CopyTextControl } from './CopyTextControl'
 import { buildSyncShareText } from '../utils/syncShareText'
+import { BODY_MISMATCH_REMOTE_ACTIONS, bodyMismatchRemoteAction } from '../utils/dayMemoSyncActions'
 import { presentPullDifference, presentSyncDifference, withCurrentDifferenceAction } from '../utils/syncDifferencePresentation'
 import type { SupabaseAuthState, SupabaseConfigurationState } from '../hooks/useSupabaseAuth'
 import type { useDayMemoInitialUpload } from '../hooks/useDayMemoInitialUpload'
@@ -894,7 +895,15 @@ export function ThemeSettings({
                                       : recoveryNavigation.stage === 'normal_local_only_send'
                                         ? dayMemoLocalOnlyUpload.state === 'prepared'
                   : false
-  const navigationDisabledReason = recoveryNavigation.disabledReason
+  const navigationChecking = normalSyncCheckUi.status === 'checking'
+    || dayMemoSavedRecoveryStateCheck.checking || dayMemoNormalBodyMismatchCandidate.checking
+    || dayMemoBodyMismatchRemoteAdoption.running || dayMemoRecoveryRemoteOnlyAdoption.running
+    || dayMemoRecoveryFinalization.running || dayMemoNormalMetadataRepair.running
+    || dayMemoNormalDifferenceRecoveryPlan.checking
+    || dayMemoNormalDifferenceRecoveryCheckpointCheck.checking
+    || dayMemoNormalDifferenceRecoveryCheckpointSave.saving
+    || dayMemoLocalOnlyPreview.previewState === 'checking'
+  const navigationDisabledReason = navigationChecking ? '処理中です…' : recoveryNavigation.disabledReason
     ?? (recoveryNavigation.stage === 'normal_state_check' ? dayMemoPullPreview.normalStateCheckDisabledReason : null)
     ?? (navigationCanExecute ? null : '現在のsnapshotまたは前提条件を安全に確認できないため実行できません。')
 
@@ -943,10 +952,8 @@ export function ThemeSettings({
     setLastBodyMismatchComparisonRun({ ...run,
       candidateCheck: { choice, status: 'checking', result: null }, remoteContentCheck: null,
       remotePreparationCheck: null, remoteFinalCheck: null })
-    await dayMemoNormalBodyMismatchCandidate.compare(run.requestedDate)
-    if (bodyMismatchComparisonRunIdRef.current !== run.runId) return
-    const comparisonResult = dayMemoNormalBodyMismatchCandidate.getLatestResult()
-    const refreshedComparison = dayMemoNormalBodyMismatchCandidate.getLatestComparison()
+    const comparisonResult = run.result
+    const refreshedComparison = run.comparison
     const snapshotRevision = comparisonResult?.diagnostics.snapshotRevision
     if (comparisonResult?.safety !== 'normal_body_mismatch_compare_ready'
       || !refreshedComparison || snapshotRevision == null) {
@@ -1143,6 +1150,14 @@ export function ThemeSettings({
       normalSyncReady: true, message: 'remote採用と同期情報の確定が完了しました。',
       nextAction: '同期作業を閉じる', checkedAt: new Date().toISOString() })
   }
+
+  const applyBodyMismatchRemoteAdoption = async () => {
+    await dayMemoBodyMismatchRemoteAdoption.verifyAndApplyRemote()
+  }
+  const bodyMismatchRemoteApplyAction = bodyMismatchRemoteAction('apply',
+    () => { void applyBodyMismatchRemoteAdoption() })
+  const bodyMismatchRemoteFinalizeAction = bodyMismatchRemoteAction('finalize',
+    () => { void finalizeBodyMismatchRemoteAdoption() })
 
   const runRecoveryNavigationAction = () => {
     const date = recoveryNavigation.targetDate
@@ -2029,10 +2044,10 @@ export function ThemeSettings({
                                       ? 'remote採用内容を確認' : 'local採用準備を確認'}</p>
                                     {lastBodyMismatchComparisonRun.candidateCheck.choice === 'remote' ? (
                                       <button type="button" className="health-primary-button cloud-sync-button"
-                                        disabled={lastBodyMismatchComparisonRun.remoteContentCheck?.status === 'checking'}
-                                        onClick={() => { void verifyBodyMismatchRemoteAdoptionContent() }}>
-                                        {lastBodyMismatchComparisonRun.remoteContentCheck?.status === 'checking'
-                                          ? 'remote採用内容を確認中…' : 'remote採用内容を確認'}
+                                        disabled={dayMemoBodyMismatchRemoteAdoption.running}
+                                        onClick={bodyMismatchRemoteApplyAction?.handler}>
+                                        {dayMemoBodyMismatchRemoteAdoption.running
+                                          ? BODY_MISMATCH_REMOTE_ACTIONS.applying : bodyMismatchRemoteApplyAction?.label}
                                       </button>
                                     ) : null}
                                   </>
@@ -2196,8 +2211,8 @@ export function ThemeSettings({
                                           <button type="button" className="health-primary-button cloud-sync-button"
                                             disabled={dayMemoBodyMismatchRemoteAdoption.running}
                                             onClick={() => { void dayMemoBodyMismatchRemoteAdoption.applyRemote() }}>
-                                            {dayMemoBodyMismatchRemoteAdoption.running
-                                              ? 'remote本文を反映中…' : 'remote本文をこの端末へ反映'}
+                                        {dayMemoBodyMismatchRemoteAdoption.running
+                                          ? BODY_MISMATCH_REMOTE_ACTIONS.applying : BODY_MISMATCH_REMOTE_ACTIONS.apply}
                                           </button>
                                         ) : null}
                                       </> : <div className="iphone-sync-guide-actions">
@@ -2249,9 +2264,9 @@ export function ThemeSettings({
                                       <p>local本文の反映とread-backが完了しました。次の明示操作で、反映後確認・metadata cleanup・通常同期ready確認をまとめて実行します。</p>
                                       <button type="button" className="health-primary-button cloud-sync-button"
                                         disabled={dayMemoBodyMismatchRemoteAdoption.running}
-                                        onClick={() => { void finalizeBodyMismatchRemoteAdoption() }}>
+                                        onClick={bodyMismatchRemoteFinalizeAction?.handler}>
                                         {dayMemoBodyMismatchRemoteAdoption.running
-                                          ? 'remote採用結果を確認中…' : 'remote採用結果を確定'}
+                                          ? BODY_MISMATCH_REMOTE_ACTIONS.finalizing : bodyMismatchRemoteFinalizeAction?.label}
                                       </button>
                                     </> : dayMemoBodyMismatchRemoteAdoption.stage === 'completed' ? <>
                                       <p>remote採用：完了</p>
