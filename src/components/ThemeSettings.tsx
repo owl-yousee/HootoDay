@@ -209,6 +209,18 @@ type BodyMismatchComparisonRun = {
     status: 'checking' | 'ready' | 'blocked' | 'failed'
     result: ReturnType<typeof useDayMemoNormalBodyMismatchCandidate>['result']
   } | null
+  remoteContentCheck: {
+    status: 'checking' | 'ready' | 'blocked' | 'failed'
+    failureReason: string | null
+    stopStage: string
+    comparisonRunId: number
+    candidateRevision: number | null
+    snapshotRevision: number | null
+    metadataCursor: number | null
+    comparison: ReturnType<typeof useDayMemoNormalBodyMismatchCandidate>['comparison']
+    result: ReturnType<typeof useDayMemoNormalBodyMismatchCandidate>['result']
+    checkedAt: string | null
+  } | null
 }
 
 const SYNC_STAGE_IDS: Record<SyncRecoveryUiStage, string> = {
@@ -879,7 +891,7 @@ export function ThemeSettings({
     setLastBodyMismatchComparisonRun({ runId, requestedDate: date, startedAt, completedAt: null,
       status: 'checking', result: null, comparison: null,
       metadataCursor: syncMetadata?.lastPulledChangeSequence ?? null,
-      persistentChange: false, supabaseWrite: false, autoRetry: false, candidateCheck: null })
+      persistentChange: false, supabaseWrite: false, autoRetry: false, candidateCheck: null, remoteContentCheck: null })
     try {
       await dayMemoNormalBodyMismatchCandidate.compare(date)
       if (bodyMismatchComparisonRunIdRef.current !== runId) return
@@ -890,13 +902,13 @@ export function ThemeSettings({
         status: result?.safety === 'normal_body_mismatch_compare_ready' && comparison
           ? 'ready' : result ? 'blocked' : 'failed',
         result, comparison, metadataCursor: syncMetadata?.lastPulledChangeSequence ?? null,
-        persistentChange: false, supabaseWrite: false, autoRetry: false, candidateCheck: null })
+        persistentChange: false, supabaseWrite: false, autoRetry: false, candidateCheck: null, remoteContentCheck: null })
     } catch {
       if (bodyMismatchComparisonRunIdRef.current !== runId) return
       setLastBodyMismatchComparisonRun({ runId, requestedDate: date, startedAt,
         completedAt: new Date().toISOString(), status: 'failed', result: null, comparison: null,
         metadataCursor: syncMetadata?.lastPulledChangeSequence ?? null,
-        persistentChange: false, supabaseWrite: false, autoRetry: false, candidateCheck: null })
+        persistentChange: false, supabaseWrite: false, autoRetry: false, candidateCheck: null, remoteContentCheck: null })
     }
   }
 
@@ -906,7 +918,7 @@ export function ThemeSettings({
       || bodyMismatchComparisonRunIdRef.current !== run.runId
       || run.requestedDate !== recoveryNavigation.targetDate) return
     setLastBodyMismatchComparisonRun({ ...run,
-      candidateCheck: { choice, status: 'checking', result: null } })
+      candidateCheck: { choice, status: 'checking', result: null }, remoteContentCheck: null })
     await dayMemoNormalBodyMismatchCandidate.compare(run.requestedDate)
     if (bodyMismatchComparisonRunIdRef.current !== run.runId) return
     const comparisonResult = dayMemoNormalBodyMismatchCandidate.getLatestResult()
@@ -915,7 +927,7 @@ export function ThemeSettings({
     if (comparisonResult?.safety !== 'normal_body_mismatch_compare_ready'
       || !refreshedComparison || snapshotRevision == null) {
       setLastBodyMismatchComparisonRun({ ...run,
-        candidateCheck: { choice, status: comparisonResult ? 'blocked' : 'failed', result: comparisonResult } })
+        candidateCheck: { choice, status: comparisonResult ? 'blocked' : 'failed', result: comparisonResult }, remoteContentCheck: null })
       return
     }
     const result = dayMemoNormalBodyMismatchCandidate.confirmCandidate(choice, snapshotRevision)
@@ -923,7 +935,76 @@ export function ThemeSettings({
       ? 'normal_body_mismatch_candidate_remote' : 'normal_body_mismatch_candidate_local'
     setLastBodyMismatchComparisonRun({ ...run, result: comparisonResult, comparison: refreshedComparison,
       candidateCheck: { choice,
-        status: result?.safety === expectedSafety ? 'ready' : result ? 'blocked' : 'failed', result } })
+        status: result?.safety === expectedSafety ? 'ready' : result ? 'blocked' : 'failed', result }, remoteContentCheck: null })
+  }
+
+  const verifyBodyMismatchRemoteAdoptionContent = async () => {
+    const run = lastBodyMismatchComparisonRun
+    const candidateCheck = run?.candidateCheck
+    const candidateRevision = candidateCheck?.result?.diagnostics.snapshotRevision ?? null
+    const candidateSnapshot = dayMemoNormalBodyMismatchCandidate.getCandidateSnapshot()
+    if (!run || run.status !== 'ready' || !run.comparison || !candidateCheck
+      || candidateCheck.status !== 'ready' || candidateCheck.choice !== 'remote'
+      || candidateCheck.result?.safety !== 'normal_body_mismatch_candidate_remote'
+      || bodyMismatchComparisonRunIdRef.current !== run.runId
+      || run.requestedDate !== recoveryNavigation.targetDate
+      || !candidateSnapshot || candidateSnapshot.candidate !== 'remote'
+      || candidateSnapshot.date !== run.requestedDate
+      || candidateRevision == null || candidateSnapshot.snapshotRevision !== candidateRevision) {
+      if (run) setLastBodyMismatchComparisonRun({ ...run, remoteContentCheck: {
+        status: 'blocked', failureReason: !candidateSnapshot ? 'remote_candidate_missing' : 'candidate_revision_mismatch',
+        stopStage: 'remote_adoption_content_start', comparisonRunId: run.runId,
+        candidateRevision, snapshotRevision: candidateSnapshot?.snapshotRevision ?? null,
+        metadataCursor: run.metadataCursor, comparison: run.comparison, result: candidateCheck?.result ?? null,
+        checkedAt: new Date().toISOString(),
+      } })
+      return
+    }
+    setLastBodyMismatchComparisonRun({ ...run, remoteContentCheck: {
+      status: 'checking', failureReason: null, stopStage: 'remote_adoption_content_checking',
+      comparisonRunId: run.runId, candidateRevision, snapshotRevision: null,
+      metadataCursor: run.metadataCursor, comparison: run.comparison, result: candidateCheck.result, checkedAt: null,
+    } })
+    try {
+      await dayMemoNormalBodyMismatchCandidate.compare(run.requestedDate)
+      if (bodyMismatchComparisonRunIdRef.current !== run.runId) return
+      const comparisonResult = dayMemoNormalBodyMismatchCandidate.getLatestResult()
+      const refreshedComparison = dayMemoNormalBodyMismatchCandidate.getLatestComparison()
+      const snapshotRevision = comparisonResult?.diagnostics.snapshotRevision ?? null
+      if (comparisonResult?.safety !== 'normal_body_mismatch_compare_ready'
+        || !refreshedComparison || snapshotRevision == null) {
+        setLastBodyMismatchComparisonRun({ ...run, result: comparisonResult, comparison: refreshedComparison,
+          candidateCheck: { choice: 'remote', status: comparisonResult ? 'blocked' : 'failed', result: comparisonResult },
+          remoteContentCheck: { status: comparisonResult ? 'blocked' : 'failed',
+            failureReason: comparisonResult?.failureReason ?? 'unknown', stopStage: comparisonResult?.stopStage ?? 'remote_adoption_content_full_pull',
+            comparisonRunId: run.runId, candidateRevision, snapshotRevision,
+            metadataCursor: run.metadataCursor, comparison: refreshedComparison, result: comparisonResult,
+            checkedAt: new Date().toISOString() } })
+        return
+      }
+      const confirmed = dayMemoNormalBodyMismatchCandidate.confirmCandidate('remote', snapshotRevision)
+      const verifiedCandidate = dayMemoNormalBodyMismatchCandidate.getCandidateSnapshot()
+      const ready = confirmed?.safety === 'normal_body_mismatch_candidate_remote'
+        && verifiedCandidate?.candidate === 'remote'
+        && verifiedCandidate.date === run.requestedDate
+        && verifiedCandidate.snapshotRevision === snapshotRevision
+      setLastBodyMismatchComparisonRun({ ...run, result: comparisonResult, comparison: refreshedComparison,
+        candidateCheck: { choice: 'remote', status: ready ? 'ready' : confirmed ? 'blocked' : 'failed', result: confirmed },
+        remoteContentCheck: { status: ready ? 'ready' : confirmed ? 'blocked' : 'failed',
+          failureReason: ready ? null : confirmed?.failureReason ?? 'verification_input_invalid',
+          stopStage: ready ? 'remote_adoption_content_ready' : confirmed?.stopStage ?? 'remote_adoption_content_candidate',
+          comparisonRunId: run.runId, candidateRevision, snapshotRevision,
+          metadataCursor: verifiedCandidate?.cursor ?? run.metadataCursor,
+          comparison: refreshedComparison, result: confirmed, checkedAt: new Date().toISOString() } })
+    } catch {
+      if (bodyMismatchComparisonRunIdRef.current !== run.runId) return
+      setLastBodyMismatchComparisonRun({ ...run, remoteContentCheck: {
+        status: 'failed', failureReason: 'unknown', stopStage: 'remote_adoption_content_unexpected_failure',
+        comparisonRunId: run.runId, candidateRevision, snapshotRevision: null,
+        metadataCursor: run.metadataCursor, comparison: run.comparison, result: candidateCheck.result,
+        checkedAt: new Date().toISOString(),
+      } })
+    }
   }
 
   const runRecoveryNavigationAction = () => {
@@ -1806,9 +1887,71 @@ export function ThemeSettings({
                                   ) : null}
                                 </ul>
                                 {lastBodyMismatchComparisonRun.candidateCheck.status === 'ready' ? (
-                                  <p>次操作：{lastBodyMismatchComparisonRun.candidateCheck.choice === 'remote'
-                                    ? 'remote採用内容を確認' : 'local採用準備を確認'}</p>
+                                  <>
+                                    <p>次操作：{lastBodyMismatchComparisonRun.candidateCheck.choice === 'remote'
+                                      ? 'remote採用内容を確認' : 'local採用準備を確認'}</p>
+                                    {lastBodyMismatchComparisonRun.candidateCheck.choice === 'remote' ? (
+                                      <button type="button" className="health-primary-button cloud-sync-button"
+                                        disabled={lastBodyMismatchComparisonRun.remoteContentCheck?.status === 'checking'}
+                                        onClick={() => { void verifyBodyMismatchRemoteAdoptionContent() }}>
+                                        {lastBodyMismatchComparisonRun.remoteContentCheck?.status === 'checking'
+                                          ? 'remote採用内容を確認中…' : 'remote採用内容を確認'}
+                                      </button>
+                                    ) : null}
+                                  </>
                                 ) : <p>比較を再確認するか、同じ候補を明示的に再確認してください。</p>}
+                                {lastBodyMismatchComparisonRun.remoteContentCheck ? (
+                                  <div className={`cloud-day-memo-preview-result is-${lastBodyMismatchComparisonRun.remoteContentCheck.status}`}
+                                    role={lastBodyMismatchComparisonRun.remoteContentCheck.status === 'ready'
+                                      || lastBodyMismatchComparisonRun.remoteContentCheck.status === 'checking' ? 'status' : 'alert'}>
+                                    <h6>remote採用内容確認：{lastBodyMismatchComparisonRun.remoteContentCheck.status}</h6>
+                                    {lastBodyMismatchComparisonRun.remoteContentCheck.status === 'checking' ? (
+                                      <p>最新状態を読み取り専用で確認しています…</p>
+                                    ) : <>
+                                      <ul className="cloud-day-memo-preview-summary">
+                                        <li>対象：{lastBodyMismatchComparisonRun.requestedDate}</li>
+                                        <li>採用元：remote</li>
+                                        <li>比較runId：{lastBodyMismatchComparisonRun.remoteContentCheck.comparisonRunId}</li>
+                                        <li>candidate revision：{lastBodyMismatchComparisonRun.remoteContentCheck.candidateRevision ?? '未確認'}</li>
+                                        <li>snapshot revision：{lastBodyMismatchComparisonRun.remoteContentCheck.snapshotRevision ?? '未確認'}</li>
+                                        <li>metadata cursor：{lastBodyMismatchComparisonRun.remoteContentCheck.metadataCursor ?? '未確認'}</li>
+                                        <li>remote／baseline identity：{lastBodyMismatchComparisonRun.remoteContentCheck.result?.diagnostics.remoteBaselineMatched ? '一致' : '未確認／不一致'}</li>
+                                        <li>body mismatch：{lastBodyMismatchComparisonRun.remoteContentCheck.result?.diagnostics.bodyMismatchConfirmed ? '確認済み' : '未確認'}</li>
+                                        <li>local snapshot：{lastBodyMismatchComparisonRun.remoteContentCheck.result?.diagnostics.localSnapshotMatched ? '一致' : '未確認／不一致'}</li>
+                                        <li>workspace：{lastBodyMismatchComparisonRun.remoteContentCheck.result?.diagnostics.workspaceMatched ? '一致' : '未確認／不一致'}</li>
+                                        <li>full pull：{lastBodyMismatchComparisonRun.remoteContentCheck.result?.diagnostics.fullPullSucceeded ? '完了' : '未完了'}</li>
+                                        <li>永続変更：なし</li><li>Supabase書き込み：なし</li><li>自動retry：なし</li>
+                                        {lastBodyMismatchComparisonRun.remoteContentCheck.failureReason ? (
+                                          <li>failureReason：{lastBodyMismatchComparisonRun.remoteContentCheck.failureReason}</li>
+                                        ) : null}
+                                        <li>停止段階：{lastBodyMismatchComparisonRun.remoteContentCheck.stopStage}</li>
+                                      </ul>
+                                      {lastBodyMismatchComparisonRun.remoteContentCheck.comparison ? <>
+                                        <label>現在local本文<textarea readOnly rows={6}
+                                          value={lastBodyMismatchComparisonRun.remoteContentCheck.comparison.localContent} /></label>
+                                        <label>採用予定remote本文<textarea readOnly rows={6}
+                                          value={lastBodyMismatchComparisonRun.remoteContentCheck.comparison.remoteContent} /></label>
+                                        <label>現在remote本文<textarea readOnly rows={6}
+                                          value={lastBodyMismatchComparisonRun.remoteContentCheck.comparison.remoteContent} /></label>
+                                      </> : null}
+                                      {lastBodyMismatchComparisonRun.remoteContentCheck.status === 'ready' ? <>
+                                        <p>採用後の予定：local本文をremote本文へ置き換えます。</p>
+                                        <p>metadata cleanup：local反映後の確認が成功した後に別操作で保存します。</p>
+                                        <p>baseline／cursor：この段階では変更せず、反映後確認で最新remoteと一致を再確認します。</p>
+                                        <p>次操作：remote採用準備を開始</p>
+                                      </> : <div className="iphone-sync-guide-actions">
+                                        <button type="button" className="health-secondary-button cloud-sync-button"
+                                          onClick={() => { void confirmBodyMismatchCandidate('remote') }}>
+                                          remote採用候補から再確認
+                                        </button>
+                                        <button type="button" className="health-secondary-button cloud-sync-button"
+                                          onClick={() => { void runBodyMismatchComparison(lastBodyMismatchComparisonRun.requestedDate) }}>
+                                          localとremoteから再確認
+                                        </button>
+                                      </div>}
+                                    </>}
+                                  </div>
+                                ) : null}
                               </div>
                             ) : null}
                           </> : lastBodyMismatchComparisonRun.result ? <>
