@@ -84,6 +84,36 @@ export function buildBodyMismatchCandidateUiModel(
       showLocalAction: false, showRemoteAction: true } as const
 }
 
+interface BodyMismatchLocalAdoptionPipelineInput<SendResult> {
+  prepare: () => Promise<void>
+  getPreparationResult: () => { succeeded: boolean; safety: string } | null
+  checkPreflight: () => Promise<void>
+  getPreflightResult: () => { ready: boolean; operationMode: string | null; safety: string } | null
+  send: () => Promise<void>
+  getSendResult: () => SendResult | null
+  sendSucceeded: (result: SendResult) => boolean
+  sendSafety: (result: SendResult) => string
+}
+
+export async function runBodyMismatchLocalAdoptionPipeline<SendResult>(
+  input: BodyMismatchLocalAdoptionPipelineInput<SendResult>,
+): Promise<SendResult> {
+  await input.prepare()
+  const prepared = input.getPreparationResult()
+  if (!prepared?.succeeded) throw new Error(prepared?.safety ?? 'local_preparation_failed')
+  await input.checkPreflight()
+  const preflight = input.getPreflightResult()
+  if (!preflight?.ready || preflight.operationMode !== 'body_mismatch_recovery') {
+    throw new Error(preflight?.safety ?? 'remote_preflight_failed')
+  }
+  await input.send()
+  const sent = input.getSendResult()
+  if (!sent || !input.sendSucceeded(sent)) {
+    throw new Error(sent ? input.sendSafety(sent) : 'remote_send_failed')
+  }
+  return sent
+}
+
 export function bodyMismatchRemoteAction(
   key: BodyMismatchRemoteActionKey,
   handler: (() => void) | null,
