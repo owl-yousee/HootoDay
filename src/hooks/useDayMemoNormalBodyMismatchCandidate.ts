@@ -9,7 +9,7 @@ import { isDayMemoSyncMetadataV5, loadDayMemoSyncMetadataAny } from '../utils/da
 import { isUuid } from '../utils/syncConnectionStorage'
 import { classifyDayMemoNormalDifference, remoteRecordMatchesConfirmedBaseline,
   type DayMemoNormalDifferenceClassification } from './useDayMemoNormalDifferenceRecoveryPlan'
-import type { DayMemoNormalDifferenceCheckpointResult } from './useDayMemoNormalDifferenceRecoveryCheckpointCheck'
+import type { DayMemoSavedRecoveryStateResult } from './useDayMemoSavedRecoveryStateCheck'
 
 export type DayMemoNormalBodyMismatchSafety =
   | 'normal_body_mismatch_compare_ready' | 'normal_body_mismatch_candidate_local' | 'normal_body_mismatch_candidate_remote'
@@ -52,6 +52,12 @@ export interface DayMemoNormalBodyMismatchCandidateSnapshot {
   localStorageSerialized: string
   workspaceId: string
   cursor: number
+  fullPullMaxSequence: number
+  snapshotRevision: number
+  baselineRemoteRevision: number
+  baselineRemoteChangeSequence: number
+  baselineRemoteUpdatedAt: string
+  baselineLocalUpdatedAt: string | null
   localMemo: DayMemo
   remoteRecord: RemoteDayMemoRecord
   baselineStatus: 'recovery_required'
@@ -65,7 +71,7 @@ interface Input {
   isSignedIn: boolean
   connection: SyncConnection | null
   reactMetadata: DayMemoSyncMetadataV5 | null
-  checkpointResult: DayMemoNormalDifferenceCheckpointResult | null
+  savedRecoveryResult: DayMemoSavedRecoveryStateResult | null
 }
 
 const UNRESOLVED = new Set<DayMemoNormalDifferenceClassification>([
@@ -89,33 +95,28 @@ function nextAction(safety: DayMemoNormalBodyMismatchSafety): string {
   return '永続状態を変更せず、checkpoint確認から安全条件を再確認してください。'
 }
 
-function sameCounts(left: DayMemoNormalDifferenceCheckpointResult['unresolvedCounts'], classifications: Map<string, DayMemoNormalDifferenceClassification>): boolean {
-  const counts = Object.fromEntries(Object.keys(left).map((key) => [key, 0])) as Record<DayMemoNormalDifferenceClassification, number>
-  for (const value of classifications.values()) if (UNRESOLVED.has(value)) counts[value] += 1
-  return Object.keys(left).every((key) => left[key as DayMemoNormalDifferenceClassification] === counts[key as DayMemoNormalDifferenceClassification])
-}
-
-function sameAllCounts(left: DayMemoNormalDifferenceCheckpointResult['reclassifiedCounts'], classifications: Map<string, DayMemoNormalDifferenceClassification>): boolean {
-  const counts = Object.fromEntries(Object.keys(left).map((key) => [key, 0])) as Record<DayMemoNormalDifferenceClassification, number>
-  for (const value of classifications.values()) counts[value] += 1
-  return Object.keys(left).every((key) => left[key as DayMemoNormalDifferenceClassification] === counts[key as DayMemoNormalDifferenceClassification])
-}
-
-export function useDayMemoNormalBodyMismatchCandidate({ dayMemos, isConfigured, isSignedIn, connection, reactMetadata, checkpointResult }: Input) {
+export function useDayMemoNormalBodyMismatchCandidate({ dayMemos, isConfigured, isSignedIn, connection, reactMetadata,
+  savedRecoveryResult }: Input) {
   const [selectedDate, setSelectedDateState] = useState('')
   const [checking, setChecking] = useState(false)
   const [comparison, setComparison] = useState<DayMemoNormalBodyMismatchComparison | null>(null)
   const [choice, setChoice] = useState<DayMemoNormalBodyMismatchChoice | null>(null)
   const [result, setResult] = useState<DayMemoNormalBodyMismatchCandidateResult | null>(null)
   const runIdRef = useRef(0)
+  const snapshotRevisionRef = useRef(0)
   const comparisonSnapshotRef = useRef<Omit<DayMemoNormalBodyMismatchCandidateSnapshot, 'candidate'> | null>(null)
   const candidateSnapshotRef = useRef<DayMemoNormalBodyMismatchCandidateSnapshot | null>(null)
   const signature = useMemo(() => localSignature(dayMemos), [dayMemos])
-  const bodyMismatchDates = useMemo(() => checkpointResult?.safety === 'normal_difference_checkpoint_unresolved_ready'
-    ? checkpointResult.bodyMismatchDates : [], [checkpointResult])
+  const savedStateReady = savedRecoveryResult?.safety === 'normal_difference_checkpoint_saved_state_ready'
+    && savedRecoveryResult.baselineStatus === 'recovery_required'
+    && savedRecoveryResult.baselineConfirmedAtNull && savedRecoveryResult.cursorMatched
+    && savedRecoveryResult.allBaselinesVerified
+  const bodyMismatchDates = useMemo(() => savedStateReady
+    ? Object.entries(savedRecoveryResult.unresolvedClassifications)
+      .filter(([, classification]) => classification === 'body_mismatch').map(([date]) => date).sort()
+    : [], [savedRecoveryResult, savedStateReady])
   const eligible = Boolean(isConfigured && isSignedIn && supabaseClient && connectionIsEligible(connection)
-    && reactMetadata?.version === 5 && checkpointResult?.safety === 'normal_difference_checkpoint_unresolved_ready'
-    && checkpointResult.normalSyncReady === false && bodyMismatchDates.length > 0)
+    && reactMetadata?.version === 5 && savedStateReady && bodyMismatchDates.length === 1)
 
   const finish = useCallback((safety: DayMemoNormalBodyMismatchSafety, date: string | null = selectedDate, candidate: DayMemoNormalBodyMismatchChoice | null = null, verified = false) => {
     setResult({ date, candidate, safety, localAndRemoteVerified: verified, persistentStateChanged: false, rpcSent: false,
@@ -143,8 +144,9 @@ export function useDayMemoNormalBodyMismatchCandidate({ dayMemos, isConfigured, 
     comparisonSnapshotRef.current = null; candidateSnapshotRef.current = null
     setChecking(true); setComparison(null); setChoice(null); setResult(null)
     try {
-      if (!checkpointResult || checkpointResult.safety !== 'normal_difference_checkpoint_unresolved_ready'
-        || !checkpointResult.bodyMismatchDates.includes(selectedDate)) { finish('normal_body_mismatch_checkpoint_missing'); return }
+      if (!savedStateReady || !savedRecoveryResult
+        || savedRecoveryResult.unresolvedClassifications[selectedDate] !== 'body_mismatch'
+        || bodyMismatchDates.length !== 1) { finish('normal_body_mismatch_checkpoint_missing'); return }
       const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
       const stored = readDayMemoStorageSnapshot(window.localStorage)
       if (loaded.status !== 'ready' || !isDayMemoSyncMetadataV5(loaded.metadata) || !reactMetadata
@@ -179,7 +181,12 @@ export function useDayMemoNormalBodyMismatchCandidate({ dayMemos, isConfigured, 
         finish('normal_body_mismatch_remote_changed'); return
       }
       const targetBaseline = metadata.baselines[selectedDate] ?? null
-      if (targetBaseline && !remoteRecordMatchesConfirmedBaseline(remote, targetBaseline)) {
+      if (!targetBaseline || targetBaseline.deletedAt !== null
+        || !remoteRecordMatchesConfirmedBaseline(remote, targetBaseline)) {
+        finish('normal_body_mismatch_target_mismatch'); return
+      }
+      if (local.updatedAt === targetBaseline.baselineLocalUpdatedAt
+        || local.content === remote.payload.content) {
         finish('normal_body_mismatch_target_mismatch'); return
       }
       const localByDate = new Map(stored.memos.map((memo) => [memo.date, memo]))
@@ -191,16 +198,19 @@ export function useDayMemoNormalBodyMismatchCandidate({ dayMemos, isConfigured, 
         finish('normal_body_mismatch_remote_changed'); return
       }
       const unresolvedDates = [...classifications].filter(([, value]) => UNRESOLVED.has(value)).map(([date]) => date).sort()
-      if (JSON.stringify(unresolvedDates) !== JSON.stringify([...checkpointResult.unresolvedDates].sort())
-        || !sameCounts(checkpointResult.unresolvedCounts, classifications)
-        || !sameAllCounts(checkpointResult.reclassifiedCounts, classifications)
-        || JSON.stringify(Object.fromEntries(unresolvedDates.map((date) => [date, classifications.get(date)])))
-          !== JSON.stringify(checkpointResult.unresolvedClassifications)) {
+      if (JSON.stringify(Object.fromEntries(unresolvedDates.map((date) => [date, classifications.get(date)])))
+          !== JSON.stringify(savedRecoveryResult.unresolvedClassifications)) {
         finish('normal_body_mismatch_remote_changed'); return
       }
       const checkedAt = new Date().toISOString()
+      const snapshotRevision = ++snapshotRevisionRef.current
       comparisonSnapshotRef.current = { date: selectedDate, metadataRaw: loaded.raw,
         localStorageSerialized: stored.serialized, workspaceId: connection.workspaceId, cursor: metadata.lastPulledChangeSequence,
+        fullPullMaxSequence: pulled.maxChangeSequence, snapshotRevision,
+        baselineRemoteRevision: targetBaseline.remoteRevision,
+        baselineRemoteChangeSequence: targetBaseline.remoteChangeSequence,
+        baselineRemoteUpdatedAt: targetBaseline.remoteUpdatedAt,
+        baselineLocalUpdatedAt: targetBaseline.baselineLocalUpdatedAt,
         localMemo: { ...local }, remoteRecord: { ...remote, payload: { ...remote.payload } }, baselineStatus: 'recovery_required',
         classifications: Object.fromEntries(classifications), checkedAt }
       setComparison({ date: selectedDate, localContent: local.content, remoteContent: remote.payload.content,
@@ -209,15 +219,15 @@ export function useDayMemoNormalBodyMismatchCandidate({ dayMemos, isConfigured, 
         remoteRevision: remote.revision, remoteChangeSequence: remote.changeSequence, checkedAt })
       finish('normal_body_mismatch_compare_ready', selectedDate, null, true)
     } finally { if (runIdRef.current === runId) setChecking(false) }
-  }, [checkpointResult, checking, connection, dayMemos, eligible, finish, reactMetadata, selectedDate, signature])
+  }, [bodyMismatchDates.length, checking, connection, dayMemos, eligible, finish, reactMetadata,
+    savedRecoveryResult, savedStateReady, selectedDate, signature])
 
   const confirmCandidate = useCallback(() => {
     const snapshot = comparisonSnapshotRef.current
     const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
     const stored = readDayMemoStorageSnapshot(window.localStorage)
     if (!snapshot || !choice || !comparison || comparison.date !== snapshot.date
-      || checkpointResult?.safety !== 'normal_difference_checkpoint_unresolved_ready'
-      || checkpointResult.unresolvedClassifications[snapshot.date] !== 'body_mismatch'
+      || !savedStateReady || savedRecoveryResult?.unresolvedClassifications[snapshot.date] !== 'body_mismatch'
       || !connectionIsEligible(connection) || connection.workspaceId !== snapshot.workspaceId
       || loaded.status !== 'ready' || loaded.raw !== snapshot.metadataRaw
       || stored.status !== 'ready' || stored.serialized !== snapshot.localStorageSerialized
@@ -226,7 +236,7 @@ export function useDayMemoNormalBodyMismatchCandidate({ dayMemos, isConfigured, 
     }
     candidateSnapshotRef.current = { ...snapshot, candidate: choice }
     finish(choice === 'local' ? 'normal_body_mismatch_candidate_local' : 'normal_body_mismatch_candidate_remote', snapshot.date, choice, true)
-  }, [checkpointResult, choice, comparison, connection, dayMemos, finish])
+  }, [choice, comparison, connection, dayMemos, finish, savedRecoveryResult, savedStateReady])
 
   const selectChoice = useCallback((nextChoice: DayMemoNormalBodyMismatchChoice) => {
     candidateSnapshotRef.current = null
@@ -242,15 +252,14 @@ export function useDayMemoNormalBodyMismatchCandidate({ dayMemos, isConfigured, 
 
   const getCandidateSnapshot = useCallback(() => {
     const snapshot = candidateSnapshotRef.current
-    if (!snapshot || checkpointResult?.safety !== 'normal_difference_checkpoint_unresolved_ready'
-      || checkpointResult.unresolvedClassifications[snapshot.date] !== 'body_mismatch'
+    if (!snapshot || !savedStateReady || savedRecoveryResult?.unresolvedClassifications[snapshot.date] !== 'body_mismatch'
       || !connectionIsEligible(connection) || connection.workspaceId !== snapshot.workspaceId) return null
     const loaded = loadDayMemoSyncMetadataAny(window.localStorage)
     const stored = readDayMemoStorageSnapshot(window.localStorage)
     if (loaded.status !== 'ready' || loaded.raw !== snapshot.metadataRaw || stored.status !== 'ready'
       || stored.serialized !== snapshot.localStorageSerialized || localSignature(dayMemos) !== localSignature(stored.memos)) return null
     return snapshot
-  }, [checkpointResult, connection, dayMemos])
+  }, [connection, dayMemos, savedRecoveryResult, savedStateReady])
 
   const consumeCandidateSnapshot = useCallback(() => {
     comparisonSnapshotRef.current = null

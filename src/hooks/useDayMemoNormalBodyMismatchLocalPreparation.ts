@@ -9,8 +9,8 @@ import { isDayMemoSyncMetadataV5, loadDayMemoSyncMetadataAny, replaceDayMemoSync
 import { isUuid } from '../utils/syncConnectionStorage'
 import { createUuidV4 } from '../utils/uuid'
 import { classifyDayMemoNormalDifference, remoteRecordMatchesConfirmedBaseline } from './useDayMemoNormalDifferenceRecoveryPlan'
-import type { DayMemoNormalDifferenceCheckpointResult } from './useDayMemoNormalDifferenceRecoveryCheckpointCheck'
 import type { DayMemoNormalBodyMismatchCandidateSnapshot } from './useDayMemoNormalBodyMismatchCandidate'
+import type { DayMemoSavedRecoveryStateResult } from './useDayMemoSavedRecoveryStateCheck'
 
 export type DayMemoNormalBodyMismatchLocalPreparationSafety =
   | 'normal_body_mismatch_local_prepare_ready' | 'normal_body_mismatch_local_prepared'
@@ -56,7 +56,7 @@ interface Input {
   isSignedIn: boolean
   connection: SyncConnection | null
   reactMetadata: DayMemoSyncMetadataV5 | null
-  checkpointResult: DayMemoNormalDifferenceCheckpointResult | null
+  savedRecoveryResult: DayMemoSavedRecoveryStateResult | null
   getCandidateSnapshot: () => DayMemoNormalBodyMismatchCandidateSnapshot | null
   consumeCandidateSnapshot: () => void
   adoptVerifiedMetadata: (metadata: DayMemoSyncMetadataV5) => void
@@ -78,13 +78,15 @@ function nextAction(safety: DayMemoNormalBodyMismatchLocalPreparationSafety): st
 }
 
 export function useDayMemoNormalBodyMismatchLocalPreparation({ dayMemos, isConfigured, isSignedIn, connection,
-  reactMetadata, checkpointResult, getCandidateSnapshot, consumeCandidateSnapshot, adoptVerifiedMetadata }: Input) {
+  reactMetadata, savedRecoveryResult, getCandidateSnapshot, consumeCandidateSnapshot, adoptVerifiedMetadata }: Input) {
   const [preparing, setPreparing] = useState(false)
   const [result, setResult] = useState<DayMemoNormalBodyMismatchLocalPreparationResult | null>(null)
   const inFlightRef = useRef(false)
   const snapshot = getCandidateSnapshot()
   const eligible = Boolean(isConfigured && isSignedIn && supabaseClient && connectionIsEligible(connection)
-    && snapshot?.candidate === 'local' && checkpointResult?.safety === 'normal_difference_checkpoint_unresolved_ready')
+    && snapshot?.candidate === 'local'
+    && savedRecoveryResult?.safety === 'normal_difference_checkpoint_saved_state_ready'
+    && savedRecoveryResult.unresolvedClassifications[snapshot.date] === 'body_mismatch')
 
   const finish = useCallback((safety: DayMemoNormalBodyMismatchLocalPreparationSafety,
     values: Partial<DayMemoNormalBodyMismatchLocalPreparationResult> = {}) => {
@@ -118,8 +120,8 @@ export function useDayMemoNormalBodyMismatchLocalPreparation({ dayMemos, isConfi
         finish('normal_body_mismatch_local_workspace_mismatch', base); return
       }
       if (metadata.baselineStatus !== 'recovery_required' || metadata.baselineConfirmedAt !== null
-        || checkpointResult?.safety !== 'normal_difference_checkpoint_unresolved_ready'
-        || checkpointResult.normalSyncReady !== false || checkpointResult.unresolvedClassifications[candidate.date] !== 'body_mismatch') {
+        || savedRecoveryResult?.safety !== 'normal_difference_checkpoint_saved_state_ready'
+        || savedRecoveryResult.unresolvedClassifications[candidate.date] !== 'body_mismatch') {
         finish('normal_body_mismatch_local_prerequisite_missing', base); return
       }
       if (metadata.pendingOperation) { finish('normal_body_mismatch_local_pending_exists', base); return }
@@ -158,7 +160,8 @@ export function useDayMemoNormalBodyMismatchLocalPreparation({ dayMemos, isConfi
       const classifications = Object.fromEntries(dates.map((date) => [date, classifyDayMemoNormalDifference(
         localByDate.get(date) ?? null, remoteByDate.get(date) ?? null, metadata.baselines[date] ?? null)]))
       if (classifications[candidate.date] !== 'body_mismatch' || !same(classifications, candidate.classifications)
-        || !same(checkpointResult.unresolvedClassifications, Object.fromEntries(checkpointResult.unresolvedDates.map((date) => [date, classifications[date]])))
+        || !same(savedRecoveryResult.unresolvedClassifications,
+          Object.fromEntries(Object.keys(savedRecoveryResult.unresolvedClassifications).map((date) => [date, classifications[date]])))
         || Object.values(classifications).some((value) => value === 'revision_lineage_mismatch' || value === 'active_tombstone_mismatch' || value === 'unknown')) {
         finish('normal_body_mismatch_local_remote_changed', { ...base, remoteRechecked: true }); return
       }
@@ -203,7 +206,8 @@ export function useDayMemoNormalBodyMismatchLocalPreparation({ dayMemos, isConfi
         operationIdGenerated: true, pendingCreated: true, operationMode: 'body_mismatch_recovery',
         metadataSaved: true, readBackSucceeded: true, validatorPassed: true })
     } finally { inFlightRef.current = false; setPreparing(false) }
-  }, [adoptVerifiedMetadata, checkpointResult, connection, consumeCandidateSnapshot, dayMemos, eligible, finish, getCandidateSnapshot, reactMetadata])
+  }, [adoptVerifiedMetadata, connection, consumeCandidateSnapshot, dayMemos, eligible, finish,
+    getCandidateSnapshot, reactMetadata, savedRecoveryResult])
 
   const discard = useCallback(() => setResult(null), [])
   return { eligible, preparing, result, prepare, discard }

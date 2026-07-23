@@ -222,13 +222,20 @@ function App() {
     consumeReadySnapshot: dayMemoNormalDifferenceRecoveryCheckpointCheck.consumeReadySnapshot,
     adoptVerifiedMetadata: dayMemoSyncBaseline.adoptVerifiedMetadata,
   })
+  const dayMemoSavedRecoveryStateCheck = useDayMemoSavedRecoveryStateCheck({
+    dayMemos,
+    isConfigured: supabaseAuth.isConfigured,
+    isSignedIn: supabaseAuth.isSignedIn,
+    connection: supabaseWorkspace.connection,
+    reactMetadata: dayMemoSyncBaseline.metadata?.version === 5 ? dayMemoSyncBaseline.metadata : null,
+  })
   const dayMemoNormalBodyMismatchCandidate = useDayMemoNormalBodyMismatchCandidate({
     dayMemos,
     isConfigured: supabaseAuth.isConfigured,
     isSignedIn: supabaseAuth.isSignedIn,
     connection: supabaseWorkspace.connection,
     reactMetadata: dayMemoSyncBaseline.metadata?.version === 5 ? dayMemoSyncBaseline.metadata : null,
-    checkpointResult: dayMemoNormalDifferenceRecoveryCheckpointCheck.result,
+    savedRecoveryResult: dayMemoSavedRecoveryStateCheck.result,
   })
   const dayMemoNormalBodyMismatchLocalPreparation = useDayMemoNormalBodyMismatchLocalPreparation({
     dayMemos,
@@ -236,7 +243,7 @@ function App() {
     isSignedIn: supabaseAuth.isSignedIn,
     connection: supabaseWorkspace.connection,
     reactMetadata: dayMemoSyncBaseline.metadata?.version === 5 ? dayMemoSyncBaseline.metadata : null,
-    checkpointResult: dayMemoNormalDifferenceRecoveryCheckpointCheck.result,
+    savedRecoveryResult: dayMemoSavedRecoveryStateCheck.result,
     getCandidateSnapshot: dayMemoNormalBodyMismatchCandidate.getCandidateSnapshot,
     consumeCandidateSnapshot: dayMemoNormalBodyMismatchCandidate.consumeCandidateSnapshot,
     adoptVerifiedMetadata: dayMemoSyncBaseline.adoptVerifiedMetadata,
@@ -297,13 +304,6 @@ function App() {
     inspectSnapshotAvailability: dayMemoBodyMismatchRecoveryPostSendVerification.inspectSnapshotAvailability,
     discardVerificationResult: dayMemoBodyMismatchRecoveryPostSendVerification.discard,
     adoptVerifiedMetadata: dayMemoSyncBaseline.adoptVerifiedMetadata,
-  })
-  const dayMemoSavedRecoveryStateCheck = useDayMemoSavedRecoveryStateCheck({
-    dayMemos,
-    isConfigured: supabaseAuth.isConfigured,
-    isSignedIn: supabaseAuth.isSignedIn,
-    connection: supabaseWorkspace.connection,
-    reactMetadata: dayMemoSyncBaseline.metadata?.version === 5 ? dayMemoSyncBaseline.metadata : null,
   })
   const dayMemoRecoveryLocalOnlyPreparation = useDayMemoRecoveryLocalOnlyPreparation({
     dayMemos,
