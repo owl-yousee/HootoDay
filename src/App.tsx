@@ -746,7 +746,7 @@ function App() {
               onOpenHealth={(dateKey) => openRecordDate(dateKey, 'health')}
             />
           ) : activeView === 'inventory' ? (
-            <InventoryPage products={inventory.products} movements={inventory.inventoryMovements} eventSales={inventory.eventSalesRecords} boothSales={inventory.boothSalesRecords} events={events} initialEventId={inventoryEventId} onSaveProduct={inventory.saveProduct} onAddMovement={inventory.addMovement} onSaveEvent={inventory.saveEventSale} onDeleteEvent={inventory.deleteEventSale} onSaveBooth={inventory.saveBoothSale} onSaveCalendarEvent={saveEvent} />
+            <InventoryPage products={inventory.products} movements={inventory.inventoryMovements} eventSales={inventory.eventSalesRecords} boothSales={inventory.boothSalesRecords} events={events} initialEventId={inventoryEventId} onSaveProduct={inventory.saveProduct} onAddMovement={inventory.addMovement} onSaveEvent={inventory.saveEventSale} onDeleteEvent={inventory.deleteEventSale} onSaveBooth={inventory.saveBoothSale} onDeleteBooth={inventory.deleteBoothSale} onSaveCalendarEvent={saveEvent} />
           ) : (
             <HealthExportPage
               initialDate={selectedDateKey}
