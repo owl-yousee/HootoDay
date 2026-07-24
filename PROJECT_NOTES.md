@@ -2915,3 +2915,7 @@ cleanup後VERIFY結果：
 
 - Phase I-4 BOOTH倉庫の実機確認を完了し、既存のBOOTH家発送へ送料・発送日・分離集計・原子的保存を接続した。詳細は`INVENTORY_SYNC_ROADMAP.md`を正本とする。
 - 現在の本線はPhase I-5の実機確認、完了後の戻り先はPhase I-6 周年記念基本管理。
+
+# 2026-07-24 販売・在庫 Phase I-4／I-5 実機確認完了
+
+- BOOTH倉庫とBOOTH家発送の主要実機確認を完了した。現在の本線はPhase I-6 周年記念基本管理、完了後の戻り先はPhase I-7 周年完了と商品タブ上部カード。実機結果、現行仕様、保留項目は`INVENTORY_SYNC_ROADMAP.md`を正本とする。
