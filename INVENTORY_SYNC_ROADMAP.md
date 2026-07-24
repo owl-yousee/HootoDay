@@ -1188,3 +1188,16 @@ shippingQrImage?: {
 - QR登録、preview、upload、表示、差し替え、画像削除UI、signed URL、cleanup pendingは未実装である。商品在庫、`InventoryMovement`、イベント、BOOTH、売上、送料、周年発送状態は変更しない。
 - I-6b-1の静的完了条件は型チェック、validator fixture、旧／新backup・snapshot保持、fingerprint差分、SQL 4ファイルの整合、UI・在庫処理非変更である。SQL実行前にPRECHECK結果、同名bucket不存在または期待設定、managed policy不存在、Storage管理者権限をユーザーが確認する。
 - 次の作業は、SQLを適用せずPRECHECK／APPLY／VERIFY／ROLLBACKのレビュー結果を確定することである。ユーザーの明示指示と実環境PRECHECK確認後にだけSQL Editorで適用し、I-6b-2の画像登録・表示へ進む。I-6b-3のcleanup pendingは引き続き保留する。
+
+# Phase I-6b-2 QR画像の選択・upload・表示 実装記録（2026-07-24）
+
+- 個人発送カードごとに、未登録時は「QR画像を登録」、登録済み時は「QR画像を表示」を明示操作として表示する。PCはPNG／JPEGのファイル選択、iPhone相当幅では写真ライブラリ用選択に加えて背面カメラ入力を提供する。
+- 選択画像はupload前の専用dialogでpreviewし、PNG／JPEG、空でないこと、5MB以下、縦横320px以上、最長辺1600px以下、ブラウザでdecode可能であることを検証する。最長辺1600pxを超える画像は、QR輪郭を変換で損なわない初期方針として縮小せず拒否する。
+- previewでは画像、形式、縦横寸法、容量を表示し、「この画像を登録」「選び直す」「キャンセル」を提供する。previewの取消しではStorageもshipmentも変更せず、Object URLは選び直し・取消し・unmount時に破棄する。
+- 登録確定時だけobject IDを1回生成し、private bucket `hooto-day-anniversary-qr` の `{workspaceId}/anniversary-qr/{shipmentId}/{objectId}.{png|jpg}` へ、`upsert: false`、明示content typeで新規uploadする。自動retry、UPDATE、public URL、signed URL保存は行わない。
+- upload後は結果pathを再検証し、対象shipmentだけへ既存`shippingQrImage`参照を保存する。既存の周年記念2-key保存、validator、read-back、成功後React state更新を利用し、campaignと他shipmentを変更しない専用保存経路とする。参照保存失敗時は新規object削除をrollbackし、rollback失敗は孤立画像の可能性としてfail-closedで通知する。
+- 表示は現在workspace、shipment ID、参照validatorを確認してからprivate Storageの認証付きdownloadを行う。Blobの存在、容量、MIME、decode、保存寸法との一致を確認し、白背景と余白を持つ専用dialogでObject URLを大きく表示する。表示終了時にObject URLを破棄する。
+- QR画像本体、Blob、Object URL、signed URLはlocalStorage、販売・在庫同期snapshot、JSON backup、consoleへ保存しない。同期とbackupは既存どおり`shippingQrImage`参照情報だけを扱い、別workspaceのpathは表示時に拒否する。参照先object欠損はshipmentを壊さず、取得不能として明示する。オフライン表示は保証しない。
+- QR参照付き個人カードと、そのshipmentを含む周年全体の削除は、Storage cleanup未実装による孤立画像を防ぐためI-6b-3まで一時停止する。差し替え、QR単体削除、個人／周年削除時のStorage cleanup、cleanup pending、自動または手動再試行はI-6b-3へ持ち越す。
+- 通常の商品在庫、`InventoryMovement`、イベント、BOOTH倉庫、BOOTH家発送、売上、送料、周年発送状態・発送日・内容物・メモはQR操作で変更しない。
+- PC実機ではPNG／JPEG選択、preview、upload、登録済み表示、大画面表示、明示同期を確認する。iPhone実機では写真ライブラリ／カメラ入力、safe-area、横overflow、private download、大画面表示、PCとの参照同期を確認する。郵便局端末での本番読み取りはI-6b-4へ持ち越す。

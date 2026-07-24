@@ -154,6 +154,25 @@ export function useInventory() {
   setAnniversaryCampaigns(nextCampaigns);setAnniversaryShipments(nextShipments)
   return null
  }
+ const saveAnniversaryShipmentQrReference=(shipment:AnniversaryShipment,expectedShipmentId:string):string|null=>{
+  const oldShipment=anniversaryShipments.find(item=>item.id===expectedShipmentId)
+  if(!oldShipment||shipment.id!==expectedShipmentId||oldShipment.shippingQrImage||!shipment.shippingQrImage)
+   return '対象の発送記録またはQR画像の登録状態が変化したため保存できません。'
+  if(shipment.campaignId!==oldShipment.campaignId||shipment.fanboxPlan!==oldShipment.fanboxPlan||
+   shipment.destinationNumber!==oldShipment.destinationNumber||shipment.itemDescription!==oldShipment.itemDescription||
+   shipment.quantity!==oldShipment.quantity||shipment.status!==oldShipment.status||
+   shipment.shippedAt!==oldShipment.shippedAt||shipment.memo!==oldShipment.memo||
+   shipment.createdAt!==oldShipment.createdAt)
+   return 'QR画像以外の発送記録が変化したため保存できません。'
+  if(!anniversaryCampaigns.some(item=>item.id===shipment.campaignId)||
+   oldShipment.campaignId!==shipment.campaignId)
+   return '対象の周年記念を安全に確認できないため保存できません。'
+  const nextShipments=anniversaryShipments.map(item=>item.id===shipment.id?shipment:item)
+  const storageStatus=saveAnniversaryDataAtomically(anniversaryCampaigns,nextShipments)
+  if(storageStatus!=='saved')return anniversaryStorageError(storageStatus,'保存')
+  setAnniversaryShipments(nextShipments)
+  return null
+ }
  const deleteAnniversary=(shipmentId:string):string|null=>{
   const target=anniversaryShipments.find(item=>item.id===shipmentId)
   if(!target)return '削除対象の周年記念記録が見つかりません。'
@@ -182,5 +201,5 @@ export function useInventory() {
   setProducts(snapshot.products);setInventoryMovements(snapshot.inventoryMovements);setEventSalesRecords(snapshot.eventSalesRecords);setBoothSalesRecords(snapshot.boothSalesRecords);setBoothWarehouseSalesRecords(snapshot.boothWarehouseSalesRecords);setAnniversaryCampaigns(snapshot.anniversaryCampaigns);setAnniversaryShipments(snapshot.anniversaryShipments)
   return result
  }
- return {products,inventoryMovements,eventSalesRecords,boothSalesRecords,boothWarehouseSalesRecords,anniversaryCampaigns,anniversaryShipments,saveProduct,addMovement,saveEventSale,saveEventSalesBatch,deleteEventSale,saveBoothSale,deleteBoothSale,saveBoothWarehouseSale,deleteBoothWarehouseSale,saveAnniversaryCampaign,saveAnniversaryShipment,deleteAnniversary,deleteAnniversaryCampaign,getSyncSnapshot,getStoredSyncSnapshot,applySyncSnapshot,replaceProducts:setProducts,replaceInventoryMovements:setInventoryMovements,replaceEventSalesRecords:setEventSalesRecords,replaceBoothSalesRecords:setBoothSalesRecords,replaceBoothWarehouseSalesRecords:setBoothWarehouseSalesRecords,replaceAnniversaryCampaigns:setAnniversaryCampaigns,replaceAnniversaryShipments:setAnniversaryShipments}
+ return {products,inventoryMovements,eventSalesRecords,boothSalesRecords,boothWarehouseSalesRecords,anniversaryCampaigns,anniversaryShipments,saveProduct,addMovement,saveEventSale,saveEventSalesBatch,deleteEventSale,saveBoothSale,deleteBoothSale,saveBoothWarehouseSale,deleteBoothWarehouseSale,saveAnniversaryCampaign,saveAnniversaryShipment,saveAnniversaryShipmentQrReference,deleteAnniversary,deleteAnniversaryCampaign,getSyncSnapshot,getStoredSyncSnapshot,applySyncSnapshot,replaceProducts:setProducts,replaceInventoryMovements:setInventoryMovements,replaceEventSalesRecords:setEventSalesRecords,replaceBoothSalesRecords:setBoothSalesRecords,replaceBoothWarehouseSalesRecords:setBoothWarehouseSalesRecords,replaceAnniversaryCampaigns:setAnniversaryCampaigns,replaceAnniversaryShipments:setAnniversaryShipments}
 }

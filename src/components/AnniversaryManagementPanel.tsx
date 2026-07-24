@@ -6,6 +6,7 @@ import type {
   AnniversaryShipment,
   AnniversaryShipmentStatus,
 } from '../types/inventory'
+import { useAnniversaryQrImage } from '../hooks/useAnniversaryQrImage'
 import { createUuidV4 } from '../utils/uuid'
 
 const fixedPlans = ['うさぎ', 'きのこ', 'ねこ'] as const
@@ -32,8 +33,15 @@ type Props = {
   shipments: AnniversaryShipment[]
   onSaveCampaign: (campaign: AnniversaryCampaign, expectedCampaignId?: string | null) => string | null
   onSaveShipment: (shipment: AnniversaryShipment, expectedShipmentId?: string | null) => string | null
+  onSaveQrReference: (shipment: AnniversaryShipment, expectedShipmentId: string) => string | null
   onDeleteShipment: (shipmentId: string) => string | null
   onDeleteCampaign: (campaignId: string) => string | null
+  qrConnection: {
+    isConfigured: boolean
+    isSignedIn: boolean
+    workspaceId: string | null
+    workspaceConnected: boolean
+  }
   onEditingStateChange?: (editing: boolean) => void
 }
 
@@ -87,6 +95,11 @@ export function AnniversaryManagementPanel(props: Props) {
   const onEditingStateChange = props.onEditingStateChange
   const campaignDialogRef = useRef<HTMLDialogElement>(null)
   const shipmentDialogRef = useRef<HTMLDialogElement>(null)
+  const qrPreviewDialogRef = useRef<HTMLDialogElement>(null)
+  const qrDisplayDialogRef = useRef<HTMLDialogElement>(null)
+  const qrLibraryInputRef = useRef<HTMLInputElement>(null)
+  const qrCameraInputRef = useRef<HTMLInputElement>(null)
+  const qrSelectionShipmentIdRef = useRef<string | null>(null)
   const submittingRef = useRef(false)
   const explicitSubmitRef = useRef(false)
   const lockedScrollYRef = useRef(0)
@@ -103,15 +116,31 @@ export function AnniversaryManagementPanel(props: Props) {
   const [error, setError] = useState('')
   const [campaignErrors, setCampaignErrors] = useState<CampaignErrors>({})
   const [shipmentErrors, setShipmentErrors] = useState<ShipmentErrors>({})
+  const qr = useAnniversaryQrImage({
+    shipments: props.shipments,
+    ...props.qrConnection,
+    onSaveReference: props.onSaveQrReference,
+  })
 
   const sortedCampaigns = useMemo(() => [...props.campaigns].sort((a, b) =>
     b.year - a.year || b.updatedAt.localeCompare(a.updatedAt)), [props.campaigns])
 
   useEffect(() => () => onEditingStateChange?.(false), [onEditingStateChange])
   useEffect(() => {
-    const open = campaignOpen || shipmentOpen
+    if (qr.preview || qr.display) onEditingStateChange?.(true)
+  }, [onEditingStateChange, qr.preview, qr.display])
+  useEffect(() => {
+    if (!qr.preview && qrPreviewDialogRef.current?.open) {
+      qrPreviewDialogRef.current.close()
+      onEditingStateChange?.(false)
+    }
+  }, [onEditingStateChange, qr.preview])
+  useEffect(() => {
+    const open = campaignOpen || shipmentOpen || Boolean(qr.preview) || Boolean(qr.display)
     if (!open) return
-    const dialog = campaignOpen ? campaignDialogRef.current : shipmentDialogRef.current
+    const dialog = campaignOpen ? campaignDialogRef.current :
+      shipmentOpen ? shipmentDialogRef.current :
+        qr.preview ? qrPreviewDialogRef.current : qrDisplayDialogRef.current
     if (dialog && !dialog.open) dialog.showModal()
     const body = document.body
     const root = document.documentElement
@@ -136,7 +165,7 @@ export function AnniversaryManagementPanel(props: Props) {
       root.style.overscrollBehavior = previous.rootOverscroll
       window.scrollTo({ top: lockedScrollYRef.current, behavior: 'auto' })
     }
-  }, [campaignOpen, shipmentOpen])
+  }, [campaignOpen, shipmentOpen, qr.preview, qr.display])
 
   const beginEditing = () => onEditingStateChange?.(true)
   const endEditing = () => onEditingStateChange?.(false)
@@ -171,6 +200,36 @@ export function AnniversaryManagementPanel(props: Props) {
     setShipmentErrors({})
     setError('')
     endEditing()
+  }
+  const chooseQrImage = (shipmentId: string, source: 'library' | 'camera') => {
+    qrSelectionShipmentIdRef.current = shipmentId
+    const input = source === 'camera' ? qrCameraInputRef.current : qrLibraryInputRef.current
+    if (!input) return
+    input.value = ''
+    input.click()
+  }
+  const receiveQrImage = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const shipmentId = qrSelectionShipmentIdRef.current
+    const file = event.currentTarget.files?.[0]
+    if (!shipmentId || !file) return
+    void qr.selectFile(shipmentId, file)
+  }
+  const closeQrPreview = () => {
+    if (qr.isUploading) return
+    qrPreviewDialogRef.current?.close()
+    qr.clearPreview()
+    endEditing()
+  }
+  const closeQrDisplay = () => {
+    if (qr.isDownloading) return
+    qrDisplayDialogRef.current?.close()
+    qr.clearDisplay()
+    endEditing()
+  }
+  const rejectQrAttachedDeletion = (shipments: AnniversaryShipment[]) => {
+    if (!shipments.some((shipment) => shipment.shippingQrImage)) return false
+    window.alert('QR画像の削除対応後に削除できます。Phase I-6b-3までは削除できません。')
+    return true
   }
 
   const submitCampaign = (event: React.FormEvent<HTMLFormElement>) => {
@@ -264,6 +323,7 @@ export function AnniversaryManagementPanel(props: Props) {
       status,
       shippedAt,
       memo,
+      shippingQrImage: shipmentContext.shipment?.shippingQrImage,
       createdAt: shipmentContext.shipment?.createdAt ?? now,
       updatedAt: now,
     }, shipmentContext.shipment?.id ?? null)
@@ -314,6 +374,7 @@ export function AnniversaryManagementPanel(props: Props) {
                 <div className="inventory-row-actions">
                   <button type="button" onClick={() => openCampaign(campaign)}>周年記念を編集</button>
                   <button type="button" className="inventory-danger-button" onClick={() => {
+                    if (rejectQrAttachedDeletion(campaignShipments)) return
                     if (!window.confirm(`${campaign.year}年「${campaign.name}」を削除しますか？\n配下の発送記録${campaignShipments.length}件もすべて削除されます。`)) return
                     const result = props.onDeleteCampaign(campaign.id)
                     if (result) window.alert(result)
@@ -341,7 +402,11 @@ export function AnniversaryManagementPanel(props: Props) {
                       {selectedRecords.map((shipment) =>
                         <ShipmentCard key={shipment.id} shipment={shipment}
                           onEdit={() => openShipment(campaign, selectedPlan, shipment)}
+                          onQrRegister={() => chooseQrImage(shipment.id, 'library')}
+                          onQrCamera={() => chooseQrImage(shipment.id, 'camera')}
+                          onQrDisplay={() => void qr.downloadImage(shipment.id)}
                           onDelete={() => {
+                            if (rejectQrAttachedDeletion([shipment])) return
                             if (!window.confirm(`宛先番号「${shipment.destinationNumber}」の発送記録を削除しますか？`)) return
                             const result = props.onDeleteShipment(shipment.id)
                             if (result) window.alert(result)
@@ -356,7 +421,11 @@ export function AnniversaryManagementPanel(props: Props) {
                   {legacyRecords.map((shipment) =>
                     <ShipmentCard key={shipment.id} shipment={shipment} showPlan
                       onEdit={() => openShipment(campaign, shipment.fanboxPlan, shipment)}
+                      onQrRegister={() => chooseQrImage(shipment.id, 'library')}
+                      onQrCamera={() => chooseQrImage(shipment.id, 'camera')}
+                      onQrDisplay={() => void qr.downloadImage(shipment.id)}
                       onDelete={() => {
+                        if (rejectQrAttachedDeletion([shipment])) return
                         if (!window.confirm(`宛先番号「${shipment.destinationNumber}」の発送記録を削除しますか？`)) return
                         const result = props.onDeleteShipment(shipment.id)
                         if (result) window.alert(result)
@@ -366,6 +435,54 @@ export function AnniversaryManagementPanel(props: Props) {
             </article>
           })}
         </div>}
+
+    <input ref={qrLibraryInputRef} className="visually-hidden" type="file"
+      accept="image/png,image/jpeg" onChange={receiveQrImage} />
+    <input ref={qrCameraInputRef} className="visually-hidden" type="file"
+      accept="image/png,image/jpeg" capture="environment" onChange={receiveQrImage} />
+    {qr.message && <p className="anniversary-qr-message" role="status">{qr.message}</p>}
+    {qr.error && !qr.preview && !qr.display &&
+      <p className="form-error anniversary-qr-error" role="alert">{qr.error}</p>}
+
+    <dialog ref={qrPreviewDialogRef} className="inventory-dialog anniversary-qr-dialog"
+      onCancel={(event) => { event.preventDefault(); closeQrPreview() }}>
+      {qr.preview && <div className="anniversary-qr-dialog-content">
+        <header>
+          <div><p className="eyebrow">QR image</p><h2>QR画像を確認</h2></div>
+          <button type="button" aria-label="ダイアログを閉じる" disabled={qr.isUploading}
+            onClick={closeQrPreview}>×</button>
+        </header>
+        {qr.error && <p className="form-error" role="alert">{qr.error}</p>}
+        <div className="anniversary-qr-preview">
+          <img src={qr.preview.objectUrl} alt="登録前のQR画像プレビュー" />
+        </div>
+        <dl className="anniversary-qr-file-details">
+          <div><dt>形式</dt><dd>{qr.preview.mimeType === 'image/png' ? 'PNG' : 'JPEG'}</dd></div>
+          <div><dt>画像サイズ</dt><dd>{qr.preview.width} × {qr.preview.height}px</dd></div>
+          <div><dt>ファイル容量</dt><dd>{Math.ceil(qr.preview.sizeBytes / 1024).toLocaleString('ja-JP')}KB</dd></div>
+        </dl>
+        <footer>
+          <button type="button" disabled={qr.isUploading}
+            onClick={() => chooseQrImage(qr.preview!.shipmentId, 'library')}>選び直す</button>
+          <button type="button" disabled={qr.isUploading} onClick={closeQrPreview}>キャンセル</button>
+          <button type="button" className="health-primary-button" disabled={qr.isUploading}
+            onClick={() => void qr.uploadPreview()}>
+            {qr.isUploading ? '登録中…' : 'この画像を登録'}
+          </button>
+        </footer>
+      </div>}
+    </dialog>
+
+    <dialog ref={qrDisplayDialogRef} className="inventory-dialog anniversary-qr-display-dialog"
+      onCancel={(event) => { event.preventDefault(); closeQrDisplay() }}>
+      {qr.display && <div className="anniversary-qr-display-content">
+        <button className="anniversary-qr-close" type="button" aria-label="QR画像を閉じる"
+          onClick={closeQrDisplay}>×</button>
+        <div className="anniversary-qr-display-surface">
+          <img src={qr.display.objectUrl} alt="匿名配送用QR画像" />
+        </div>
+      </div>}
+    </dialog>
 
     <dialog ref={campaignDialogRef} className="inventory-dialog anniversary-dialog" onCancel={(event) => {
       event.preventDefault()
@@ -462,11 +579,14 @@ export function AnniversaryManagementPanel(props: Props) {
   </section>
 }
 
-function ShipmentCard({ shipment, showPlan = false, onEdit, onDelete }: {
+function ShipmentCard({ shipment, showPlan = false, onEdit, onDelete, onQrRegister, onQrCamera, onQrDisplay }: {
   shipment: AnniversaryShipment
   showPlan?: boolean
   onEdit: () => void
   onDelete: () => void
+  onQrRegister: () => void
+  onQrCamera: () => void
+  onQrDisplay: () => void
 }) {
   return <article className="anniversary-shipment-card">
     <span className={`anniversary-status ${statusGroup(shipment.status)}`}>{displayStatus(shipment.status)}</span>
@@ -478,6 +598,17 @@ function ShipmentCard({ shipment, showPlan = false, onEdit, onDelete }: {
     </dl>
     {shipment.quantity !== 1 && <small className="anniversary-legacy-quantity">既存数量 {shipment.quantity}</small>}
     {shipment.memo && <p className="anniversary-memo">{shipment.memo}</p>}
+    <div className="anniversary-qr-actions">
+      {shipment.shippingQrImage
+        ? <>
+            <span className="anniversary-qr-registered">QR登録済み</span>
+            <button type="button" onClick={onQrDisplay}>QR画像を表示</button>
+          </>
+        : <>
+            <button type="button" onClick={onQrRegister}>QR画像を登録</button>
+            <button type="button" className="anniversary-qr-camera-button" onClick={onQrCamera}>カメラで撮る</button>
+          </>}
+    </div>
     <div className="inventory-row-actions">
       <button type="button" onClick={onEdit}>編集</button>
       <button type="button" className="inventory-danger-button" onClick={onDelete}>削除</button>
