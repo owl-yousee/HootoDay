@@ -30,6 +30,7 @@ import { MAX_MEAL_TEMPLATE_CONTENT_LENGTH, MAX_MEAL_TEMPLATE_NAME_LENGTH, MEAL_T
 import { MAX_SLEEP_MEMO_LENGTH, SLEEP_RECORDS_STORAGE_KEY, SLEEP_RECORDS_STORAGE_VERSION } from './sleepStorage'
 import { calculateSleepSummary, isValidTime, MAX_POINT_AWAKENING_MINUTES, MIN_POINT_AWAKENING_MINUTES } from './sleepMetrics'
 import { THEME_STORAGE_KEY, isThemePreference } from './theme'
+import { resetInventorySyncStateAfterRestore } from './inventorySyncStorage'
 import { MAX_WEIGHT_KG, MAX_WEIGHT_MEMO_LENGTH, MIN_WEIGHT_KG, WEIGHT_RECORDS_STORAGE_KEY, WEIGHT_RECORDS_STORAGE_VERSION } from './weightStorage'
 import {
   ANNIVERSARY_CAMPAIGNS_STORAGE_KEY,
@@ -496,6 +497,8 @@ export function restoreBackupToStorage(storage: Storage, data: HootoDayBackupDat
   const next = buildStorageValues(data)
   try {
     for (const key of BACKUP_STORAGE_KEYS) storage.setItem(key, next[key])
+    const syncReset = resetInventorySyncStateAfterRestore(storage)
+    if (syncReset.status !== 'cleared') throw new Error('inventory_sync_reset_failed')
     return { success: true, rollbackFailed: false }
   } catch {
     try {

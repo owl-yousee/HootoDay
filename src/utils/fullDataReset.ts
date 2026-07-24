@@ -1,6 +1,7 @@
 import type { HootoDayBackupData } from '../types/backup'
 import { BACKUP_STORAGE_KEYS, buildStorageValues, type StorageRestoreResult } from './jsonBackup'
 import { THEME_STORAGE_KEY } from './theme'
+import { clearInventorySyncState } from './inventorySyncStorage'
 
 type BackupStorageKey = (typeof BACKUP_STORAGE_KEYS)[number]
 type FullResetStorageKey = Exclude<BackupStorageKey, typeof THEME_STORAGE_KEY>
@@ -49,6 +50,8 @@ export function resetHootoDayDataStorage(
 
   try {
     for (const key of FULL_DATA_RESET_STORAGE_KEYS) storage.setItem(key, emptyValues[key])
+    const syncReset = clearInventorySyncState(storage)
+    if (syncReset.status !== 'cleared') throw new Error('inventory_sync_reset_failed')
     return { success: true, rollbackFailed: false }
   } catch {
     try {

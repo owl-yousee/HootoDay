@@ -9,6 +9,7 @@ import type {
   Product,
 } from '../types/inventory'
 import { calculateCurrentStock } from '../utils/inventoryCalculation'
+import { createInventorySyncSnapshot } from '../utils/inventorySyncSnapshot'
 import {
   loadAnniversaryCampaigns,
   loadAnniversaryShipments,
@@ -37,5 +38,6 @@ export function useInventory() {
  const deleteEventSale=(id:string)=>{setEventSalesRecords(c=>c.filter(record=>record.id!==id));setInventoryMovements(c=>c.filter(movement=>movement.eventSalesRecordId!==id))}
  const saveBoothSale=(record:BoothSalesRecord,expectedExistingId:string|null=null):string|null=>{ const product=products.find(x=>x.id===record.productId); if(!product)return '商品が見つかりません。'; const old=boothSalesRecords.find(x=>x.id===record.id); if(expectedExistingId&&(record.id!==expectedExistingId||!old))return '編集対象のBOOTH販売記録が見つかりません。画面を閉じて再確認してください。'; const oldUsed=old&&old.status!=='cancelled'?old.quantity:0; const needed=record.status==='cancelled'?0:record.quantity; const available=calculateCurrentStock(product,inventoryMovements)+oldUsed; if(needed>available)return `在庫が不足しています（販売可能 ${available}個）。`; setBoothSalesRecords(c=>old?c.map(x=>x.id===record.id?record:x):[...c,record]); setInventoryMovements(c=>[...c.filter(x=>x.boothSalesRecordId!==record.id),...(needed?[{id:crypto.randomUUID(),productId:record.productId,date:record.date,type:'boothSale' as const,quantity:needed,eventSalesRecordId:null,boothSalesRecordId:record.id,boothWarehouseSalesRecordId:null,memo:'',createdAt:new Date().toISOString()}]:[])]); return null }
  const deleteBoothSale=(id:string)=>{setBoothSalesRecords(c=>c.filter(record=>record.id!==id));setInventoryMovements(c=>c.filter(movement=>movement.boothSalesRecordId!==id))}
- return {products,inventoryMovements,eventSalesRecords,boothSalesRecords,boothWarehouseSalesRecords,anniversaryCampaigns,anniversaryShipments,saveProduct,addMovement,saveEventSale,deleteEventSale,saveBoothSale,deleteBoothSale,replaceProducts:setProducts,replaceInventoryMovements:setInventoryMovements,replaceEventSalesRecords:setEventSalesRecords,replaceBoothSalesRecords:setBoothSalesRecords,replaceBoothWarehouseSalesRecords:setBoothWarehouseSalesRecords,replaceAnniversaryCampaigns:setAnniversaryCampaigns,replaceAnniversaryShipments:setAnniversaryShipments}
+ const getSyncSnapshot=(workspaceId:string,revision:number)=>createInventorySyncSnapshot({workspaceId,revision,products,inventoryMovements,eventSalesRecords,boothSalesRecords,boothWarehouseSalesRecords,anniversaryCampaigns,anniversaryShipments})
+ return {products,inventoryMovements,eventSalesRecords,boothSalesRecords,boothWarehouseSalesRecords,anniversaryCampaigns,anniversaryShipments,saveProduct,addMovement,saveEventSale,deleteEventSale,saveBoothSale,deleteBoothSale,getSyncSnapshot,replaceProducts:setProducts,replaceInventoryMovements:setInventoryMovements,replaceEventSalesRecords:setEventSalesRecords,replaceBoothSalesRecords:setBoothSalesRecords,replaceBoothWarehouseSalesRecords:setBoothWarehouseSalesRecords,replaceAnniversaryCampaigns:setAnniversaryCampaigns,replaceAnniversaryShipments:setAnniversaryShipments}
 }
