@@ -188,42 +188,57 @@ export const saveProducts = (records: Product[]) => save(PRODUCTS_STORAGE_KEY,re
 export const loadInventoryMovements = () => load(INVENTORY_MOVEMENTS_STORAGE_KEY,isMovement,migrateMovementV1)
 export const saveInventoryMovements = (records: InventoryMovement[]) => save(INVENTORY_MOVEMENTS_STORAGE_KEY,records)
 export type EventSalesBatchStorageResult = 'saved' | 'blocked' | 'invalid' | 'write_failed' | 'read_back_failed' | 'rollback_failed'
-export function saveEventSalesBatchAtomically(records: EventSalesRecord[], movements: InventoryMovement[]): EventSalesBatchStorageResult {
-  if (writeBlockedKeys.has(EVENT_SALES_STORAGE_KEY) || writeBlockedKeys.has(INVENTORY_MOVEMENTS_STORAGE_KEY)) return 'blocked'
-  if (!records.every(isEventSale) || !movements.every(isMovement)) return 'invalid'
+export type BoothWarehouseStorageResult = EventSalesBatchStorageResult
+
+function saveRelatedRecordsAtomically<T>(
+  recordsKey: string,
+  records: T[],
+  validateRecord: (value: unknown) => value is T,
+  movements: InventoryMovement[],
+): EventSalesBatchStorageResult {
+  if (writeBlockedKeys.has(recordsKey) || writeBlockedKeys.has(INVENTORY_MOVEMENTS_STORAGE_KEY)) return 'blocked'
+  if (!records.every(validateRecord) || !movements.every(isMovement)) return 'invalid'
   let previousRecords: string | null
   let previousMovements: string | null
   try {
-    previousRecords = localStorage.getItem(EVENT_SALES_STORAGE_KEY)
+    previousRecords = localStorage.getItem(recordsKey)
     previousMovements = localStorage.getItem(INVENTORY_MOVEMENTS_STORAGE_KEY)
   } catch { return 'write_failed' }
   const nextRecords = JSON.stringify({version:INVENTORY_STORAGE_VERSION,records})
   const nextMovements = JSON.stringify({version:INVENTORY_STORAGE_VERSION,records:movements})
   const rollback = () => {
     try {
-      if (previousRecords === null) localStorage.removeItem(EVENT_SALES_STORAGE_KEY)
-      else localStorage.setItem(EVENT_SALES_STORAGE_KEY,previousRecords)
+      if (previousRecords === null) localStorage.removeItem(recordsKey)
+      else localStorage.setItem(recordsKey,previousRecords)
       if (previousMovements === null) localStorage.removeItem(INVENTORY_MOVEMENTS_STORAGE_KEY)
       else localStorage.setItem(INVENTORY_MOVEMENTS_STORAGE_KEY,previousMovements)
-      return localStorage.getItem(EVENT_SALES_STORAGE_KEY) === previousRecords &&
+      return localStorage.getItem(recordsKey) === previousRecords &&
         localStorage.getItem(INVENTORY_MOVEMENTS_STORAGE_KEY) === previousMovements
     } catch {
-      writeBlockedKeys.add(EVENT_SALES_STORAGE_KEY)
+      writeBlockedKeys.add(recordsKey)
       writeBlockedKeys.add(INVENTORY_MOVEMENTS_STORAGE_KEY)
       return false
     }
   }
   try {
-    localStorage.setItem(EVENT_SALES_STORAGE_KEY,nextRecords)
+    localStorage.setItem(recordsKey,nextRecords)
     localStorage.setItem(INVENTORY_MOVEMENTS_STORAGE_KEY,nextMovements)
   } catch {
     return rollback() ? 'write_failed' : 'rollback_failed'
   }
-  if (localStorage.getItem(EVENT_SALES_STORAGE_KEY) !== nextRecords ||
-    localStorage.getItem(INVENTORY_MOVEMENTS_STORAGE_KEY) !== nextMovements) {
+  try {
+    if (localStorage.getItem(recordsKey) !== nextRecords ||
+      localStorage.getItem(INVENTORY_MOVEMENTS_STORAGE_KEY) !== nextMovements) {
+      return rollback() ? 'read_back_failed' : 'rollback_failed'
+    }
+  } catch {
     return rollback() ? 'read_back_failed' : 'rollback_failed'
   }
   return 'saved'
+}
+
+export function saveEventSalesBatchAtomically(records: EventSalesRecord[], movements: InventoryMovement[]): EventSalesBatchStorageResult {
+  return saveRelatedRecordsAtomically(EVENT_SALES_STORAGE_KEY,records,isEventSale,movements)
 }
 export const loadEventSalesRecords = () => load(EVENT_SALES_STORAGE_KEY,isEventSale,(value) => {
   if (!object(value)) return null
@@ -235,6 +250,8 @@ export const loadBoothSalesRecords = () => load(BOOTH_SALES_STORAGE_KEY,isBoothS
 export const saveBoothSalesRecords = (records: BoothSalesRecord[]) => save(BOOTH_SALES_STORAGE_KEY,records)
 export const loadBoothWarehouseSalesRecords = () => load(BOOTH_WAREHOUSE_SALES_STORAGE_KEY,isBoothWarehouseSale)
 export const saveBoothWarehouseSalesRecords = (records: BoothWarehouseSaleRecord[]) => save(BOOTH_WAREHOUSE_SALES_STORAGE_KEY,records)
+export const saveBoothWarehouseSalesAtomically = (records: BoothWarehouseSaleRecord[], movements: InventoryMovement[]): BoothWarehouseStorageResult =>
+  saveRelatedRecordsAtomically(BOOTH_WAREHOUSE_SALES_STORAGE_KEY,records,isBoothWarehouseSale,movements)
 export const loadAnniversaryCampaigns = () => load(ANNIVERSARY_CAMPAIGNS_STORAGE_KEY,isAnniversaryCampaign)
 export const saveAnniversaryCampaigns = (records: AnniversaryCampaign[]) => save(ANNIVERSARY_CAMPAIGNS_STORAGE_KEY,records)
 export const loadAnniversaryShipments = () => load(ANNIVERSARY_SHIPMENTS_STORAGE_KEY,isAnniversaryShipment)

@@ -786,3 +786,16 @@ HootoDayは商品、イベント持込数、サンプル配布、在庫調整、
 - 支払方法別集計、イベント終了後の売上集計へ拡張可能な構造とする。
 - 将来候補型は`EventCheckoutTransaction`と`EventCheckoutLine`だが、S-3では追加しない。
 - inventory snapshot schema version 1には会計取引配列を含めない。E-2で追加する場合はschema versionを上げ、旧snapshot migrationを追加する。
+# Phase I-4 BOOTH倉庫 実装記録（2026-07-24）
+
+- BOOTHタブ内を「倉庫」「家発送」に分け、初期表示を「倉庫」とした。既存BOOTH販売は「家発送」としてUI・保存処理を維持する。
+- BOOTH倉庫販売は日付、商品、数量、購入者向け販売価格、受取単価、受取総額、メモを扱う。注文番号、発送状態、月次締め、月内件数制限は設けない。
+- 新規作成時は`BoothWarehouseSaleRecord`と数量一致の`boothWarehouseSale` movementを同じ論理操作として保存する。
+- 編集時はrecord IDと`createdAt`を維持し、同じrecord IDに紐づくmovementだけを置換する。商品は編集時に変更不可とする。
+- 削除時は確認後、対象recordと対応movementだけを同時に削除し、数量分の在庫を復元する。
+- record配列とmovement配列は既存の別localStorage keyへ、validator、2-key write、read-back、rollbackを伴う原子的保存で反映する。成功read-back後だけReact stateを更新する。
+- 倉庫累計販売数と`数量 × 受取単価`の累計受取総額を表示する。商品カードの既存集計も同じ正式recordを参照する。
+- inventory storage version 2、backup format 3、`InventorySyncSnapshot`、Supabase、SQL、RPCは変更していない。保存成功後は既存snapshot差分により`local_changed`となる。
+- Phase I-4の実装は完了。実機では新規作成、編集、削除、在庫減算・復元、PC／iPhone表示、PC・iPhone同期を確認する。
+- 現在の本線はPhase I-4の実機確認。完了後の戻り先はPhase I-5「BOOTH家発送拡張」。
+- 保留中のPhase E-1b、Phase I-5〜I-8、Phase E-2、Sync Phase S-4bは維持する。

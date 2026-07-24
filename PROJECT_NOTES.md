@@ -2906,3 +2906,7 @@ cleanup後VERIFY結果：
 - 販売・在庫同期のSync Phase S-5を主要PC／iPhone往復、InventoryMovement往復、BOOTH削除往復の実機確認完了として閉じ、Phase E-1「イベント複数商品一括入力」へ移行した。詳細・保留・次工程は`INVENTORY_SYNC_ROADMAP.md`を正本とする。
 - Phase E-1cでイベント販売の表示語を`売上未入力`／`売上入力済み`へ統一し、イベント単位カードを主表示へ整理した。内部status、保存形式、在庫計算、同期仕様は変更せず、次工程は`INVENTORY_SYNC_ROADMAP.md`記載のPhase I-4とする。
 - Phase E-1cのイベント画面整理と販売・在庫同期の通常利用可能判定を正本`INVENTORY_SYNC_ROADMAP.md`へ集約した。現在の本線はPhase I-4 BOOTH倉庫であり、保留と割り込み時の戻り先も同正本に従う。
+# 2026-07-24 販売・在庫 Phase I-4
+
+- BOOTH倉庫販売の新規作成・編集・削除・在庫連動を実装した。詳細仕様と実機確認項目は`INVENTORY_SYNC_ROADMAP.md`を正本とする。
+- 現在の本線はPhase I-4の実機確認、完了後の戻り先はPhase I-5 BOOTH家発送拡張。
