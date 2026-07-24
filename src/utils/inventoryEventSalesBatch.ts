@@ -32,6 +32,7 @@ type PrepareOptions = {
   movements: InventoryMovement[]
   now: string
   createId: () => string | null
+  requirePlannedRecords?: boolean
 }
 
 const wholeNumber = (value: string) =>
@@ -77,6 +78,9 @@ export function prepareEventSalesBatch(options: PrepareOptions): EventSalesBatch
       : null
     if (row.existingRecordId && (!existing || existing.eventId !== options.eventId || existing.productId !== row.productId)) {
       rowErrors.row = '編集対象の保存済み記録が見つかりません。'
+    }
+    if (options.requirePlannedRecords && existing?.status !== 'planned') {
+      rowErrors.row = '対象の準備中記録が変更されています。画面を閉じて再確認してください。'
     }
     if (existing) {
       const related = options.movements.filter((movement) => movement.eventSalesRecordId === existing.id)

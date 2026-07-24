@@ -52,7 +52,7 @@ export function useInventory() {
   if(result.status==='invalid')return Object.values(result.errors).flatMap(error=>Object.values(error)).find(Boolean)??'入力内容を確認してください。'
   return '保存に失敗しました。入力内容は変更されていません。'
  }
- const saveEventSalesBatch=(input:{eventId:string;eventDate:string;status:EventSalesStatus;rows:EventSalesBatchDraftRow[]})=>{
+ const saveEventSalesBatch=(input:{eventId:string;eventDate:string;status:EventSalesStatus;rows:EventSalesBatchDraftRow[];requirePlannedRecords?:boolean})=>{
   const prepared=prepareEventSalesBatch({...input,products,records:eventSalesRecords,movements:inventoryMovements,now:new Date().toISOString(),createId:createUuidV4})
   if(prepared.status!=='ready')return prepared
   const storageStatus=saveEventSalesBatchAtomically(prepared.records,prepared.movements)

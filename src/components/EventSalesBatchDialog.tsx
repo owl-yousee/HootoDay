@@ -14,6 +14,7 @@ type SaveResult =
 
 type Props = {
   open: boolean
+  mode: 'create' | 'complete'
   products: Product[]
   events: CalendarEvent[]
   records: EventSalesRecord[]
@@ -24,6 +25,7 @@ type Props = {
     eventDate: string
     status: EventSalesStatus
     rows: EventSalesBatchDraftRow[]
+    requirePlannedRecords?: boolean
   }) => SaveResult
 }
 
@@ -58,14 +60,15 @@ export function EventSalesBatchDialog(props: Props) {
 
   const loadEvent = useCallback((nextEventId: string) => {
     setEventId(nextEventId)
-    const existing = props.records.filter((record) => record.eventId === nextEventId)
+    const existing = props.records.filter((record) =>
+      record.eventId === nextEventId && (props.mode !== 'complete' || record.status === 'planned'))
     setRows(existing.length ? existing.map(recordRow) : [emptyRow()].filter(Boolean) as EventSalesBatchDraftRow[])
-    setStatus(existing.length && existing.every((record) => record.status === 'completed') ? 'completed' : 'planned')
+    setStatus(props.mode === 'complete' ? 'completed' : existing.length && existing.every((record) => record.status === 'completed') ? 'completed' : 'planned')
     setErrors({})
     setSummaryError('')
     submittingRef.current = false
     setSubmitting(false)
-  }, [props.records])
+  }, [props.mode, props.records])
 
   useEffect(() => {
     if (!props.open) return
@@ -85,12 +88,20 @@ export function EventSalesBatchDialog(props: Props) {
     }
   }, [props.open, props.initialEventId, loadEvent])
 
-  const totals = useMemo(() => rows.reduce((sum, row) => {
-    const sold = /^\d+$/.test(row.soldQuantity) ? Number(row.soldQuantity) : 0
-    const sample = /^\d+$/.test(row.sampleQuantity) ? Number(row.sampleQuantity) : 0
-    const price = /^\d+$/.test(row.unitPrice) ? Number(row.unitPrice) : 0
-    return { sold: sum.sold + sold, sample: sum.sample + sample, amount: sum.amount + sold * price }
-  }, { sold: 0, sample: 0, amount: 0 }), [rows])
+  const totals = useMemo(() => {
+    let valid = true
+    const value = rows.reduce((sum, row) => {
+      const soldValid = /^\d+$/.test(row.soldQuantity)
+      const sampleValid = /^\d+$/.test(row.sampleQuantity)
+      const priceValid = /^\d+$/.test(row.unitPrice)
+      valid = valid && soldValid && sampleValid && priceValid
+      const sold = soldValid ? Number(row.soldQuantity) : 0
+      const sample = sampleValid ? Number(row.sampleQuantity) : 0
+      const price = priceValid ? Number(row.unitPrice) : 0
+      return { sold: sum.sold + sold, sample: sum.sample + sample, amount: sum.amount + sold * price }
+    }, { sold: 0, sample: 0, amount: 0 })
+    return { ...value, valid }
+  }, [rows])
 
   if (!props.open) return null
   const selectedProducts = new Set(rows.map((row) => row.productId).filter(Boolean))
@@ -131,7 +142,7 @@ export function EventSalesBatchDialog(props: Props) {
     submittingRef.current = true
     setSubmitting(true)
     try {
-      const result = props.onSave({ eventId, eventDate: selectedEvent.date, status, rows })
+      const result = props.onSave({ eventId, eventDate: selectedEvent.date, status, rows, requirePlannedRecords: props.mode === 'complete' })
       if (result.status === 'saved') {
         submittingRef.current = false
         dialogRef.current?.close()
@@ -140,7 +151,7 @@ export function EventSalesBatchDialog(props: Props) {
       }
       if (result.status === 'invalid') {
         setErrors(result.errors)
-        setSummaryError(`保存できませんでした。${Object.keys(result.errors).length}件の入力内容を確認してください。`)
+        setSummaryError(`${props.mode === 'complete' ? '実績を確定' : '保存'}できませんでした。${Object.keys(result.errors).length}件の入力内容を確認してください。`)
         requestAnimationFrame(() => dialogRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.scrollIntoView({ block: 'center' }))
       } else {
         setSummaryError('保存に失敗しました。入力内容は変更されていません。')
@@ -154,10 +165,10 @@ export function EventSalesBatchDialog(props: Props) {
   }
   return <dialog ref={dialogRef} className="inventory-dialog inventory-event-batch-dialog" onCancel={(event) => { event.preventDefault(); close() }}>
     <form onSubmit={submit} noValidate>
-      <header><div><p className="eyebrow">Inventory</p><h2>{props.records.some((record) => record.eventId === eventId) ? '販売実績をまとめて編集' : 'イベント商品をまとめて登録'}</h2></div><button type="button" aria-label="閉じる" onClick={close}>×</button></header>
+      <header><div><p className="eyebrow">Inventory</p><h2>{props.mode === 'complete' ? '販売実績をまとめて入力' : props.records.some((record) => record.eventId === eventId) ? '販売実績をまとめて編集' : 'イベント商品をまとめて登録'}</h2></div><button type="button" aria-label="閉じる" onClick={close}>×</button></header>
       {summaryError && <p className="form-error" role="alert">{summaryError}</p>}
-      <label className="inventory-batch-event">イベント<select value={eventId} onChange={(event) => loadEvent(event.target.value)}><option value="">選択してください</option>{props.events.map((item) => <option key={item.id} value={item.id}>{item.date} {item.title}</option>)}</select></label>
-      <fieldset className="inventory-fieldset inventory-status-choice"><legend>記録状態</legend><label className="inventory-check"><input type="radio" checked={status === 'planned'} onChange={() => setStatus('planned')}/>準備中</label><label className="inventory-check"><input type="radio" checked={status === 'completed'} onChange={() => setStatus('completed')}/>実績確定済み</label></fieldset>
+      <label className="inventory-batch-event">イベント<select value={eventId} disabled={props.mode === 'complete'} onChange={(event) => loadEvent(event.target.value)}><option value="">選択してください</option>{props.events.map((item) => <option key={item.id} value={item.id}>{item.date} {item.title}</option>)}</select></label>
+      {props.mode === 'complete' ? <p className="inventory-batch-mode">準備中の商品をまとめて実績確定します。</p> : <fieldset className="inventory-fieldset inventory-status-choice"><legend>記録状態</legend><label className="inventory-check"><input type="radio" checked={status === 'planned'} onChange={() => setStatus('planned')}/>準備中</label><label className="inventory-check"><input type="radio" checked={status === 'completed'} onChange={() => setStatus('completed')}/>実績確定済み</label></fieldset>}
       <div className="inventory-batch-rows">{rows.map((row, index) => {
         const rowErrors = errors[row.rowId] ?? {}
         return <section className="inventory-batch-row" key={row.rowId}>
@@ -170,14 +181,15 @@ export function EventSalesBatchDialog(props: Props) {
             }}><option value="">選択してください</option>{props.products.filter((item) => item.isActive || item.id === row.productId).map((item) => <option key={item.id} value={item.id} disabled={item.id !== row.productId && selectedProducts.has(item.id)}>{item.name}</option>)}</select></label>
             {([
               ['broughtQuantity', '持込数'], ['soldQuantity', '販売数'], ['sampleQuantity', 'サンプル数'], ['unitPrice', '単価'],
-            ] as const).map(([field, label]) => <label key={field} data-field-error={rowErrors[field]}>{label}<input value={row[field]} inputMode="numeric" pattern="[0-9]*" aria-invalid={Boolean(rowErrors[field])} onChange={(event) => update(row.rowId, { [field]: event.target.value })}/></label>)}
+            ] as const).map(([field, label]) => <label key={field} data-field-error={rowErrors[field]}>{label}<input value={row[field]} readOnly={props.mode === 'complete' && field === 'broughtQuantity'} inputMode="numeric" pattern="[0-9]*" aria-invalid={Boolean(rowErrors[field])} onChange={(event) => update(row.rowId, { [field]: event.target.value })}/></label>)}
             <label className="inventory-wide">メモ<textarea value={row.memo} maxLength={500} onChange={(event) => update(row.rowId, { memo: event.target.value })}/></label>
           </div>
+          {props.mode === 'complete' && <p className="inventory-batch-remaining">残数：{(/^\d+$/.test(row.broughtQuantity) && /^\d+$/.test(row.soldQuantity) && /^\d+$/.test(row.sampleQuantity)) ? Number(row.broughtQuantity) - Number(row.soldQuantity) - Number(row.sampleQuantity) : '—'}個</p>}
         </section>
       })}</div>
-      <button type="button" className="inventory-batch-add" onClick={add}>商品を追加</button>
-      {status === 'completed' && <div className="inventory-batch-totals"><span>販売合計 <strong>{totals.sold.toLocaleString('ja-JP')}個</strong></span><span>サンプル合計 <strong>{totals.sample.toLocaleString('ja-JP')}個</strong></span><span>売上合計 <strong>{totals.amount.toLocaleString('ja-JP')}円</strong></span></div>}
-      <footer><button type="button" onClick={close}>キャンセル</button><button className="health-primary-button" type="submit" disabled={submitting}>{submitting ? '保存中…' : 'まとめて保存'}</button></footer>
+      {props.mode === 'create' && <button type="button" className="inventory-batch-add" onClick={add}>商品を追加</button>}
+      {status === 'completed' && <div className="inventory-batch-totals"><span>販売合計 <strong>{totals.valid ? `${totals.sold.toLocaleString('ja-JP')}個` : '—'}</strong></span><span>サンプル合計 <strong>{totals.valid ? `${totals.sample.toLocaleString('ja-JP')}個` : '—'}</strong></span><span>売上合計 <strong>{totals.valid ? `${totals.amount.toLocaleString('ja-JP')}円` : '—'}</strong></span></div>}
+      <footer><button type="button" onClick={close}>キャンセル</button><button className="health-primary-button" type="submit" disabled={submitting}>{submitting ? (props.mode === 'complete' ? '確定中…' : '保存中…') : (props.mode === 'complete' ? '実績をまとめて確定' : 'まとめて保存')}</button></footer>
     </form>
   </dialog>
 }

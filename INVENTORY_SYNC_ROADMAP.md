@@ -718,6 +718,7 @@ pending operationはremote書込み用の`initial_upload`、`push_snapshot`、`r
 
 ## 34. Phase E-1 イベント複数商品一括入力
 
+- 準備中の複数商品登録は実装済みだが、実機確認で商品別の旧単品操作だけが主導線となり、イベント単位の一括実績入力が不足していることを確認した。E-1は完了扱いにせず補完中とする。
 - イベント単位で複数商品を1画面へ並べ、準備中／実績確定済みをまとめて保存する。
 - UI draftは保存せず、内部形式は既存`EventSalesRecord`を商品ごとに1件ずつ維持する。取引型、transaction ID、新配列は追加しない。
 - 全行を純粋関数で検証し、商品未選択、重複、整数、持込超過、在庫不足、既存record消失、ID生成不能を行別に表示する。
@@ -727,6 +728,9 @@ pending operationはremote書込み用の`initial_upload`、`push_snapshot`、`r
 - 保存成功後は既存inventory snapshot差異として`local_changed`になり、自動送信しない。
 - E-2へ向けてdraft検証・record／movement生成を純粋関数へ分離した。E-1では会計取引、支払方法、取消し履歴、snapshot schema変更を行わない。
 - E-1完了後の戻り先はPhase I-4 BOOTH倉庫とする。I-4〜I-8、E-2の保留順序を維持する。
+- 補完ではイベント別カードへ「販売実績をまとめて入力」を追加し、同一eventIdのplanned recordだけを既存IDのままcompletedへ一括確定する。持込数は読み取り専用、販売数・サンプル数・単価・残数・合計を同一画面へ表示する。
+- 保存直前にplanned状態、eventId／productId、持込数、movement不在・整合、在庫、UUIDを再確認し、既存の2-key原子的保存へ接続する。実機再確認が通るまではE-1補完中とする。
+- completed複数商品の一括編集はE-1bへ保留する。既存単品編集・確定取消し・削除は維持する。
 
 ## 35. Phase E-2 イベント会計アプリ連動基盤
 
