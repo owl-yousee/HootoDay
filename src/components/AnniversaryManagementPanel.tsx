@@ -48,6 +48,22 @@ const statusGroup = (status: AnniversaryShipmentStatus) =>
 const statusOrder = (status: AnniversaryShipmentStatus) =>
   status === 'unprepared' ? 0 : status === 'preparing' ? 1 :
     status === 'prepared' || status === 'not_shipped' ? 2 : 3
+const preventImplicitSubmit = (event: React.KeyboardEvent<HTMLFormElement>) => {
+  if (event.key !== 'Enter') return
+  const nativeEvent = event.nativeEvent
+  if (event.target instanceof HTMLTextAreaElement) {
+    event.stopPropagation()
+    return
+  }
+  if (nativeEvent.isComposing || nativeEvent.keyCode === 229) {
+    event.stopPropagation()
+    return
+  }
+  if (event.shiftKey) {
+    event.preventDefault()
+    event.stopPropagation()
+  }
+}
 
 function PlanSummary({ plan, records, selected, onSelect }: {
   plan: FixedPlan
@@ -72,6 +88,7 @@ export function AnniversaryManagementPanel(props: Props) {
   const campaignDialogRef = useRef<HTMLDialogElement>(null)
   const shipmentDialogRef = useRef<HTMLDialogElement>(null)
   const submittingRef = useRef(false)
+  const explicitSubmitRef = useRef(false)
   const lockedScrollYRef = useRef(0)
   const [selectedPlans, setSelectedPlans] = useState<Record<string, FixedPlan>>({})
   const [editingCampaign, setEditingCampaign] = useState<AnniversaryCampaign | null>(null)
@@ -158,6 +175,8 @@ export function AnniversaryManagementPanel(props: Props) {
 
   const submitCampaign = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (!explicitSubmitRef.current) return
+    explicitSubmitRef.current = false
     if (submittingRef.current) return
     const form = new FormData(event.currentTarget)
     const yearText = String(form.get('year') ?? '').trim()
@@ -204,6 +223,8 @@ export function AnniversaryManagementPanel(props: Props) {
 
   const submitShipment = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (!explicitSubmitRef.current) return
+    explicitSubmitRef.current = false
     if (submittingRef.current || !shipmentContext) return
     const form = new FormData(event.currentTarget)
     const destinationNumber = String(form.get('destinationNumber') ?? '').trim()
@@ -350,7 +371,8 @@ export function AnniversaryManagementPanel(props: Props) {
       event.preventDefault()
       closeCampaign()
     }}>
-      <form key={editingCampaign?.id ?? 'new-campaign'} onSubmit={submitCampaign} noValidate>
+      <form key={editingCampaign?.id ?? 'new-campaign'} onSubmit={submitCampaign}
+        onKeyDown={preventImplicitSubmit} noValidate>
         <header><div><p className="eyebrow">Anniversary</p><h2>{editingCampaign ? '周年記念を編集' : '周年記念を作成'}</h2></div>
           <button type="button" aria-label="ダイアログを閉じる" onClick={closeCampaign}>×</button></header>
         {error && <p className="form-error" role="alert">{error}</p>}
@@ -366,22 +388,25 @@ export function AnniversaryManagementPanel(props: Props) {
             <legend>プラン別の標準内容物（任意）</legend>
             <div className="inventory-form-grid">
               <label>うさぎの内容物
-                <input name="rabbitItemDescription" maxLength={500}
-                  defaultValue={campaignPlanItems(editingCampaign).rabbit} />
+                <textarea className="anniversary-item-textarea" name="rabbitItemDescription"
+                  rows={4} maxLength={500} defaultValue={campaignPlanItems(editingCampaign).rabbit} />
               </label>
               <label>きのこの内容物
-                <input name="mushroomItemDescription" maxLength={500}
-                  defaultValue={campaignPlanItems(editingCampaign).mushroom} />
+                <textarea className="anniversary-item-textarea" name="mushroomItemDescription"
+                  rows={4} maxLength={500} defaultValue={campaignPlanItems(editingCampaign).mushroom} />
               </label>
               <label className="inventory-wide">ねこの内容物
-                <input name="catItemDescription" maxLength={500}
-                  defaultValue={campaignPlanItems(editingCampaign).cat} />
+                <textarea className="anniversary-item-textarea" name="catItemDescription"
+                  rows={4} maxLength={500} defaultValue={campaignPlanItems(editingCampaign).cat} />
               </label>
             </div>
           </fieldset>
         </div>
         <footer><button type="button" onClick={closeCampaign}>キャンセル</button>
-          <button className="health-primary-button" type="submit" disabled={isSubmitting}>{isSubmitting ? '保存中…' : '保存'}</button></footer>
+          <button className="health-primary-button" type="button" disabled={isSubmitting} onClick={(event) => {
+            explicitSubmitRef.current = true
+            event.currentTarget.form?.requestSubmit()
+          }}>{isSubmitting ? '保存中…' : '保存'}</button></footer>
       </form>
     </dialog>
 
@@ -389,7 +414,8 @@ export function AnniversaryManagementPanel(props: Props) {
       event.preventDefault()
       closeShipment()
     }}>
-      <form key={shipmentContext?.shipment?.id ?? `${shipmentContext?.campaign.id}:${shipmentContext?.plan}`} onSubmit={submitShipment} noValidate>
+      <form key={shipmentContext?.shipment?.id ?? `${shipmentContext?.campaign.id}:${shipmentContext?.plan}`}
+        onSubmit={submitShipment} onKeyDown={preventImplicitSubmit} noValidate>
         <header><div><p className="eyebrow">{shipmentContext?.plan}プラン</p>
           <h2>{shipmentContext?.shipment ? '発送記録を編集' : '発送記録を追加'}</h2></div>
           <button type="button" aria-label="ダイアログを閉じる" onClick={closeShipment}>×</button></header>
@@ -400,7 +426,8 @@ export function AnniversaryManagementPanel(props: Props) {
               defaultValue={shipmentContext?.shipment?.destinationNumber} />
           </label>
           <label className="inventory-wide" data-field-error={shipmentErrors.itemDescription}>内容物
-            <input name="itemDescription" maxLength={500} required
+            <textarea className="anniversary-item-textarea" name="itemDescription" rows={4}
+              maxLength={500} required
               defaultValue={shipmentContext?.shipment?.itemDescription ??
                 (shipmentContext && fixedPlans.includes(shipmentContext.plan as FixedPlan)
                   ? campaignPlanItems(shipmentContext.campaign)[planKeys[shipmentContext.plan as FixedPlan]]
@@ -426,7 +453,10 @@ export function AnniversaryManagementPanel(props: Props) {
         {shipmentContext?.shipment && shipmentContext.shipment.quantity !== 1 &&
           <p className="anniversary-compatibility-note">既存数量：{shipmentContext.shipment.quantity}。互換性のため、この編集では変更しません。</p>}
         <footer><button type="button" onClick={closeShipment}>キャンセル</button>
-          <button className="health-primary-button" type="submit" disabled={isSubmitting}>{isSubmitting ? '保存中…' : '保存'}</button></footer>
+          <button className="health-primary-button" type="button" disabled={isSubmitting} onClick={(event) => {
+            explicitSubmitRef.current = true
+            event.currentTarget.form?.requestSubmit()
+          }}>{isSubmitting ? '保存中…' : '保存'}</button></footer>
       </form>
     </dialog>
   </section>
@@ -443,7 +473,7 @@ function ShipmentCard({ shipment, showPlan = false, onEdit, onDelete }: {
     {showPlan && <strong className="anniversary-legacy-plan">{shipment.fanboxPlan}</strong>}
     <dl>
       <div><dt>宛先番号</dt><dd>{shipment.destinationNumber}</dd></div>
-      <div><dt>内容物</dt><dd>{shipment.itemDescription}</dd></div>
+      <div><dt>内容物</dt><dd className="anniversary-item-description">{shipment.itemDescription}</dd></div>
       <div><dt>発送日</dt><dd>{shipment.shippedAt || '未設定'}</dd></div>
     </dl>
     {shipment.quantity !== 1 && <small className="anniversary-legacy-quantity">既存数量 {shipment.quantity}</small>}

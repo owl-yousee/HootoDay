@@ -1021,3 +1021,11 @@ BOOTHの制度変更へ対応できるよう、特定時点の手数料率や保
 - 新fieldは既存のJSON backup複製とinventory snapshotのdeep clone／fingerprintへ自動的に含まれ、PC・iPhone間の既存明示同期対象となる。RPC、SQL、自動送受信、自動retryは変更しない。
 - 作成ボタンはGiftアイコンの1.3emを維持し、専用inline-flexと1pxの位置補正で文字と中央揃えにする。個人カード一覧はgridの縦stretchを止め、情報と操作間の余白を縮め、44px以上の操作領域とメモ3行制限を維持する。
 - 通常在庫と`InventoryMovement`には引き続き非連動である。実機では新旧campaign表示、3標準内容物の保存・編集、個人追加時の初期値、個別上書き保護、PC／iPhone dialog、Gift位置、短いカードの余白、双方向同期を確認する。
+
+## Phase I-6 内容物の複数行入力と明示保存
+
+- うさぎ、きのこ、ねこの標準内容物と、個人カードの内容物を4行のtextareaへ変更する。500文字上限、前後空白の除去、標準内容物は任意、個人内容物は必須という検証を維持する。
+- textarea内のEnter／Shift+Enter／Ctrl+Enter／Command+Enterは保存に使用せず、通常の改行として扱う。IME変換中のEnterとkeyCode 229も暗黙submitへ接続しない。
+- dialogの保存は、明示的な「保存」ボタンから`requestSubmit()`した場合だけ処理する。フォームの暗黙submitは保存処理へ進めず、既存の二重submit guard、2-key保存、read-back、rollbackを維持する。
+- 改行を含む個人内容物はカード上で`pre-wrap`相当を維持しつつ最大4行へ制限し、カードを過度に縦長にしない。
+- PCでは標準内容物の2列＋ねこ全幅、iPhoneでは1列を維持する。実機では各textareaのEnter、Shift+Enter、IME確定、明示保存、標準内容物の初期反映、個人上書き、dialog scroll、横overflowを確認する。
