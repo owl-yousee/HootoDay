@@ -695,7 +695,18 @@ pending operationはremote書込み用の`initial_upload`、`push_snapshot`、`r
 - 次はSync Phase S-5でPC／iPhone初回同期、通常送受信、削除、offline、replay、競合、現在庫一致を実機確認する。
 - 同期実機確認完了後はPhase E-1へ戻る。Phase E-2の会計アプリ連動方針は維持する。
 
-## 32. Phase E-2 イベント会計アプリ連動基盤
+## 32. Sync Phase S-5 割り込み：iPhone販売・在庫フォーム操作性
+
+- 現在の本線はSync Phase S-5のPC／iPhone復旧・削除・現在庫一致の実機確認である。
+- iPhone Safariで在庫調整フォームの入力時拡大、背景scroll／overscroll、減少数量へ`-1`を入力した際の保存失敗が確認されたため、操作性修正を割り込み実施した。
+- iPhone幅では在庫ダイアログ内のinput／select／textareaを16px以上とし、viewportの拡大操作は禁止しない。
+- ダイアログ表示中は背景scroll位置を保持して固定し、ダイアログ内部だけを縦scroll可能とする。終了時は元のscroll位置へ戻す。
+- 在庫減少は既存形式どおり`adjustmentDecrease`と正の数量で保持する。UIを「減らす（その他）」＋「数量（正の整数）」へ明確化し、1個減らす場合は数量`1`とする。
+- 0、空欄、小数、指数表記、数字以外、安全な整数範囲外、現在庫超過、理由空欄をfield近傍で拒否し、失敗時は在庫と履歴を変更しない。
+- 二重submitを防止する。同期snapshot、baseline、pending、revision、RPC、SQL、inventory storage version 2、backup format 3は変更しない。
+- 割り込み完了後はSync Phase S-5の削除復旧確認へ戻る。S-1、S-4、I-8、E-2の保留項目は維持する。
+
+## 33. Phase E-2 イベント会計アプリ連動基盤
 
 ### 位置づけ
 
