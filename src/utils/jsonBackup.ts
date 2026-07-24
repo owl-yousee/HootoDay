@@ -31,9 +31,28 @@ import { MAX_SLEEP_MEMO_LENGTH, SLEEP_RECORDS_STORAGE_KEY, SLEEP_RECORDS_STORAGE
 import { calculateSleepSummary, isValidTime, MAX_POINT_AWAKENING_MINUTES, MIN_POINT_AWAKENING_MINUTES } from './sleepMetrics'
 import { THEME_STORAGE_KEY, isThemePreference } from './theme'
 import { MAX_WEIGHT_KG, MAX_WEIGHT_MEMO_LENGTH, MIN_WEIGHT_KG, WEIGHT_RECORDS_STORAGE_KEY, WEIGHT_RECORDS_STORAGE_VERSION } from './weightStorage'
-import { BOOTH_SALES_STORAGE_KEY, EVENT_SALES_STORAGE_KEY, INVENTORY_MOVEMENTS_STORAGE_KEY, INVENTORY_STORAGE_VERSION, PRODUCTS_STORAGE_KEY, isBoothSale, isEventSale, isMovement, isProduct } from './inventoryStorage'
+import {
+  ANNIVERSARY_CAMPAIGNS_STORAGE_KEY,
+  ANNIVERSARY_SHIPMENTS_STORAGE_KEY,
+  BOOTH_SALES_STORAGE_KEY,
+  BOOTH_WAREHOUSE_SALES_STORAGE_KEY,
+  EVENT_SALES_STORAGE_KEY,
+  INVENTORY_MOVEMENTS_STORAGE_KEY,
+  INVENTORY_STORAGE_VERSION,
+  PRODUCTS_STORAGE_KEY,
+  isAnniversaryCampaign,
+  isAnniversaryShipment,
+  isBoothSale,
+  isBoothWarehouseSale,
+  isEventSale,
+  isMovement,
+  isProduct,
+  migrateBoothSaleV1,
+  migrateMovementV1,
+  migrateProductV1,
+} from './inventoryStorage'
 
-export const HOOTODAY_BACKUP_FORMAT_VERSION = 2
+export const HOOTODAY_BACKUP_FORMAT_VERSION = 3
 export const MAX_BACKUP_FILE_SIZE = 10 * 1024 * 1024
 
 export const BACKUP_STORAGE_KEYS = [
@@ -53,6 +72,9 @@ export const BACKUP_STORAGE_KEYS = [
   INVENTORY_MOVEMENTS_STORAGE_KEY,
   EVENT_SALES_STORAGE_KEY,
   BOOTH_SALES_STORAGE_KEY,
+  BOOTH_WAREHOUSE_SALES_STORAGE_KEY,
+  ANNIVERSARY_CAMPAIGNS_STORAGE_KEY,
+  ANNIVERSARY_SHIPMENTS_STORAGE_KEY,
 ] as const
 
 export interface StorageRestoreResult {
@@ -226,7 +248,8 @@ function isMonthlySelection(value: unknown): value is HootoDayBackupData['monthl
 function hasRequiredDataKeys(data: Record<string, unknown>, includeInventory: boolean): boolean {
   return ['theme', 'events', 'dayMemos', 'healthProfile', 'weightRecords', 'sleepRecords', 'mealRecords', 'mealTemplates',
     'exerciseSessions', 'conditionRecords', 'dailyAchievements', 'monthlyAchievementSelections',
-    ...(includeInventory ? ['products','inventoryMovements','eventSalesRecords','boothSalesRecords'] : [])]
+    ...(includeInventory ? ['products','inventoryMovements','eventSalesRecords','boothSalesRecords',
+      'boothWarehouseSalesRecords','anniversaryCampaigns','anniversaryShipments'] : [])]
     .every((key) => Object.prototype.hasOwnProperty.call(data, key))
 }
 
@@ -244,7 +267,7 @@ function validateData(value: unknown, includeInventory = true): boolean {
     !Array.isArray(value.dailyAchievements) || !value.dailyAchievements.every(isDailyAchievement) || !hasUniqueValues(value.dailyAchievements, (item) => item.date) ||
     !Array.isArray(value.monthlyAchievementSelections) || !value.monthlyAchievementSelections.every(isMonthlySelection) ||
     !hasUniqueValues(value.monthlyAchievementSelections, (item) => item.month) ||
-    (includeInventory && (!Array.isArray(value.products) || !value.products.every(isProduct) || !hasUniqueValues(value.products, item=>item.id) || !Array.isArray(value.inventoryMovements) || !value.inventoryMovements.every(isMovement) || !hasUniqueValues(value.inventoryMovements,item=>item.id) || !Array.isArray(value.eventSalesRecords) || !value.eventSalesRecords.every(isEventSale) || !hasUniqueValues(value.eventSalesRecords,item=>item.id) || !Array.isArray(value.boothSalesRecords) || !value.boothSalesRecords.every(isBoothSale) || !hasUniqueValues(value.boothSalesRecords,item=>item.id)))) return false
+    (includeInventory && (!Array.isArray(value.products) || !value.products.every(isProduct) || !hasUniqueValues(value.products, item=>item.id) || !Array.isArray(value.inventoryMovements) || !value.inventoryMovements.every(isMovement) || !hasUniqueValues(value.inventoryMovements,item=>item.id) || !Array.isArray(value.eventSalesRecords) || !value.eventSalesRecords.every(isEventSale) || !hasUniqueValues(value.eventSalesRecords,item=>item.id) || !Array.isArray(value.boothSalesRecords) || !value.boothSalesRecords.every(isBoothSale) || !hasUniqueValues(value.boothSalesRecords,item=>item.id) || !Array.isArray(value.boothWarehouseSalesRecords) || !value.boothWarehouseSalesRecords.every(isBoothWarehouseSale) || !hasUniqueValues(value.boothWarehouseSalesRecords,item=>item.id) || !Array.isArray(value.anniversaryCampaigns) || !value.anniversaryCampaigns.every(isAnniversaryCampaign) || !hasUniqueValues(value.anniversaryCampaigns,item=>item.id) || !Array.isArray(value.anniversaryShipments) || !value.anniversaryShipments.every(isAnniversaryShipment) || !hasUniqueValues(value.anniversaryShipments,item=>item.id)))) return false
 
   const achievementDates = new Set(value.dailyAchievements.map((item) => item.date))
   if (!value.monthlyAchievementSelections.every((selection) => achievementDates.has(selection.selectedDate))) return false
@@ -256,6 +279,19 @@ function validateData(value: unknown, includeInventory = true): boolean {
     const productIds = new Set(products.map((product) => product.id))
     const sales = value.eventSalesRecords as HootoDayBackupData['eventSalesRecords']
     const movements = value.inventoryMovements as HootoDayBackupData['inventoryMovements']
+    const warehouseSales = value.boothWarehouseSalesRecords as HootoDayBackupData['boothWarehouseSalesRecords']
+    const boothSales = value.boothSalesRecords as HootoDayBackupData['boothSalesRecords']
+    const campaigns = value.anniversaryCampaigns as HootoDayBackupData['anniversaryCampaigns']
+    const shipments = value.anniversaryShipments as HootoDayBackupData['anniversaryShipments']
+    if (!warehouseSales.every((record) => productIds.has(record.productId)) ||
+      !boothSales.every((record) => productIds.has(record.productId)) ||
+      !shipments.every((record) => campaigns.some((campaign) => campaign.id === record.campaignId)) ||
+      !movements.every((movement) => productIds.has(movement.productId))) return false
+    if (!movements.every((movement) =>
+      movement.type === 'boothWarehouseSale'
+        ? movement.boothWarehouseSalesRecordId !== null &&
+          movement.eventSalesRecordId === null && movement.boothSalesRecordId === null
+        : movement.boothWarehouseSalesRecordId === null)) return false
     if (!sales.every((record) => {
       if (!eventIds.has(record.eventId) || !productIds.has(record.productId)) return false
       const linked = movements.filter((movement) => movement.eventSalesRecordId === record.id)
@@ -266,6 +302,11 @@ function validateData(value: unknown, includeInventory = true): boolean {
       const saleQuantity = saleMovements.reduce((sum, movement) => sum + movement.quantity, 0)
       const sampleQuantity = sampleMovements.reduce((sum, movement) => sum + movement.quantity, 0)
       return saleQuantity === record.soldQuantity && sampleQuantity === record.sampleQuantity
+    })) return false
+    if (!warehouseSales.every((record) => {
+      const linked = movements.filter((movement) => movement.boothWarehouseSalesRecordId === record.id)
+      return linked.length === 1 && linked.every((movement) =>
+        movement.type === 'boothWarehouseSale' && movement.quantity === record.quantity)
     })) return false
   }
   const orders = value.mealTemplates.map((item) => item.sortOrder).sort((a, b) => a - b)
@@ -294,6 +335,9 @@ export function createHootoDayBackup(data: HootoDayBackupData, createdAt = new D
       inventoryMovements: data.inventoryMovements.map((item)=>({...item})),
       eventSalesRecords: data.eventSalesRecords.map((item)=>({...item})),
       boothSalesRecords: data.boothSalesRecords.map((item)=>({...item})),
+      boothWarehouseSalesRecords: data.boothWarehouseSalesRecords.map((item)=>({...item})),
+      anniversaryCampaigns: data.anniversaryCampaigns.map((item)=>({...item})),
+      anniversaryShipments: data.anniversaryShipments.map((item)=>({...item})),
     },
   }
 }
@@ -334,15 +378,61 @@ export function parseHootoDayBackup(content: string): BackupValidationResult {
     return { backup: null, error: 'JSONとして読み込めないバックアップです。' }
   }
   if (!isObject(parsed) || parsed.app !== 'HootoDay') return { backup: null, error: 'HootoDayのバックアップファイルではありません。' }
-  if (parsed.formatVersion !== 1 && parsed.formatVersion !== HOOTODAY_BACKUP_FORMAT_VERSION) return { backup: null, error: 'このバックアップ形式には対応していません。' }
-  if (!isIsoDateTime(parsed.createdAt) || !validateData(parsed.data, parsed.formatVersion === 2)) {
+  if (parsed.formatVersion !== 1 && parsed.formatVersion !== 2 && parsed.formatVersion !== 3) return { backup: null, error: 'このバックアップ形式には対応していません。' }
+  if (!isIsoDateTime(parsed.createdAt) || !isObject(parsed.data)) {
     return { backup: null, error: 'バックアップ内容が不正または不足しています。' }
   }
-  if (parsed.formatVersion === 1 && isObject(parsed.data)) {
-    parsed = { ...parsed, formatVersion: 2, data: { ...parsed.data, products: [], inventoryMovements: [], eventSalesRecords: [], boothSalesRecords: [] } }
+
+  if (parsed.formatVersion === 1) {
+    if (!validateData(parsed.data, false)) {
+      return { backup: null, error: 'バックアップ内容が不正または不足しています。' }
+    }
+    parsed = {
+      ...parsed,
+      formatVersion: 3,
+      data: {
+        ...parsed.data,
+        products: [],
+        inventoryMovements: [],
+        eventSalesRecords: [],
+        boothSalesRecords: [],
+        boothWarehouseSalesRecords: [],
+        anniversaryCampaigns: [],
+        anniversaryShipments: [],
+      },
+    }
+  } else if (parsed.formatVersion === 2) {
+    const data = parsed.data
+    if (!Array.isArray(data.products) || !Array.isArray(data.inventoryMovements) ||
+      !Array.isArray(data.eventSalesRecords) || !Array.isArray(data.boothSalesRecords)) {
+      return { backup: null, error: 'バックアップ内容が不正または不足しています。' }
+    }
+    const products = data.products.map(migrateProductV1)
+    const inventoryMovements = data.inventoryMovements.map(migrateMovementV1)
+    const boothSalesRecords = data.boothSalesRecords.map(migrateBoothSaleV1)
+    if (products.some((item) => item === null) || inventoryMovements.some((item) => item === null) ||
+      boothSalesRecords.some((item) => item === null)) {
+      return { backup: null, error: 'バックアップ内容が不正または不足しています。' }
+    }
+    parsed = {
+      ...parsed,
+      formatVersion: 3,
+      data: {
+        ...data,
+        products,
+        inventoryMovements,
+        eventSalesRecords: data.eventSalesRecords.map((record: unknown) =>
+          isObject(record) ? { ...record, status: record.status ?? 'completed' } : record),
+        boothSalesRecords,
+        boothWarehouseSalesRecords: [],
+        anniversaryCampaigns: [],
+        anniversaryShipments: [],
+      },
+    }
   }
-  if (isObject(parsed) && isObject(parsed.data) && Array.isArray(parsed.data.eventSalesRecords)) {
-    parsed = { ...parsed, data: { ...parsed.data, eventSalesRecords: parsed.data.eventSalesRecords.map((record: unknown) => isObject(record) ? { ...record, status: record.status ?? 'completed' } : record) } }
+
+  if (!isObject(parsed) || !isObject(parsed.data) || !validateData(parsed.data, true)) {
+    return { backup: null, error: 'バックアップ内容が不正または不足しています。' }
   }
   return { backup: parsed as unknown as HootoDayBackup, error: null }
 }
@@ -366,6 +456,9 @@ export function getBackupSummary(backup: HootoDayBackup): BackupSummary {
     inventoryMovements: backup.data.inventoryMovements.length,
     eventSalesRecords: backup.data.eventSalesRecords.length,
     boothSalesRecords: backup.data.boothSalesRecords.length,
+    boothWarehouseSalesRecords: backup.data.boothWarehouseSalesRecords.length,
+    anniversaryCampaigns: backup.data.anniversaryCampaigns.length,
+    anniversaryShipments: backup.data.anniversaryShipments.length,
   }
 }
 
@@ -387,6 +480,9 @@ export function buildStorageValues(data: HootoDayBackupData): Record<(typeof BAC
     [INVENTORY_MOVEMENTS_STORAGE_KEY]: JSON.stringify({ version: INVENTORY_STORAGE_VERSION, records: data.inventoryMovements }),
     [EVENT_SALES_STORAGE_KEY]: JSON.stringify({ version: INVENTORY_STORAGE_VERSION, records: data.eventSalesRecords }),
     [BOOTH_SALES_STORAGE_KEY]: JSON.stringify({ version: INVENTORY_STORAGE_VERSION, records: data.boothSalesRecords }),
+    [BOOTH_WAREHOUSE_SALES_STORAGE_KEY]: JSON.stringify({ version: INVENTORY_STORAGE_VERSION, records: data.boothWarehouseSalesRecords }),
+    [ANNIVERSARY_CAMPAIGNS_STORAGE_KEY]: JSON.stringify({ version: INVENTORY_STORAGE_VERSION, records: data.anniversaryCampaigns }),
+    [ANNIVERSARY_SHIPMENTS_STORAGE_KEY]: JSON.stringify({ version: INVENTORY_STORAGE_VERSION, records: data.anniversaryShipments }),
   }
 }
 

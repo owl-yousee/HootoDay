@@ -27,6 +27,9 @@ export function createEmptyBackupData(theme: HootoDayBackupData['theme']): Hooto
     inventoryMovements: [],
     eventSalesRecords: [],
     boothSalesRecords: [],
+    boothWarehouseSalesRecords: [],
+    anniversaryCampaigns: [],
+    anniversaryShipments: [],
   }
 }
 

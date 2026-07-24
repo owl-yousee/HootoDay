@@ -657,6 +657,9 @@ function App() {
     inventory.replaceInventoryMovements(data.inventoryMovements)
     inventory.replaceEventSalesRecords(data.eventSalesRecords)
     inventory.replaceBoothSalesRecords(data.boothSalesRecords)
+    inventory.replaceBoothWarehouseSalesRecords(data.boothWarehouseSalesRecords)
+    inventory.replaceAnniversaryCampaigns(data.anniversaryCampaigns)
+    inventory.replaceAnniversaryShipments(data.anniversaryShipments)
   }
 
   const resetAllDataState = () => {
@@ -675,6 +678,9 @@ function App() {
     inventory.replaceInventoryMovements([])
     inventory.replaceEventSalesRecords([])
     inventory.replaceBoothSalesRecords([])
+    inventory.replaceBoothWarehouseSalesRecords([])
+    inventory.replaceAnniversaryCampaigns([])
+    inventory.replaceAnniversaryShipments([])
     setInventoryEventId(null)
     const today = new Date()
     setSelectedDate(today)
@@ -777,6 +783,9 @@ function App() {
                 inventoryMovements: inventory.inventoryMovements,
                 eventSalesRecords: inventory.eventSalesRecords,
                 boothSalesRecords: inventory.boothSalesRecords,
+                boothWarehouseSalesRecords: inventory.boothWarehouseSalesRecords,
+                anniversaryCampaigns: inventory.anniversaryCampaigns,
+                anniversaryShipments: inventory.anniversaryShipments,
               }}
               onRestoreBackup={restoreBackupData}
               onFullDataReset={resetAllDataState}

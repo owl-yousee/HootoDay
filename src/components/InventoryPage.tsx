@@ -210,7 +210,7 @@ export function InventoryPage(props: Props) {
                 }
                 nextEventId = newEvent.id;
             }
-            const value: Product = { id: editingProduct?.id ?? crypto.randomUUID(), name, initialStock: editingProduct?.initialStock ?? Number(data.get('initialStock') ?? 0), defaultPrice: nullableNumber('defaultPrice'), category: String(data.get('category') ?? '').trim(), memo: String(data.get('memo') ?? '').trim(), isActive: data.get('isActive') === 'on', firstSaleEventId: nextEventId, boothEnabled: data.get('boothEnabled') === 'on', boothDisplayName: String(data.get('boothDisplayName') ?? '').trim(), boothDefaultPrice: nullableNumber('boothDefaultPrice'), boothListingQuantity: nullableNumber('boothListingQuantity'), boothUrl, createdAt: editingProduct?.createdAt ?? now, updatedAt: now };
+            const value: Product = { id: editingProduct?.id ?? crypto.randomUUID(), name, initialStock: editingProduct?.initialStock ?? Number(data.get('initialStock') ?? 0), defaultPrice: nullableNumber('defaultPrice'), category: String(data.get('category') ?? '').trim(), memo: String(data.get('memo') ?? '').trim(), isActive: data.get('isActive') === 'on', firstSaleEventId: nextEventId, boothEnabled: data.get('boothEnabled') === 'on', boothDisplayName: String(data.get('boothDisplayName') ?? '').trim(), boothDefaultPrice: nullableNumber('boothDefaultPrice'), boothListingQuantity: nullableNumber('boothListingQuantity'), boothWarehouseCustomerUnitPrice: editingProduct?.boothWarehouseCustomerUnitPrice ?? null, boothWarehouseReceiptUnitPrice: editingProduct?.boothWarehouseReceiptUnitPrice ?? null, boothUrl, createdAt: editingProduct?.createdAt ?? now, updatedAt: now };
             if ([value.initialStock, value.defaultPrice, value.boothDefaultPrice, value.boothListingQuantity].some((item) => item !== null && (!Number.isInteger(item) || item < 0))) {
                 setError('在庫と価格は0以上の整数で入力してください。');
                 return;
@@ -245,7 +245,7 @@ export function InventoryPage(props: Props) {
                 setError('理由・メモを入力してください。');
                 return;
             }
-            props.onAddMovement({ id: crypto.randomUUID(), productId, date: String(data.get('date')), type, quantity, eventSalesRecordId: null, boothSalesRecordId: null, memo, createdAt: now });
+            props.onAddMovement({ id: crypto.randomUUID(), productId, date: String(data.get('date')), type, quantity, eventSalesRecordId: null, boothSalesRecordId: null, boothWarehouseSalesRecordId: null, memo, createdAt: now });
             close();
             return;
         }
@@ -301,7 +301,7 @@ export function InventoryPage(props: Props) {
             setError('編集対象のBOOTH販売記録が見つかりません。画面を閉じて再確認してください。');
             return;
         }
-        const result = props.onSaveBooth({ id: existingBooth?.id ?? crypto.randomUUID(), date: String(data.get('date')), productId: existingBooth?.productId ?? productId, productNameSnapshot: existingBooth?.productNameSnapshot ?? (product.boothDisplayName || product.name), unitPriceSnapshot: price, quantity, orderReference: String(data.get('orderReference') ?? '').trim(), status: String(data.get('status')) as BoothSalesRecord['status'], memo: String(data.get('memo') ?? '').trim(), createdAt: existingBooth?.createdAt ?? now, updatedAt: now }, editingBoothId);
+        const result = props.onSaveBooth({ id: existingBooth?.id ?? crypto.randomUUID(), date: String(data.get('date')), productId: existingBooth?.productId ?? productId, productNameSnapshot: existingBooth?.productNameSnapshot ?? (product.boothDisplayName || product.name), unitPriceSnapshot: price, quantity, orderReference: String(data.get('orderReference') ?? '').trim(), status: String(data.get('status')) as BoothSalesRecord['status'], shippingFee: existingBooth?.shippingFee ?? null, shippedAt: existingBooth?.shippedAt ?? null, memo: String(data.get('memo') ?? '').trim(), createdAt: existingBooth?.createdAt ?? now, updatedAt: now }, editingBoothId);
         if (result) {
             setError(result);
             return;
