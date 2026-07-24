@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { PawPrint } from '@phosphor-icons/react';
 import type { CalendarEvent } from '../types/calendar';
 import type { BoothSalesRecord, BoothWarehouseSaleRecord, EventSalesRecord, InventoryMovement, Product } from '../types/inventory';
 import { calculateAllProductStocks, calculateCurrentStock, calculateProductSalesSummary, canDecreaseStock } from '../utils/inventoryCalculation';
@@ -444,7 +445,7 @@ export function InventoryPage(props: Props) {
                 const stateLabel = isMixed ? '一部売上未入力' : group.planned.length > 0 ? '売上未入力' : '売上入力済み';
                 const actionsExpanded = expandedEventId === group.eventId;
                 return <article key={group.eventId} className="inventory-event-group">
-                  <header className="inventory-event-group-heading"><div><strong>{group.event?.title ?? '予定が見つからないイベント'}</strong><span>{group.event?.date ?? ''}</span></div><span className={`inventory-status ${group.planned.length > 0 ? 'planned' : 'active'}`}>{stateLabel}</span></header>
+                  <header className="inventory-event-group-heading"><div><strong>{group.event?.title ?? '予定が見つからないイベント'}</strong><span>{group.event?.date ?? ''}</span></div>{group.planned.length > 0 && <span className="inventory-status planned">{stateLabel}</span>}</header>
                   <div className="inventory-event-group-summary">
                     <span>商品 <strong>{productCount}種類</strong></span><span>持込予定 <strong>{broughtTotal}個</strong></span><span>販売総数 <strong>{completedSold}個</strong></span><span>売上 <strong>{money(completedSales)}</strong></span>
                   </div>
@@ -461,7 +462,7 @@ export function InventoryPage(props: Props) {
                         const sold = item.soldQuantity ?? 0;
                         const sample = item.sampleQuantity ?? 0;
                         return <section className="inventory-event-product" key={item.id}>
-                          <div className="inventory-event-product-info"><strong>{item.productNameSnapshot}</strong><span className={`inventory-status ${completed ? 'active' : 'planned'}`}>{completed ? '売上入力済み' : '売上未入力'}</span></div>
+                          <div className="inventory-event-product-info"><div className="inventory-event-product-name"><strong>{item.productNameSnapshot}</strong>{completed && <span className="inventory-event-completed-stamp" aria-label="売上入力済み" title="売上入力済み"><PawPrint aria-hidden="true" weight="fill"/></span>}</div></div>
                           <div className="inventory-event-product-values"><span>持込 {item.broughtQuantity}個</span>{completed ? <><span>販売 {sold}個</span><span>サンプル {sample}個</span><span>残数 {item.broughtQuantity - sold - sample}個</span><span>売上 {money(sold * item.unitPriceSnapshot)}</span></> : null}</div>
                           {actionsExpanded && <div className="inventory-event-product-actions"><button onClick={() => open('event', props.products.find(product => product.id === item.productId) ?? null, item)}>{completed ? '売上を修正' : '売上を入力'}</button><button className="danger" onClick={() => {
                               if (window.confirm('このイベント販売記録を削除しますか？'))

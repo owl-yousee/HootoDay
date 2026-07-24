@@ -6227,6 +6227,38 @@ body,
   cursor: not-allowed;
   opacity: .58;
 }
+
+.inventory-event-product-name {
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+}
+
+.inventory-event-product-name strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.inventory-event-completed-stamp {
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  width: 25px;
+  height: 25px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 55%, var(--color-border));
+  border-radius: 50%;
+  color: var(--color-primary);
+  background: var(--color-primary-soft);
+  transform: rotate(-7deg);
+}
+
+.inventory-event-completed-stamp svg {
+  width: 15px;
+  height: 15px;
+}
 .sync-stage-id {
   margin: 6px 0 0;
   color: var(--color-text-muted);
