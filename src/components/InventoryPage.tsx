@@ -462,12 +462,13 @@ export function InventoryPage(props: Props) {
                         const sold = item.soldQuantity ?? 0;
                         const sample = item.sampleQuantity ?? 0;
                         return <section className="inventory-event-product" key={item.id}>
-                          <div className="inventory-event-product-info"><div className="inventory-event-product-name"><strong>{item.productNameSnapshot}</strong>{completed && <span className="inventory-event-completed-stamp" aria-label="売上入力済み" title="売上入力済み"><PawPrint aria-hidden="true" weight="fill"/></span>}</div></div>
+                          <div className="inventory-event-product-info"><div className="inventory-event-product-name"><strong>{item.productNameSnapshot}</strong></div></div>
                           <div className="inventory-event-product-values"><span>持込 {item.broughtQuantity}個</span>{completed ? <><span>販売 {sold}個</span><span>サンプル {sample}個</span><span>残数 {item.broughtQuantity - sold - sample}個</span><span>売上 {money(sold * item.unitPriceSnapshot)}</span></> : null}</div>
                           {actionsExpanded && <div className="inventory-event-product-actions"><button onClick={() => open('event', props.products.find(product => product.id === item.productId) ?? null, item)}>{completed ? '売上を修正' : '売上を入力'}</button><button className="danger" onClick={() => {
                               if (window.confirm('このイベント販売記録を削除しますか？'))
                                   props.onDeleteEvent(item.id);
                           }}>削除</button></div>}
+                          {completed && <span className="inventory-event-completed-stamp" aria-label="売上入力済み" title="売上入力済み"><PawPrint aria-hidden="true" weight="fill"/></span>}
                         </section>;
                     })}
                   </div>
