@@ -958,3 +958,39 @@ BOOTHの制度変更へ対応できるよう、特定時点の手数料率や保
 - Phase I-5bとPhase I-9はいずれも実施時期を再判断可能な保留Phaseであり、今回の文書追加を実装開始や完了として扱わない。
 - 既存保留のPhase E-1b（completed複数商品の一括編集）、Phase I-7、Phase I-8、Phase E-2、Sync Phase S-4b、同期の詳細異常系実機確認を維持する。
 - 今後の割り込みでは、現在の本線、割り込み作業、割り込み理由、割り込み完了条件、割り込み完了後の戻り先を必ず記録する。
+
+# Phase I-6 周年記念基本管理 実装記録（2026-07-24）
+
+## 既存基盤とデータ構造
+
+- Phase I-1で`AnniversaryCampaign`、`AnniversaryShipment`、専用localStorage key、JSONバックアップ／復元、販売・在庫同期snapshot、同期取得時の一括適用まで実装済みだった。
+- Phase I-6では新しい重複型、保存key、配列、同期schemaを作らず、この親子構造へ管理UIと明示的な保存操作を接続した。
+- 親`AnniversaryCampaign`は対象年`year`、周年名`name`、将来I-7で使用する`completedAt`、`createdAt`、`updatedAt`を保持する。
+- 子`AnniversaryShipment`は親ID、FANBOXプラン、宛先番号、発送物、数量、状態、発送日、メモ、`createdAt`、`updatedAt`を保持する。
+- 状態は既存定義の`unprepared`、`preparing`、`prepared`、`not_shipped`、`shipped`を維持し、画面では「未準備」「準備中」「準備済み」「未発送」「発送済み」と表示する。
+
+## 管理UIと保存
+
+- 独立した「周年記念」タブで、新規登録、編集、確認付き削除、一覧表示を行う。
+- 一覧は対象年の新しい順、同一年はshipmentの更新日時が新しい順とし、対象年、周年名、FANBOXプラン、宛先番号、発送物、数量、状態、発送日を表示する。長いメモはカード内で3行に制限する。
+- 対象年は1900〜9999の4桁、周年名、宛先番号、発送物は空欄不可、数量は1以上の安全な整数とする。FANBOXプラン、発送日、メモは任意で、前後の空白を除去する。
+- 宛先番号は文字列として扱い、先頭ゼロを保持する。発送日を状態から自動入力せず、ユーザーが明示した値だけを保存する。
+- 新規IDは既存`createUuidV4()`を使用し、iPhone Safariの非secure contextでも既存fallbackを利用する。
+- campaignとshipmentは2-keyの検証、write、read-back、rollbackを伴う原子的保存で更新する。編集ではshipment IDと作成日時を維持し、削除では対象shipmentだけを除き、子がなくなった親campaignだけを同時に除去する。
+- 保存成功後だけReact stateを更新し、二重submitを防止する。validation失敗、ID生成不能、保存・read-back失敗では部分保存せず、入力画面に安全なエラーを表示する。
+- PCではカードを2列、820px以下では1列にする。入力dialogは既存の背景scroll固定、内部scroll、safe-area、16px入力欄、44px以上の操作領域を再利用する。
+
+## 個人情報・通常在庫・同期の境界
+
+- 保存する宛先情報は宛先番号だけである。氏名、住所、郵便番号、電話番号、メールアドレス、SNSアカウント、FANBOXユーザーIDの入力欄・型・保存フィールドは追加しない。
+- 周年記念は通常の商品在庫と非連動である。新規、数量編集、状態変更、発送済みへの変更、削除のいずれでも`InventoryMovement`を追加・更新・削除せず、商品在庫を増減しない。
+- 周年記念管理データはPhase I-1で既に販売・在庫同期snapshotへ組み込み済みであり、PC・iPhone間の既存明示送信／明示取得の対象である。
+- 新しい同期経路は作らない。既存operation ID、revision、fingerprint、validator、差異分類、CAS、read-backを利用し、自動送信、自動取得、自動retryを追加しない。
+- inventory storage version 2、backup format 3、inventory snapshot schemaVersion 1を変更しない。古いstorageで周年配列がなければ空配列、backup format 1／2からの復元でも空配列として扱う既存互換を維持する。
+
+## 完了条件と次工程
+
+- 静的完了条件は、型チェック、lint、production build、diff check、親子validator、2-key保存、backup format 1／2互換、既存snapshot接続、在庫・movement非連動の確認である。
+- 実機ではPCとiPhoneそれぞれで新規、編集、状態変更、発送日、削除、先頭ゼロ付き宛先番号、長文折返しを確認する。さらにPCからiPhone、iPhoneからPCへの明示同期と、商品在庫・履歴が変化しないことを確認する。
+- Phase I-6の実装と静的確認は完了とし、主要実機確認待ちとする。実機確認完了後の戻り先はPhase I-7「周年完了と商品タブ上部カード」である。
+- Phase I-7の周年全体の完了／完了取消し、商品タブ上部カード、自動非表示は今回実装しない。Phase I-8の通常在庫連携も保留を維持する。

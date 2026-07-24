@@ -88,7 +88,7 @@ export function isAnniversaryCampaign(value: unknown): value is AnniversaryCampa
 
 export function isAnniversaryShipment(value: unknown): value is AnniversaryShipment {
   return object(value) && nonEmptyId(value.id) && nonEmptyId(value.campaignId) &&
-    nonEmptyText(value.fanboxPlan,100) && nonEmptyText(value.destinationNumber,100) &&
+    text(value.fanboxPlan,100) && nonEmptyText(value.destinationNumber,100) &&
     nonEmptyText(value.itemDescription,500) && integer(value.quantity,1) &&
     anniversaryStatuses.includes(value.status as AnniversaryShipmentStatus) && nullableDateKey(value.shippedAt) &&
     text(value.memo,500) &&
@@ -258,3 +258,56 @@ export const loadAnniversaryCampaigns = () => load(ANNIVERSARY_CAMPAIGNS_STORAGE
 export const saveAnniversaryCampaigns = (records: AnniversaryCampaign[]) => save(ANNIVERSARY_CAMPAIGNS_STORAGE_KEY,records)
 export const loadAnniversaryShipments = () => load(ANNIVERSARY_SHIPMENTS_STORAGE_KEY,isAnniversaryShipment)
 export const saveAnniversaryShipments = (records: AnniversaryShipment[]) => save(ANNIVERSARY_SHIPMENTS_STORAGE_KEY,records)
+
+export function saveAnniversaryDataAtomically(
+  campaigns: AnniversaryCampaign[],
+  shipments: AnniversaryShipment[],
+): EventSalesBatchStorageResult {
+  if (writeBlockedKeys.has(ANNIVERSARY_CAMPAIGNS_STORAGE_KEY) ||
+    writeBlockedKeys.has(ANNIVERSARY_SHIPMENTS_STORAGE_KEY)) return 'blocked'
+  if (!campaigns.every(isAnniversaryCampaign) || !shipments.every(isAnniversaryShipment)) return 'invalid'
+  const campaignIds = new Set(campaigns.map((campaign) => campaign.id))
+  if (campaignIds.size !== campaigns.length ||
+    new Set(shipments.map((shipment) => shipment.id)).size !== shipments.length ||
+    shipments.some((shipment) => !campaignIds.has(shipment.campaignId))) return 'invalid'
+
+  let previousCampaigns: string | null
+  let previousShipments: string | null
+  try {
+    previousCampaigns = localStorage.getItem(ANNIVERSARY_CAMPAIGNS_STORAGE_KEY)
+    previousShipments = localStorage.getItem(ANNIVERSARY_SHIPMENTS_STORAGE_KEY)
+  } catch { return 'write_failed' }
+
+  const nextCampaigns = JSON.stringify({ version: INVENTORY_STORAGE_VERSION, records: campaigns })
+  const nextShipments = JSON.stringify({ version: INVENTORY_STORAGE_VERSION, records: shipments })
+  const rollback = () => {
+    try {
+      if (previousCampaigns === null) localStorage.removeItem(ANNIVERSARY_CAMPAIGNS_STORAGE_KEY)
+      else localStorage.setItem(ANNIVERSARY_CAMPAIGNS_STORAGE_KEY, previousCampaigns)
+      if (previousShipments === null) localStorage.removeItem(ANNIVERSARY_SHIPMENTS_STORAGE_KEY)
+      else localStorage.setItem(ANNIVERSARY_SHIPMENTS_STORAGE_KEY, previousShipments)
+      return localStorage.getItem(ANNIVERSARY_CAMPAIGNS_STORAGE_KEY) === previousCampaigns &&
+        localStorage.getItem(ANNIVERSARY_SHIPMENTS_STORAGE_KEY) === previousShipments
+    } catch {
+      writeBlockedKeys.add(ANNIVERSARY_CAMPAIGNS_STORAGE_KEY)
+      writeBlockedKeys.add(ANNIVERSARY_SHIPMENTS_STORAGE_KEY)
+      return false
+    }
+  }
+
+  try {
+    localStorage.setItem(ANNIVERSARY_CAMPAIGNS_STORAGE_KEY, nextCampaigns)
+    localStorage.setItem(ANNIVERSARY_SHIPMENTS_STORAGE_KEY, nextShipments)
+  } catch {
+    return rollback() ? 'write_failed' : 'rollback_failed'
+  }
+  try {
+    if (localStorage.getItem(ANNIVERSARY_CAMPAIGNS_STORAGE_KEY) !== nextCampaigns ||
+      localStorage.getItem(ANNIVERSARY_SHIPMENTS_STORAGE_KEY) !== nextShipments) {
+      return rollback() ? 'read_back_failed' : 'rollback_failed'
+    }
+  } catch {
+    return rollback() ? 'read_back_failed' : 'rollback_failed'
+  }
+  return 'saved'
+}
