@@ -464,6 +464,10 @@ export function AnniversaryManagementPanel(props: Props) {
         <div className="anniversary-qr-preview">
           <img src={qr.preview.objectUrl} alt="登録前のQR画像プレビュー" />
         </div>
+        {qr.preview.wasResized && <p className="anniversary-qr-resized-note">
+          端末で扱いやすいサイズへ自動調整しました。
+          <span>元画像：{qr.preview.originalWidth} × {qr.preview.originalHeight}px</span>
+        </p>}
         <dl className="anniversary-qr-file-details">
           <div><dt>形式</dt><dd>{qr.preview.mimeType === 'image/png' ? 'PNG' : 'JPEG'}</dd></div>
           <div><dt>画像サイズ</dt><dd>{qr.preview.width} × {qr.preview.height}px</dd></div>

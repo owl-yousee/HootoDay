@@ -13,12 +13,21 @@ export type AnniversaryQrFileDetails = {
   sizeBytes: number
 }
 
+export type PreparedAnniversaryQrFile = AnniversaryQrFileDetails & {
+  file: File
+  wasResized: boolean
+  originalWidth: number
+  originalHeight: number
+}
+
 export type AnniversaryQrFileValidation =
-  | { ok: true; details: AnniversaryQrFileDetails }
+  | { ok: true; prepared: PreparedAnniversaryQrFile }
   | {
       ok: false
       reason: 'empty_file' | 'empty_mime' | 'unsupported_mime' | 'file_too_large' |
-        'decode_failed' | 'object_url_failed' | 'dimensions_too_small' | 'dimensions_too_large'
+        'decode_failed' | 'object_url_failed' | 'dimensions_too_small' |
+        'canvas_failed' | 'canvas_context_failed' | 'canvas_draw_failed' |
+        'canvas_encode_failed' | 'resized_file_invalid'
     }
 
 const allowedMimeTypes = new Set<AnniversaryShippingQrImage['mimeType']>([
@@ -80,6 +89,101 @@ export async function decodeAnniversaryQrImage(blob: Blob): Promise<{ width: num
   return result.ok ? { width: result.width, height: result.height } : null
 }
 
+function calculateResizedDimensions(width: number, height: number): { width: number; height: number } {
+  const scale = ANNIVERSARY_QR_MAX_EDGE / Math.max(width, height)
+  return {
+    width: Math.max(1, Math.round(width * scale)),
+    height: Math.max(1, Math.round(height * scale)),
+  }
+}
+
+async function resizeAnniversaryQrFile(
+  file: File,
+  originalWidth: number,
+  originalHeight: number,
+): Promise<AnniversaryQrFileValidation> {
+  let objectUrl: string
+  try {
+    objectUrl = URL.createObjectURL(file)
+  } catch {
+    return { ok: false, reason: 'object_url_failed' }
+  }
+  try {
+    const image = new Image()
+    const loaded = await new Promise<boolean>((resolve) => {
+      image.onload = () => resolve(true)
+      image.onerror = () => resolve(false)
+      try {
+        image.src = objectUrl
+      } catch {
+        resolve(false)
+      }
+    })
+    if (!loaded) return { ok: false, reason: 'decode_failed' }
+
+    const dimensions = calculateResizedDimensions(originalWidth, originalHeight)
+    let canvas: HTMLCanvasElement
+    try {
+      canvas = document.createElement('canvas')
+      canvas.width = dimensions.width
+      canvas.height = dimensions.height
+    } catch {
+      return { ok: false, reason: 'canvas_failed' }
+    }
+    const context = canvas.getContext('2d')
+    if (!context) return { ok: false, reason: 'canvas_context_failed' }
+    context.imageSmoothingEnabled = true
+    if ('imageSmoothingQuality' in context) context.imageSmoothingQuality = 'high'
+    try {
+      context.drawImage(image, 0, 0, dimensions.width, dimensions.height)
+    } catch {
+      return { ok: false, reason: 'canvas_draw_failed' }
+    }
+    const blob = await new Promise<Blob | null>((resolve) => {
+      try {
+        canvas.toBlob(
+          resolve,
+          file.type,
+          file.type === 'image/jpeg' ? 0.92 : undefined,
+        )
+      } catch {
+        resolve(null)
+      }
+    })
+    if (!blob) return { ok: false, reason: 'canvas_encode_failed' }
+    const resizedFile = new File(
+      [blob],
+      file.type === 'image/png' ? 'anniversary-qr-resized.png' : 'anniversary-qr-resized.jpg',
+      { type: file.type, lastModified: Date.now() },
+    )
+    const decoded = await decodeAnniversaryQrImageResult(resizedFile)
+    if (!decoded.ok ||
+      resizedFile.size <= 0 ||
+      resizedFile.size > ANNIVERSARY_QR_MAX_BYTES ||
+      resizedFile.type !== file.type ||
+      decoded.width !== dimensions.width ||
+      decoded.height !== dimensions.height ||
+      !validateAnniversaryQrDimensions(decoded.width, decoded.height)) {
+      return { ok: false, reason: 'resized_file_invalid' }
+    }
+    return {
+      ok: true,
+      prepared: {
+        file: resizedFile,
+        mimeType: file.type as AnniversaryShippingQrImage['mimeType'],
+        width: decoded.width,
+        height: decoded.height,
+        sizeBytes: resizedFile.size,
+        wasResized: true,
+        originalWidth,
+        originalHeight,
+      },
+    }
+  } finally {
+    URL.revokeObjectURL(objectUrl)
+  }
+}
+
 export async function validateAnniversaryQrFile(file: File): Promise<AnniversaryQrFileValidation> {
   if (file.size <= 0) return { ok: false, reason: 'empty_file' }
   if (!file.type) return { ok: false, reason: 'empty_mime' }
@@ -93,15 +197,19 @@ export async function validateAnniversaryQrFile(file: File): Promise<Anniversary
     return { ok: false, reason: 'dimensions_too_small' }
   }
   if (Math.max(decoded.width, decoded.height) > ANNIVERSARY_QR_MAX_EDGE) {
-    return { ok: false, reason: 'dimensions_too_large' }
+    return resizeAnniversaryQrFile(file, decoded.width, decoded.height)
   }
   return {
     ok: true,
-    details: {
+    prepared: {
+      file,
       mimeType: file.type as AnniversaryShippingQrImage['mimeType'],
       width: decoded.width,
       height: decoded.height,
       sizeBytes: file.size,
+      wasResized: false,
+      originalWidth: decoded.width,
+      originalHeight: decoded.height,
     },
   }
 }

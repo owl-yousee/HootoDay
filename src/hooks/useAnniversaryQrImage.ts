@@ -19,6 +19,9 @@ export type AnniversaryQrPreview = AnniversaryQrFileDetails & {
   shipmentUpdatedAt: string
   file: File
   objectUrl: string
+  wasResized: boolean
+  originalWidth: number
+  originalHeight: number
 }
 
 type DisplayedAnniversaryQr = {
@@ -43,7 +46,11 @@ const selectionError = {
   decode_failed: '画像を安全に読み込めませんでした。別のPNGまたはJPEGを選んでください。',
   object_url_failed: '選択した画像のプレビューを準備できませんでした。もう一度選んでください。',
   dimensions_too_small: '画像は縦横320px以上にしてください。',
-  dimensions_too_large: '画像の最長辺は1600px以下にしてください。',
+  canvas_failed: '画像の自動調整に失敗しました。端末側で画像を小さくしてから再度選んでください。',
+  canvas_context_failed: '画像の自動調整に失敗しました。端末側で画像を小さくしてから再度選んでください。',
+  canvas_draw_failed: '画像の自動調整に失敗しました。端末側で画像を小さくしてから再度選んでください。',
+  canvas_encode_failed: '画像の自動調整に失敗しました。端末側で画像を小さくしてから再度選んでください。',
+  resized_file_invalid: '画像の自動調整に失敗しました。端末側で画像を小さくしてから再度選んでください。',
 } as const
 
 export function useAnniversaryQrImage(input: Input) {
@@ -143,14 +150,19 @@ export function useAnniversaryQrImage(input: Input) {
     }
     let objectUrl: string
     try {
-      objectUrl = URL.createObjectURL(file)
+      objectUrl = URL.createObjectURL(result.prepared.file)
     } catch {
       showError(shipmentId, selectionError.object_url_failed)
       return
     }
     setPreview((current) => {
       if (current) URL.revokeObjectURL(current.objectUrl)
-      return { shipmentId, shipmentUpdatedAt: shipment.updatedAt, file, objectUrl, ...result.details }
+      return {
+        shipmentId,
+        shipmentUpdatedAt: shipment.updatedAt,
+        objectUrl,
+        ...result.prepared,
+      }
     })
   }, [clearError, showError])
 

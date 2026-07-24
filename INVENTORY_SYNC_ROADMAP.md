@@ -1202,4 +1202,6 @@ shippingQrImage?: {
 - 通常の商品在庫、`InventoryMovement`、イベント、BOOTH倉庫、BOOTH家発送、売上、送料、周年発送状態・発送日・内容物・メモはQR操作で変更しない。
 - PC実機ではPNG／JPEG選択、preview、upload、登録済み表示、大画面表示、明示同期を確認する。iPhone実機では写真ライブラリ／カメラ入力、safe-area、横overflow、private download、大画面表示、PCとの参照同期を確認する。郵便局端末での本番読み取りはI-6b-4へ持ち越す。
 - iPhone写真ライブラリ選択でpreviewへ進まない実機事象を受け、選択エラーがキャンペーン一覧末尾に表示されて現在カードから見えなかった配置と、Object URL生成例外が未分類だった処理を修正した。Fileは`onChange`内で同期的に退避してからinputをresetし、以後の非同期検証ではDOM inputを参照しない。写真用inputはcaptureなしのPNG／JPEG、カメラ用inputは背面capture付きとして分離する。
-- 空File、空MIME、PNG／JPEG以外（HEIC／HEIFを含む）、5MB超過、縦横320px未満、最長辺1600px超過、decode失敗、Object URL生成失敗、選択処理中断を分類し、対象個人カード内へユーザーが閉じるか再選択するまで残るエラーとして表示する。有効なPNG／JPEGのpreview遷移、iPhone写真ライブラリで返るMIME・寸法、エラー表示と再選択は実機再確認を必要とする。
+- 空File、空MIME、PNG／JPEG以外（HEIC／HEIFを含む）、5MB超過、縦横320px未満、decode失敗、Object URL生成失敗、選択処理中断を分類し、対象個人カード内へユーザーが閉じるか再選択するまで残るエラーとして表示する。有効なPNG／JPEGのpreview遷移、iPhone写真ライブラリで返るMIME・寸法、エラー表示と再選択は実機再確認を必要とする。
+- iPhone写真ライブラリには長辺1600px超の画像が多いため、5MB以下のPNG／JPEGは拒否せず、長辺1600pxへ縦横比を維持して端末内canvasで自動縮小する。PNGはPNG、JPEGはJPEG（品質0.92）を維持し、縮小後の形式・寸法・容量を再検証する。previewとStorage upload、`shippingQrImage` metadataは縮小後画像を正本とし、画像本体をlocalStorage・同期snapshot・backupへ含めない。
+- 入力画像が5MB超または縦横320px未満の場合は従来どおり縮小前に拒否する。previewには自動調整済みであること、元寸法、登録画像の寸法・容量を表示する。QR読み取り精度は保証済みとせずI-6b-4で郵便局端末の実機確認を行い、長辺超過PNG／JPEGのPC・iPhone再確認を必要とする。
