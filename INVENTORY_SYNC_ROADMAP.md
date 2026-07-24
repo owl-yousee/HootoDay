@@ -1057,9 +1057,9 @@ BOOTHの制度変更へ対応できるよう、特定時点の手数料率や保
 - 氏名、住所、郵便番号、電話番号、メールアドレス、SNSアカウント、FANBOXユーザーIDの入力欄・型・保存fieldは追加していない。
 - 以上により、Phase I-6「周年記念基本管理」は主要実機確認完了とする。
 
-## 次の本線：Phase I-6b 周年記念発送QR管理
+## 進行中本線：Phase I-6b 周年記念発送QR管理
 
-- 現在の本線はPhase I-6b「周年記念発送QR管理」とする。割り込み作業はない。
+- Phase I-6b「周年記念発送QR管理」はI-6b-1、I-6b-2まで完了し、現在の本線はI-6b-3「差し替え・削除・rollback・cleanup pending」とする。割り込み作業はない。
 - 目的は、個人発送カードごとに匿名配送用QRコード画像1枚を登録し、iPhoneから郵便局端末へ読み取りやすく表示できるようにすることである。
 - 基本候補は、PCの画像ファイル登録、iPhoneの写真ライブラリまたはカメラ登録、白背景と十分な余白を持つ拡大表示、差し替え、削除である。QR内容は解析せず画像として扱う。
 - 画像本体をlocalStorageや同期snapshotへ直接格納せず、Supabase Storageを第一候補とする。`AnniversaryShipment`には保存先情報だけを保持する候補とし、外部公開用共有リンクは作らない。通常在庫と`InventoryMovement`には連動しない。
@@ -1088,7 +1088,7 @@ BOOTHの制度変更へ対応できるよう、特定時点の手数料率や保
 - policyは`bucket_id = 'hooto-day-anniversary-qr'`、path先頭segmentが正常なworkspace UUID、かつ`app_workspace_members`に`workspace_id = path workspaceId AND user_id = auth.uid() AND role IN ('owner','member')`が存在することを必須とする。bucket一致だけ、クライアントから渡したworkspace文字列だけでは許可しない。
 - immutableな新object path方式のためUPDATE／upsertは使用しない。差し替えはINSERTと旧object DELETEで行う。SELECTは認証付きStorage downloadを第一候補とし、短時間signed URLは必要性が確認された場合の代替案とする。signed URLを保存・ログ出力しない。
 - 既存inventory tableは直接policyなし・SECURITY DEFINER RPC限定だが、Storage SDKの標準操作には`storage.objects` policyが必要となる。この違いを明示し、SQL実装時はbucket作成、policy、rollback、read-only verifyを別ファイルで管理する。既存workspace/member table、helper、RPC、policyは変更しない。
-- policy式のpath UUID変換が不正pathで例外にならない具体式、Storage owner列の扱い、Supabase Storage標準権限との整合は実装前SQL PRECHECKで確定する。ここは未確定であり、まだSQLを作成・適用しない。
+- policy式のpath UUID変換が不正pathで例外にならない具体式、Storage標準権限との整合はI-6b-1のPRECHECK／APPLY／VERIFYで確定した。実環境への適用結果は後段のI-6b-1実装記録を正本とする。
 
 ## AnniversaryShipment参照情報候補
 
@@ -1168,10 +1168,10 @@ shippingQrImage?: {
 - I-6b-4：PC・iPhone双方向同期、画像欠損・offline案内、郵便局端末での読み取り実機確認と必要な表示調整を行う。郵便局で確認できない場合は実装完了と読み取り実機確認待ちを分けて記録する。
 - 完了条件候補はprivate bucket、workspace単位RLS、個人カード1画像、PC／iPhone登録、参照情報保存、既存明示同期、白背景拡大表示、差し替え・削除、削除失敗の明示再試行、旧データ互換、参照backup、画像欠損表示、通常在庫非連動、読み取り実機確認または確認待ち記録である。
 
-## 実装前の未確定事項と次の作業
+## 境界設計時の未確定事項と現在地
 
-- Storage policyの安全なpath UUID抽出式、bucket/policy名の実環境衝突、cleanup pendingの保存・同期・backup境界、別workspaceへのbackup復元、HEIC入力、iPhoneの写真／カメラ選択、画像閾値、同時差し替え競合後のorphan処理を未確定とする。
-- 次の作業はI-6b-1の静的設計確認である。既存Supabase構造をread-only PRECHECKし、Storage bucket・policy・参照field・validator・rollbackの具体案をレビューするまで、src、型、localStorage、snapshot schema、Storage、SQL、RPC、RLSを変更しない。
+- Storage policyの安全なpath UUID抽出式、bucket／policy衝突、iPhoneの写真選択、画像閾値はI-6b-1／I-6b-2で確定・実装済みである。cleanup pendingの保存・同期・backup境界、別workspaceへのbackup復元、同時差し替え競合後のorphan処理はI-6b-3で扱う。HEICは初期対象外を維持する。
+- I-6b-1とI-6b-2は完了済みで、次の作業はI-6b-3の差し替え・削除・rollback・cleanup pendingである。詳細は後段の実装・実機確認記録を正本とする。
 - Phase I-6の主要実機確認完了記録を維持し、Phase I-7、I-8、I-5b、I-9、E-1b、E-2、Sync Phase S-4bおよび同期詳細異常系を保留のまま残す。
 
 # Phase I-6b-1 Storage・RLS・QR画像参照基盤 実装記録（2026-07-24）
@@ -1181,18 +1181,29 @@ shippingQrImage?: {
 - pathは`{workspaceId}/anniversary-qr/{shipmentId}/{objectId}.{ext}`だけを受理する専用validatorで検証する。先頭slash、`..`、空segment、URL、制御文字、想定外拡張子、MIMEと拡張子の不一致、shipment ID不一致を拒否する。shipment単体ではworkspaceをUUID構文まで検証し、販売・在庫snapshot validatorでsnapshot workspaceとの一致もfail-closedで確認する。
 - 周年shipmentの既存local保存とread-backはobject全体を保持する。JSON backup／restoreは参照情報だけを保持し、画像本体を含めない。既存sync snapshotのdeep clone、canonical content、fingerprintへoptional fieldが含まれるため、独立同期経路や自動送受信は追加しない。
 - private bucket候補は`hooto-day-anniversary-qr`、上限5MB、許可MIMEは`image/png`と`image/jpeg`とする。object pathには個人情報、宛先番号、元ファイル名、bucket名、URL、QR文字列を含めない。
-- `SUPABASE_ANNIVERSARY_QR_STORAGE_PRECHECK.sql`、`APPLY.sql`、`VERIFY.sql`、`ROLLBACK.sql`を追加した。SQLは作成・静的確認のみで、Supabase環境へ未適用である。
+- `SUPABASE_ANNIVERSARY_QR_STORAGE_PRECHECK.sql`、`APPLY.sql`、`VERIFY.sql`、`ROLLBACK.sql`を追加した。PRECHECK、APPLY、VERIFYはユーザーがSupabase SQL Editorで明示実行済みであり、ROLLBACKは未実行である。
 - RLS候補は`storage.objects`の専用bucketだけを対象とし、authenticated userの`auth.uid()`がpath先頭workspaceの`app_workspace_members` owner/memberである場合にSELECT、INSERT、DELETEだけを許可する。UPDATE／upsert policyは作らない。
 - PRECHECKはworkspace/member helper、Storage table、bucket設定、policy名衝突を読み取り確認する。APPLYは依存不足、異設定bucket、既存managed policyをfail-closedで停止し、期待設定bucketは再作成しない。VERIFYはprivate、5MB、MIME、3 policy、UPDATEなし、object件数を確認する。
 - ROLLBACKは今回の3 policyだけを削除し、画像objectを削除しない。既存bucketか今回作成bucketかを事後に安全判定できないためbucketも自動削除せず、由来と空を確認した管理者だけが別途削除する。
-- QR登録、preview、upload、表示、差し替え、画像削除UI、signed URL、cleanup pendingは未実装である。商品在庫、`InventoryMovement`、イベント、BOOTH、売上、送料、周年発送状態は変更しない。
+- I-6b-2でQR登録、preview、upload、表示まで実装済みである。差し替え、QR単体削除、個人／周年削除時のStorage cleanup、cleanup pendingはI-6b-3へ保留する。商品在庫、`InventoryMovement`、イベント、BOOTH、売上、送料、周年発送状態は変更しない。
 - I-6b-1の静的完了条件は型チェック、validator fixture、旧／新backup・snapshot保持、fingerprint差分、SQL 4ファイルの整合、UI・在庫処理非変更である。SQL実行前にPRECHECK結果、同名bucket不存在または期待設定、managed policy不存在、Storage管理者権限をユーザーが確認する。
-- 次の作業は、SQLを適用せずPRECHECK／APPLY／VERIFY／ROLLBACKのレビュー結果を確定することである。ユーザーの明示指示と実環境PRECHECK確認後にだけSQL Editorで適用し、I-6b-2の画像登録・表示へ進む。I-6b-3のcleanup pendingは引き続き保留する。
+- I-6b-1の参照型、validator、旧データ互換、private Storage bucket、workspace単位RLS、PRECHECK、APPLY、VERIFYは完了済みである。ROLLBACKは未実行であり、I-6b-3のcleanup pendingは引き続き保留する。
+
+## Phase I-6b-1 Supabase適用・確認結果
+
+- 基盤実装commitは`d99280ab30a7c575ef4dba38ae9910597a188d97`（`feat: add anniversary QR storage foundation`）、PRECHECK表示修正は`bc05e12b0891c55d6de4b8be8c159f1f24dd5b95`、VERIFY表示修正は`1e8d5b2886804329ee25ebe5e783721cf7a2339d`である。
+- `shippingQrImage`は`storagePath`、PNG／JPEGのMIME、width、height、sizeBytes、createdAt、updatedAtだけを保持する。Base64、Blob、File、bucket名、元ファイル名、public／signed URL、QR解析結果・文字列、氏名・住所・電話・メール・BOOTH購入者情報は保存しない。
+- pathは`{workspaceId}/anniversary-qr/{shipmentId}/{objectId}.{ext}`で、3つのIDのUUID構文、固定segment、対象shipment・snapshot workspaceとの一致、MIMEと拡張子の一致を検証する。先頭slash、`..`、空segment、URL、制御文字を拒否する。
+- `shippingQrImage`欠損の旧shipmentを受理し、読込だけでは書き戻さない。inventory storage version 2、backup format 3、snapshot schemaVersion 1、backup format 1／2／3、旧snapshotとの互換性を維持する。参照情報だけをlocal保存、read-back、backup／restore、sync snapshot、fingerprintへ含め、画像本体は含めない。
+- bucketは`hooto-day-anniversary-qr`、private、public=false、上限5MB、許可MIMEは`image/png`と`image/jpeg`である。authenticated userがpath先頭workspaceの`app_workspace_members` owner／memberである場合だけSELECT、INSERT、DELETEを許可し、UPDATE／upsertは許可しない。他bucketへ影響させない。
+- 修正版PRECHECKは14行すべてを確認した。依存4項目はtrue、APPLY前の`bucket_exists`はfalse、bucket設定4項目、SELECT／INSERT／DELETE policy名、予期しないmanaged policy、UPDATE policy衝突の各安全判定はtrueだった。`bucket_exists=false`はAPPLY前に未作成だったことを示す正常な情報値である。
+- `SUPABASE_ANNIVERSARY_QR_STORAGE_APPLY.sql`はユーザーが明示実行し、`Success. No rows returned`でbucketと3 policyを作成した。Codexによる実環境操作ではない。
+- 修正版VERIFYは10項目すべて`ok=true`だった。bucket存在、private、5MB、MIME、SELECT／INSERT／DELETE policy一致、UPDATEなし、予期しないpolicyなしを確認し、当時の`stored_object_count`は0件で正常だった。ROLLBACKは未実行である。
 
 # Phase I-6b-2 QR画像の選択・upload・表示 実装記録（2026-07-24）
 
 - 個人発送カードごとに、未登録時は「QR画像を登録」、登録済み時は「QR画像を表示」を明示操作として表示する。PCはPNG／JPEGのファイル選択、iPhone相当幅では写真ライブラリ用選択に加えて背面カメラ入力を提供する。
-- 選択画像はupload前の専用dialogでpreviewし、PNG／JPEG、空でないこと、5MB以下、縦横320px以上、最長辺1600px以下、ブラウザでdecode可能であることを検証する。最長辺1600pxを超える画像は、QR輪郭を変換で損なわない初期方針として縮小せず拒否する。
+- 選択画像はupload前の専用dialogでpreviewし、PNG／JPEG、空でないこと、5MB以下、縦横320px以上、ブラウザでdecode可能であることを検証する。長辺1600px以下は元Fileを使い、長辺1600px超は端末内canvasで長辺1600pxへ縦横比を維持して自動縮小する。
 - previewでは画像、形式、縦横寸法、容量を表示し、「この画像を登録」「選び直す」「キャンセル」を提供する。previewの取消しではStorageもshipmentも変更せず、Object URLは選び直し・取消し・unmount時に破棄する。
 - 登録確定時だけobject IDを1回生成し、private bucket `hooto-day-anniversary-qr` の `{workspaceId}/anniversary-qr/{shipmentId}/{objectId}.{png|jpg}` へ、`upsert: false`、明示content typeで新規uploadする。自動retry、UPDATE、public URL、signed URL保存は行わない。
 - upload後は結果pathを再検証し、対象shipmentだけへ既存`shippingQrImage`参照を保存する。既存の周年記念2-key保存、validator、read-back、成功後React state更新を利用し、campaignと他shipmentを変更しない専用保存経路とする。参照保存失敗時は新規object削除をrollbackし、rollback失敗は孤立画像の可能性としてfail-closedで通知する。
@@ -1200,8 +1211,39 @@ shippingQrImage?: {
 - QR画像本体、Blob、Object URL、signed URLはlocalStorage、販売・在庫同期snapshot、JSON backup、consoleへ保存しない。同期とbackupは既存どおり`shippingQrImage`参照情報だけを扱い、別workspaceのpathは表示時に拒否する。参照先object欠損はshipmentを壊さず、取得不能として明示する。オフライン表示は保証しない。
 - QR参照付き個人カードと、そのshipmentを含む周年全体の削除は、Storage cleanup未実装による孤立画像を防ぐためI-6b-3まで一時停止する。差し替え、QR単体削除、個人／周年削除時のStorage cleanup、cleanup pending、自動または手動再試行はI-6b-3へ持ち越す。
 - 通常の商品在庫、`InventoryMovement`、イベント、BOOTH倉庫、BOOTH家発送、売上、送料、周年発送状態・発送日・内容物・メモはQR操作で変更しない。
-- PC実機ではPNG／JPEG選択、preview、upload、登録済み表示、大画面表示、明示同期を確認する。iPhone実機では写真ライブラリ／カメラ入力、safe-area、横overflow、private download、大画面表示、PCとの参照同期を確認する。郵便局端末での本番読み取りはI-6b-4へ持ち越す。
+- PC実機ではPNG選択、preview、upload、登録済み表示、private download、大画面表示、PCからiPhoneへの明示同期を確認済みである。iPhone実機では写真ライブラリ、大画像自動縮小、preview、upload、登録済み表示、private download、大画面の縦／横向き表示、iPhoneからPCへの明示同期を確認済みである。郵便局端末での本番読み取りはI-6b-4へ持ち越す。
 - iPhone写真ライブラリ選択でpreviewへ進まない実機事象を受け、選択エラーがキャンペーン一覧末尾に表示されて現在カードから見えなかった配置と、Object URL生成例外が未分類だった処理を修正した。Fileは`onChange`内で同期的に退避してからinputをresetし、以後の非同期検証ではDOM inputを参照しない。写真用inputはcaptureなしのPNG／JPEG、カメラ用inputは背面capture付きとして分離する。
-- 空File、空MIME、PNG／JPEG以外（HEIC／HEIFを含む）、5MB超過、縦横320px未満、decode失敗、Object URL生成失敗、選択処理中断を分類し、対象個人カード内へユーザーが閉じるか再選択するまで残るエラーとして表示する。有効なPNG／JPEGのpreview遷移、iPhone写真ライブラリで返るMIME・寸法、エラー表示と再選択は実機再確認を必要とする。
+- 空File、空MIME、PNG／JPEG以外（HEIC／HEIFを含む）、5MB超過、縦横320px未満、decode失敗、Object URL生成失敗、選択処理中断を分類し、対象個人カード内へユーザーが閉じるか再選択するまで残るエラーとして表示する。iPhone写真ライブラリからのPNG選択、長辺超過時の自動縮小、preview遷移、明示登録は実機確認済みである。
 - iPhone写真ライブラリには長辺1600px超の画像が多いため、5MB以下のPNG／JPEGは拒否せず、長辺1600pxへ縦横比を維持して端末内canvasで自動縮小する。PNGはPNG、JPEGはJPEG（品質0.92）を維持し、縮小後の形式・寸法・容量を再検証する。previewとStorage upload、`shippingQrImage` metadataは縮小後画像を正本とし、画像本体をlocalStorage・同期snapshot・backupへ含めない。
 - 入力画像が5MB超または縦横320px未満の場合は従来どおり縮小前に拒否する。previewには自動調整済みであること、元寸法、登録画像の寸法・容量を表示する。QR読み取り精度は保証済みとせずI-6b-4で郵便局端末の実機確認を行い、長辺超過PNG／JPEGのPC・iPhone再確認を必要とする。
+
+## Phase I-6b-2 実装commit・実機確認結果
+
+- 画像登録・表示の実装commitは`0b0da1c02795931a781de19f41f7b552f429d664`（`feat: add anniversary QR upload and display`）、iPhone写真選択修正は`12baabedb3a7586b6a01c413e9d0d3a349f07027`、大画像自動縮小は`fa586ffadacac13f18ab92203e2a947f8f0d22ca`である。
+- PCはPNG／JPEG file inputを使用する。iPhoneはcaptureなしの写真ライブラリ／ファイル用inputと、`capture="environment"`のカメラ用JPEG inputを分離し、カメラ用ボタンをiPhone幅で表示する。
+- `onChange`直後にFileを同期的に退避してからinputをresetし、非同期処理ではSyntheticEventや`input.files`を参照しない。同じ画像を再選択できる。選択・検証エラーは対象個人カード内へ表示し、時間で自動消去せずユーザーが閉じるまで保持する。
+- 対応入力はPNG／JPEG、最大5MB、縦横320px以上である。HEIC／HEIF／WebP／GIF／SVGは初期対象外とし、空File、空MIME、対応外形式、5MB超過、寸法不足、decode／Object URL／canvas／再encode失敗を安全に分類する。
+- 長辺1600px以下は元Fileを維持する。長辺超過は`HTMLImageElement`とcanvasで縦横比を維持して長辺1600pxへ縮小し、PNGはPNG、JPEGは品質0.92のJPEGで出力する。縮小後Blob／Fileの空、5MB、MIME、decode、縦横320px、長辺1600px、期待寸法を再検証する。
+- previewには登録予定画像、形式、縮小後寸法・容量を表示し、自動縮小時は案内と元画像寸法を表示する。「この画像を登録」の明示操作前にはStorageへuploadしない。preview、upload、`shippingQrImage` metadataはいずれも縮小後画像を正本とする。
+- 明示登録時にobject IDを1回生成し、workspace、shipment、preview鮮度を再確認して`upsert=false`と明示content typeでuploadする。upload結果pathを再検証し、対象shipmentだけへ参照を保存してread-backし、成功後だけReact stateを更新する。参照保存失敗時は新objectを削除し、削除失敗は孤立画像の可能性として明示する。自動retryは行わない。
+- 登録済み画像はworkspace、shipment、参照validatorを確認してprivate Storageから認証付きdownloadする。Blob、size、MIME、decode、保存寸法を検証し、白背景・十分な余白・中央配置・縦横比維持・safe-area対応の専用dialogへ表示する。Object URLは選び直し、preview取消し、登録完了、表示終了、unmount時に適切に破棄する。
+
+### Phase I-6b-2 実機確認済み
+
+- PCではQR未登録表示、動作確認用PNGの選択、preview、形式・寸法・容量表示、明示登録、Storage upload、登録済み表示、private Storage取得、白背景の大画面表示、十分な余白、画像崩れなしを確認した。実際の匿名配送QRコードは使用していない。
+- PCで登録後に販売・在庫同期から明示送信し、iPhoneで明示取得した。同じ個人カードの登録済み表示、private Storage取得、縦向き／横向きの大画面表示、白余白、横はみ出しなしを確認した。
+- iPhoneでは写真ライブラリ選択、長辺1600px超画像の自動縮小、preview、縮小後寸法表示、明示登録、Storage upload、登録済み表示、白背景の大画面表示、縦向き／横向き表示を確認した。「カメラで撮る」はカメラ起動まで確認した。
+- iPhoneで登録後に販売・在庫同期から明示送信し、PCで明示取得した。同じ個人カードの登録済み表示、PCからprivate Storage取得・表示を確認した。
+- 同期するのは`shippingQrImage`参照情報だけで、画像本体、Blob、Object URL、signed URLは同期しない。JSON backupも参照情報だけを含み、画像本体は含めない。画像欠損でもshipment本体は復元可能とする。
+- QR画像の選択、縮小、preview、upload、表示、同期によって通常在庫、在庫調整履歴、`InventoryMovement`、周年発送状態・発送日・内容物・メモ、イベント、BOOTH倉庫、BOOTH家発送、売上、送料を変更しない。
+
+### I-6b-4へ残す実機確認
+
+- 実際の匿名配送QRコード、カメラ撮影後preview、郵便局端末での本番読み取り、QR読み取り精度、必要な表示改善、オフライン準備は未確認であり、I-6b-4へ持ち越す。
+
+# 現在の本線：Phase I-6b-3 差し替え・削除・rollback・cleanup pending
+
+- 現在の本線はI-6b-3で、割り込み作業と戻り先はない。
+- 実装対象はQR画像差し替え、QR画像単体削除、個人カード削除時と周年全体削除時のStorage cleanup、rollback、cleanup pending、孤立画像の明示再処理、QR参照付きカード／campaign削除停止の解除である。
+- 差し替えでは旧画像を先に削除せず、新pathへuploadし、新参照保存とread-back成功後に旧画像を削除する。shipment削除確定後にStorage cleanupを行い、一部削除失敗を成功扱いにせずcleanup pendingへ残す。自動retryは追加せず、ユーザーの明示再試行とする。
+- 通常在庫非連動と`InventoryMovement`非変更を維持する。Phase I-7、I-8、I-5b、I-9、E-1b、E-2、Sync Phase S-4b、同期詳細異常系は保留のまま維持し、未完了を完了扱いしない。
