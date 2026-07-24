@@ -187,6 +187,44 @@ export const loadProducts = () => load(PRODUCTS_STORAGE_KEY,isProduct,migratePro
 export const saveProducts = (records: Product[]) => save(PRODUCTS_STORAGE_KEY,records)
 export const loadInventoryMovements = () => load(INVENTORY_MOVEMENTS_STORAGE_KEY,isMovement,migrateMovementV1)
 export const saveInventoryMovements = (records: InventoryMovement[]) => save(INVENTORY_MOVEMENTS_STORAGE_KEY,records)
+export type EventSalesBatchStorageResult = 'saved' | 'blocked' | 'invalid' | 'write_failed' | 'read_back_failed' | 'rollback_failed'
+export function saveEventSalesBatchAtomically(records: EventSalesRecord[], movements: InventoryMovement[]): EventSalesBatchStorageResult {
+  if (writeBlockedKeys.has(EVENT_SALES_STORAGE_KEY) || writeBlockedKeys.has(INVENTORY_MOVEMENTS_STORAGE_KEY)) return 'blocked'
+  if (!records.every(isEventSale) || !movements.every(isMovement)) return 'invalid'
+  let previousRecords: string | null
+  let previousMovements: string | null
+  try {
+    previousRecords = localStorage.getItem(EVENT_SALES_STORAGE_KEY)
+    previousMovements = localStorage.getItem(INVENTORY_MOVEMENTS_STORAGE_KEY)
+  } catch { return 'write_failed' }
+  const nextRecords = JSON.stringify({version:INVENTORY_STORAGE_VERSION,records})
+  const nextMovements = JSON.stringify({version:INVENTORY_STORAGE_VERSION,records:movements})
+  const rollback = () => {
+    try {
+      if (previousRecords === null) localStorage.removeItem(EVENT_SALES_STORAGE_KEY)
+      else localStorage.setItem(EVENT_SALES_STORAGE_KEY,previousRecords)
+      if (previousMovements === null) localStorage.removeItem(INVENTORY_MOVEMENTS_STORAGE_KEY)
+      else localStorage.setItem(INVENTORY_MOVEMENTS_STORAGE_KEY,previousMovements)
+      return localStorage.getItem(EVENT_SALES_STORAGE_KEY) === previousRecords &&
+        localStorage.getItem(INVENTORY_MOVEMENTS_STORAGE_KEY) === previousMovements
+    } catch {
+      writeBlockedKeys.add(EVENT_SALES_STORAGE_KEY)
+      writeBlockedKeys.add(INVENTORY_MOVEMENTS_STORAGE_KEY)
+      return false
+    }
+  }
+  try {
+    localStorage.setItem(EVENT_SALES_STORAGE_KEY,nextRecords)
+    localStorage.setItem(INVENTORY_MOVEMENTS_STORAGE_KEY,nextMovements)
+  } catch {
+    return rollback() ? 'write_failed' : 'rollback_failed'
+  }
+  if (localStorage.getItem(EVENT_SALES_STORAGE_KEY) !== nextRecords ||
+    localStorage.getItem(INVENTORY_MOVEMENTS_STORAGE_KEY) !== nextMovements) {
+    return rollback() ? 'read_back_failed' : 'rollback_failed'
+  }
+  return 'saved'
+}
 export const loadEventSalesRecords = () => load(EVENT_SALES_STORAGE_KEY,isEventSale,(value) => {
   if (!object(value)) return null
   const migrated = { ...value, status: value.status ?? 'completed' }

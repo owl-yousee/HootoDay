@@ -764,7 +764,7 @@ function App() {
               onOpenHealth={(dateKey) => openRecordDate(dateKey, 'health')}
             />
           ) : activeView === 'inventory' ? (
-            <InventoryPage products={inventory.products} movements={inventory.inventoryMovements} eventSales={inventory.eventSalesRecords} boothSales={inventory.boothSalesRecords} boothWarehouseSales={inventory.boothWarehouseSalesRecords} events={events} initialEventId={inventoryEventId} onSaveProduct={inventory.saveProduct} onAddMovement={inventory.addMovement} onSaveEvent={inventory.saveEventSale} onDeleteEvent={inventory.deleteEventSale} onSaveBooth={inventory.saveBoothSale} onDeleteBooth={inventory.deleteBoothSale} onSaveCalendarEvent={saveEvent} syncCard={<InventorySyncCard sync={inventorySync} />} onEditingStateChange={setIsInventoryEditing} />
+            <InventoryPage products={inventory.products} movements={inventory.inventoryMovements} eventSales={inventory.eventSalesRecords} boothSales={inventory.boothSalesRecords} boothWarehouseSales={inventory.boothWarehouseSalesRecords} events={events} initialEventId={inventoryEventId} onSaveProduct={inventory.saveProduct} onAddMovement={inventory.addMovement} onSaveEvent={inventory.saveEventSale} onSaveEventBatch={inventory.saveEventSalesBatch} onDeleteEvent={inventory.deleteEventSale} onSaveBooth={inventory.saveBoothSale} onDeleteBooth={inventory.deleteBoothSale} onSaveCalendarEvent={saveEvent} syncCard={<InventorySyncCard sync={inventorySync} />} onEditingStateChange={setIsInventoryEditing} />
           ) : (
             <HealthExportPage
               initialDate={selectedDateKey}

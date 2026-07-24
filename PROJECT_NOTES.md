@@ -2903,3 +2903,4 @@ cleanup後VERIFY結果：
 - Supabase SQLは適用済み。Codexから実データの送信・取得は実行していない。
 - pending、remote read-back、confirmed baseline、7配列一括適用とrollback、record単位の競合分類を接続した。
 - 非競合mergeの実適用はS-4b、PC／iPhone実機確認はS-5へ保留する。
+- 販売・在庫同期のSync Phase S-5を主要PC／iPhone往復、InventoryMovement往復、BOOTH削除往復の実機確認完了として閉じ、Phase E-1「イベント複数商品一括入力」へ移行した。詳細・保留・次工程は`INVENTORY_SYNC_ROADMAP.md`を正本とする。

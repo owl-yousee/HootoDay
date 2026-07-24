@@ -708,7 +708,27 @@ pending operationはremote書込み用の`initial_upload`、`push_snapshot`、`r
 - submit無反応の解消後、iPhoneのLAN内HTTP環境ではmovement ID生成時の`crypto.randomUUID()`が利用できず、保存callback到達前に例外停止することを確認した。既存の`createUuidV4()`へ接続し、`getRandomValues` fallbackを利用する。ID生成不能時はデータを変更せず画面内で停止する。実機再確認待ち。
 - 割り込み完了後はSync Phase S-5の削除復旧確認へ戻る。S-1、S-4、I-8、E-2の保留項目は維持する。
 
-## 33. Phase E-2 イベント会計アプリ連動基盤
+## 33. Sync Phase S-5 完了
+
+- PC正本の初回送信（remote revision 1）とiPhone初回取得、iPhoneの商品メモ変更送信（remote revision 2）とPC取得を実機確認した。
+- PCの在庫調整`+1`、iPhoneの在庫調整`-1`を往復し、両端末の現在庫15、履歴、理由が一致した。
+- BOOTH家発送の未発送記録をPCからiPhoneへ取得し、iPhoneで削除後にPCへ反映して、両端末からrecordとmovementが消え、現在庫15、BOOTH累計0個・0円へ戻ることを実機確認した。
+- iPhoneの入力拡大、modal背景移動、在庫調整submit、LAN内HTTPのUUID生成を修正した。
+- 同一record競合、offline後送信、pending手動再送は安全fixture確認、非競合merge適用は必要時のS-4b保留とする。主要往復と重大事故防止条件が確認できたため、同期基盤は個人利用の通常運用可能としてS-5を完了する。
+
+## 34. Phase E-1 イベント複数商品一括入力
+
+- イベント単位で複数商品を1画面へ並べ、準備中／実績確定済みをまとめて保存する。
+- UI draftは保存せず、内部形式は既存`EventSalesRecord`を商品ごとに1件ずつ維持する。取引型、transaction ID、新配列は追加しない。
+- 全行を純粋関数で検証し、商品未選択、重複、整数、持込超過、在庫不足、既存record消失、ID生成不能を行別に表示する。
+- completedはrecordごとの既存movementを除外して利用可能在庫を確認し、`eventSale`／`eventSample`を対象record ID単位で置換する。plannedはmovementを作らず現在庫を変更しない。
+- 保存後のrecord配列とmovement配列をメモリ上で構築し、両storage keyを一括write、read-backする。失敗時は両keyを旧値へrollbackし、React stateは成功後だけ更新する。
+- 既存単品の編集、確定取消し、削除導線は維持する。未保存行は削除可能とし、保存済み行の一括削除は誤操作防止のためE-1bへ保留する。
+- 保存成功後は既存inventory snapshot差異として`local_changed`になり、自動送信しない。
+- E-2へ向けてdraft検証・record／movement生成を純粋関数へ分離した。E-1では会計取引、支払方法、取消し履歴、snapshot schema変更を行わない。
+- E-1完了後の戻り先はPhase I-4 BOOTH倉庫とする。I-4〜I-8、E-2の保留順序を維持する。
+
+## 35. Phase E-2 イベント会計アプリ連動基盤
 
 ### 位置づけ
 
