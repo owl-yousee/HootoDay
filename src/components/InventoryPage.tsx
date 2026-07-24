@@ -405,15 +405,15 @@ export function InventoryPage(props: Props) {
         close();
     };
     const completedEvents = props.eventSales.filter((item) => item.status === 'completed');
+    const eventProductCount = new Set(props.eventSales.map((item) => item.productId)).size;
+    const totalEventSold = completedEvents.reduce((sum, item) => sum + (item.soldQuantity ?? 0), 0);
     const eventSalesGroups = [...new Set(props.eventSales.map((record) => record.eventId))].map((eventId) => ({
         eventId,
         event: props.events.find((event) => event.id === eventId),
         planned: props.eventSales.filter((record) => record.eventId === eventId && record.status === 'planned'),
         completed: props.eventSales.filter((record) => record.eventId === eventId && record.status === 'completed'),
     }));
-    const totalEvent = completedEvents.length === 0
-        ? -1
-        : completedEvents.reduce((sum, item) => sum + (item.soldQuantity ?? 0) * item.unitPriceSnapshot, 0);
+    const totalEvent = completedEvents.reduce((sum, item) => sum + (item.soldQuantity ?? 0) * item.unitPriceSnapshot, 0);
     const totalBooth = props.boothSales.filter((item) => item.status !== 'cancelled').reduce((sum, item) => sum + item.quantity * item.unitPriceSnapshot, 0);
     const selectedFirstSaleProducts = props.products.filter((product) => product.firstSaleEventId === selectedEventId);
     return <div className="inventory-page">
@@ -438,7 +438,7 @@ export function InventoryPage(props: Props) {
           <div className="inventory-card-actions"><button onClick={() => open('movement', product)}>在庫を調整</button><button onClick={() => open('product', product)}>編集</button></div>
         </article>;
     })}{!filteredProducts.length && <p className="inventory-empty">登録済みの商品はありません。</p>}</div></>}
-    {tab === 'events' && <section className="inventory-section"><div className="inventory-section-heading"><div><h2>イベント販売</h2><p>売上未入力では持込予定だけを保存し、売上入力時だけ在庫へ反映します。</p></div><div className="inventory-actions"><button className="health-primary-button" disabled={!props.products.some(item => item.isActive)} onClick={() => { onEditingStateChange?.(true); setEventBatchMode('create'); setIsEventBatchOpen(true); }}>イベント商品をまとめて登録</button><button disabled={!props.products.some(item => item.isActive)} onClick={() => open('event')}>予定作成・単品入力</button></div></div><div className="inventory-event-summary"><span>登録商品 {props.eventSales.length}件</span><span>持込予定 {props.eventSales.reduce((sum, item) => sum + item.broughtQuantity, 0)}個</span><span>売上入力済み {completedEvents.length}件</span><span>入力済み売上 {money(totalEvent)}</span></div><div className="inventory-event-groups">{eventSalesGroups.map((group) => {
+    {tab === 'events' && <section className="inventory-section"><div className="inventory-section-heading"><div><h2>イベント販売</h2><p>売上未入力では持込予定だけを保存し、売上入力時だけ在庫へ反映します。</p></div><div className="inventory-actions"><button className="health-primary-button" disabled={!props.products.some(item => item.isActive)} onClick={() => { onEditingStateChange?.(true); setEventBatchMode('create'); setIsEventBatchOpen(true); }}>イベント商品をまとめて登録</button><button disabled={!props.products.some(item => item.isActive)} onClick={() => open('event')}>予定作成・単品入力</button></div></div><div className="inventory-event-summary"><span>商品 {eventProductCount}種類</span><span>持込予定 {props.eventSales.reduce((sum, item) => sum + item.broughtQuantity, 0)}個</span><span>販売総数 {totalEventSold}個</span><span>売上 {money(totalEvent)}</span></div><div className="inventory-event-groups">{eventSalesGroups.map((group) => {
                 const records = [...group.planned, ...group.completed];
                 const completedSold = group.completed.reduce((sum, item) => sum + (item.soldQuantity ?? 0), 0);
                 const completedSales = group.completed.reduce((sum, item) => sum + (item.soldQuantity ?? 0) * item.unitPriceSnapshot, 0);
