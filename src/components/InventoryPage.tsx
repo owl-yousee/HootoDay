@@ -3,6 +3,7 @@ import type { CalendarEvent } from '../types/calendar';
 import type { BoothSalesRecord, BoothWarehouseSaleRecord, EventSalesRecord, InventoryMovement, Product } from '../types/inventory';
 import { calculateAllProductStocks, calculateCurrentStock, calculateProductSalesSummary, canDecreaseStock } from '../utils/inventoryCalculation';
 import { toDateKey } from '../utils/date';
+import { createUuidV4 } from '../utils/uuid';
 import { EventQuickCreateFields, type QuickEventDraft } from './EventQuickCreateFields';
 type Tab = 'products' | 'events' | 'booth' | 'anniversaries' | 'history';
 type Mode = 'product' | 'movement' | 'event' | 'booth';
@@ -310,10 +311,16 @@ export function InventoryPage(props: Props) {
             }
             if (movementSubmitInProgressRef.current)
                 return;
+            const movementId = createUuidV4();
+            if (!movementId) {
+                setError('保存に必要なIDを作成できませんでした。入力内容は変更されていません。');
+                requestAnimationFrame(() => dialogRef.current?.scrollTo({ top: 0, behavior: 'smooth' }));
+                return;
+            }
             movementSubmitInProgressRef.current = true;
             setIsMovementSubmitting(true);
             try {
-                props.onAddMovement({ id: crypto.randomUUID(), productId, date: String(data.get('date')), type, quantity, eventSalesRecordId: null, boothSalesRecordId: null, boothWarehouseSalesRecordId: null, memo, createdAt: now });
+                props.onAddMovement({ id: movementId, productId, date: String(data.get('date')), type, quantity, eventSalesRecordId: null, boothSalesRecordId: null, boothWarehouseSalesRecordId: null, memo, createdAt: now });
                 close();
             }
             catch {
