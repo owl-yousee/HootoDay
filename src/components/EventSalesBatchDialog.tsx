@@ -181,7 +181,7 @@ export function EventSalesBatchDialog(props: Props) {
             }}><option value="">選択してください</option>{props.products.filter((item) => item.isActive || item.id === row.productId).map((item) => <option key={item.id} value={item.id} disabled={item.id !== row.productId && selectedProducts.has(item.id)}>{item.name}</option>)}</select></label>
             {([
               ['broughtQuantity', '持込数'], ['soldQuantity', '販売数'], ['sampleQuantity', 'サンプル数'], ['unitPrice', '単価'],
-            ] as const).map(([field, label]) => <label key={field} data-field-error={rowErrors[field]}>{label}<input value={row[field]} readOnly={props.mode === 'complete' && field === 'broughtQuantity'} inputMode="numeric" pattern="[0-9]*" aria-invalid={Boolean(rowErrors[field])} onChange={(event) => update(row.rowId, { [field]: event.target.value })}/></label>)}
+            ] as const).map(([field, label]) => <label key={field} data-field-error={rowErrors[field]}>{label}<input value={row[field]} readOnly={props.mode === 'complete' && field === 'broughtQuantity'} inputMode="numeric" pattern="[0-9]*" autoComplete="off" aria-invalid={Boolean(rowErrors[field])} onChange={(event) => update(row.rowId, { [field]: event.target.value })}/></label>)}
             <label className="inventory-wide">メモ<textarea value={row.memo} maxLength={500} onChange={(event) => update(row.rowId, { memo: event.target.value })}/></label>
           </div>
           {props.mode === 'complete' && <p className="inventory-batch-remaining">残数：{(/^\d+$/.test(row.broughtQuantity) && /^\d+$/.test(row.soldQuantity) && /^\d+$/.test(row.sampleQuantity)) ? Number(row.broughtQuantity) - Number(row.soldQuantity) - Number(row.sampleQuantity) : '—'}個</p>}
