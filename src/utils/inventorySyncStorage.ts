@@ -186,6 +186,71 @@ export function clearInventorySyncPendingOperation(storage: Storage): InventoryS
   return clearVerified(storage, INVENTORY_SYNC_PENDING_STORAGE_KEY)
 }
 
+export function saveInventorySyncPendingState(
+  storage: Storage,
+  pending: InventorySyncPendingOperation,
+): InventorySyncStorageResult {
+  if (!isInventorySyncPendingOperation(pending)) {
+    return { status: 'validation_error', rollbackFailed: false }
+  }
+  const previous = new Map<string, string | null>()
+  try {
+    previous.set(INVENTORY_SYNC_PENDING_STORAGE_KEY, storage.getItem(INVENTORY_SYNC_PENDING_STORAGE_KEY))
+    previous.set(INVENTORY_SYNC_METADATA_STORAGE_KEY, storage.getItem(INVENTORY_SYNC_METADATA_STORAGE_KEY))
+    const metadata: InventorySyncLocalMetadata = {
+      version: INVENTORY_SYNC_METADATA_VERSION,
+      workspaceId: pending.workspaceId,
+      state: 'pending',
+      lastRemoteRevision: pending.baseRevision,
+      lastCheckedAt: new Date().toISOString(),
+    }
+    storage.setItem(INVENTORY_SYNC_PENDING_STORAGE_KEY, JSON.stringify(pending))
+    storage.setItem(INVENTORY_SYNC_METADATA_STORAGE_KEY, JSON.stringify(metadata))
+    if (loadInventorySyncPendingOperation(storage, pending.workspaceId)?.operationId === pending.operationId &&
+      loadInventorySyncMetadata(storage)?.state === 'pending') {
+      return { status: 'saved', rollbackFailed: false }
+    }
+  } catch {
+    // rollback below
+  }
+  return { status: 'read_back_error', rollbackFailed: !restoreMany(storage, previous) }
+}
+
+export function saveInventorySyncConfirmedState(
+  storage: Storage,
+  baseline: InventorySyncBaseline,
+): InventorySyncStorageResult {
+  if (!isInventorySyncBaseline(baseline)) {
+    return { status: 'validation_error', rollbackFailed: false }
+  }
+  const previous = new Map<string, string | null>()
+  try {
+    for (const key of INVENTORY_SYNC_STORAGE_KEYS) previous.set(key, storage.getItem(key))
+    const metadata: InventorySyncLocalMetadata = {
+      version: INVENTORY_SYNC_METADATA_VERSION,
+      workspaceId: baseline.workspaceId,
+      state: 'confirmed',
+      lastRemoteRevision: baseline.revision,
+      lastCheckedAt: baseline.confirmedAt,
+    }
+    storage.setItem(INVENTORY_SYNC_BASELINE_STORAGE_KEY, JSON.stringify(baseline))
+    storage.setItem(INVENTORY_SYNC_METADATA_STORAGE_KEY, JSON.stringify(metadata))
+    storage.removeItem(INVENTORY_SYNC_PENDING_STORAGE_KEY)
+    const readBackBaseline = loadInventorySyncBaseline(storage, baseline.workspaceId)
+    const readBackMetadata = loadInventorySyncMetadata(storage)
+    if (readBackBaseline?.contentFingerprint === baseline.contentFingerprint &&
+      readBackBaseline.revision === baseline.revision &&
+      readBackMetadata?.state === 'confirmed' &&
+      readBackMetadata.lastRemoteRevision === baseline.revision &&
+      storage.getItem(INVENTORY_SYNC_PENDING_STORAGE_KEY) === null) {
+      return { status: 'saved', rollbackFailed: false }
+    }
+  } catch {
+    // rollback below
+  }
+  return { status: 'read_back_error', rollbackFailed: !restoreMany(storage, previous) }
+}
+
 function restoreMany(storage: Storage, previous: Map<string, string | null>): boolean {
   try {
     for (const [key, value] of previous) {

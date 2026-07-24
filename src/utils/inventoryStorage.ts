@@ -36,6 +36,10 @@ const nullableDateKey = (value: unknown) => value === null || dateKey(value)
 const nullableIso = (value: unknown) => value === null || iso(value)
 const writeBlockedKeys = new Set<string>()
 
+export function hasInventoryStorageWriteBlock(): boolean {
+  return writeBlockedKeys.size > 0
+}
+
 export function isProduct(value: unknown): value is Product {
   return object(value) && nonEmptyId(value.id) && nonEmptyText(value.name,100) &&
     nullableInteger(value.defaultPrice) && integer(value.initialStock) && text(value.category,100) && text(value.memo,1000) &&

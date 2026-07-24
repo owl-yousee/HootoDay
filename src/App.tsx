@@ -15,11 +15,13 @@ import { MonthlyAchievementsDialog } from './components/MonthlyAchievementsDialo
 import { MobileCalendarQuickAdd } from './components/MobileCalendarQuickAdd'
 import { RecordsBrowserPage } from './components/RecordsBrowserPage'
 import { InventoryPage } from './components/InventoryPage'
+import { InventorySyncCard } from './components/InventorySyncCard'
 import { Sidebar, type AppView } from './components/Sidebar'
 import { SleepRecordDialog } from './components/SleepRecordDialog'
 import { ThemeSettings } from './components/ThemeSettings'
 import { WeightRecordDialog } from './components/WeightRecordDialog'
 import { useDayMemos } from './hooks/useDayMemos'
+import { useInventorySync } from './hooks/useInventorySync'
 import { useDayMemoInitialUpload } from './hooks/useDayMemoInitialUpload'
 import { useDayMemoLocalOnlyPreview } from './hooks/useDayMemoLocalOnlyPreview'
 import { useDayMemoLocalOnlyUpload } from './hooks/useDayMemoLocalOnlyUpload'
@@ -484,6 +486,16 @@ function App() {
   const { exerciseSessions, saveExerciseSession, deleteExerciseSession, replaceExerciseSessions } = useExerciseSessions()
   const { conditionRecords, saveConditionRecord, deleteConditionRecord, replaceConditionRecords } = useConditionRecords()
   const inventory = useInventory()
+  const [isInventoryEditing, setIsInventoryEditing] = useState(false)
+  const inventorySync = useInventorySync({
+    isConfigured: supabaseAuth.isConfigured,
+    isSignedIn: supabaseAuth.isSignedIn,
+    connection: supabaseWorkspace.connection,
+    getSnapshot: inventory.getSyncSnapshot,
+    getStoredSnapshot: inventory.getStoredSyncSnapshot,
+    applySnapshot: inventory.applySyncSnapshot,
+    isEditing: isInventoryEditing,
+  })
   const healthSummarySource = useMemo(() => ({
     weightRecords,
     sleepRecords,
@@ -752,7 +764,7 @@ function App() {
               onOpenHealth={(dateKey) => openRecordDate(dateKey, 'health')}
             />
           ) : activeView === 'inventory' ? (
-            <InventoryPage products={inventory.products} movements={inventory.inventoryMovements} eventSales={inventory.eventSalesRecords} boothSales={inventory.boothSalesRecords} boothWarehouseSales={inventory.boothWarehouseSalesRecords} events={events} initialEventId={inventoryEventId} onSaveProduct={inventory.saveProduct} onAddMovement={inventory.addMovement} onSaveEvent={inventory.saveEventSale} onDeleteEvent={inventory.deleteEventSale} onSaveBooth={inventory.saveBoothSale} onDeleteBooth={inventory.deleteBoothSale} onSaveCalendarEvent={saveEvent} />
+            <InventoryPage products={inventory.products} movements={inventory.inventoryMovements} eventSales={inventory.eventSalesRecords} boothSales={inventory.boothSalesRecords} boothWarehouseSales={inventory.boothWarehouseSalesRecords} events={events} initialEventId={inventoryEventId} onSaveProduct={inventory.saveProduct} onAddMovement={inventory.addMovement} onSaveEvent={inventory.saveEventSale} onDeleteEvent={inventory.deleteEventSale} onSaveBooth={inventory.saveBoothSale} onDeleteBooth={inventory.deleteBoothSale} onSaveCalendarEvent={saveEvent} syncCard={<InventorySyncCard sync={inventorySync} />} onEditingStateChange={setIsInventoryEditing} />
           ) : (
             <HealthExportPage
               initialDate={selectedDateKey}

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { CalendarEvent } from '../types/calendar';
 import type { BoothSalesRecord, BoothWarehouseSaleRecord, EventSalesRecord, InventoryMovement, Product } from '../types/inventory';
 import { calculateAllProductStocks, calculateCurrentStock, calculateProductSalesSummary, canDecreaseStock } from '../utils/inventoryCalculation';
@@ -37,6 +37,8 @@ interface Props {
     onDeleteBooth: (id: string) => void;
     onDeleteEvent: (id: string) => void;
     onSaveCalendarEvent: (value: CalendarEvent) => void;
+    syncCard?: ReactNode;
+    onEditingStateChange?: (editing: boolean) => void;
 }
 const money = (value: number | null) => value === null ? '未設定' : value < 0 ? '未確定' : `${value.toLocaleString('ja-JP')}円`;
 const boothSalesMethod = (product: Product) => {
@@ -46,6 +48,7 @@ const boothSalesMethod = (product: Product) => {
 };
 const eventLabel = (event: CalendarEvent) => `${event.date} ${event.startTime ?? (event.isAllDay ? '終日' : '')} ${event.title}［${event.category}］`;
 export function InventoryPage(props: Props) {
+    const onEditingStateChange = props.onEditingStateChange;
     const [tab, setTab] = useState<Tab>(props.initialEventId ? 'events' : 'products');
     const [query, setQuery] = useState('');
     const [showInactive, setShowInactive] = useState(false);
@@ -62,6 +65,7 @@ export function InventoryPage(props: Props) {
     const [error, setError] = useState('');
     const dialogRef = useRef<HTMLDialogElement>(null);
     const editingBoothIdRef = useRef<string | null>(null);
+    useEffect(() => () => onEditingStateChange?.(false), [onEditingStateChange]);
     useEffect(() => {
         const dialog = dialogRef.current;
         if (!dialog)
@@ -130,6 +134,7 @@ export function InventoryPage(props: Props) {
     }), [props.events, nowKey]);
     const filteredProducts = props.products.filter((product) => (showInactive || product.isActive) && `${product.name} ${product.category}`.toLowerCase().includes(query.toLowerCase()));
     const open = (next: Mode, product: Product | null = null, event: EventSalesRecord | null = null, booth: BoothSalesRecord | null = null) => {
+        onEditingStateChange?.(true);
         setMode(next);
         setEditingProduct(product);
         setEditingEvent(event ? { ...event, soldQuantity: event.soldQuantity ?? undefined, sampleQuantity: event.sampleQuantity ?? undefined } : null);
@@ -152,7 +157,7 @@ export function InventoryPage(props: Props) {
                 dialogRef.current.showModal();
         });
     };
-    const close = () => { dialogRef.current?.close(); setEditingEvent(null); setEditingBooth(null); editingBoothIdRef.current = null; setError(''); setEventFieldErrors({}); };
+    const close = () => { dialogRef.current?.close(); onEditingStateChange?.(false); setEditingEvent(null); setEditingBooth(null); editingBoothIdRef.current = null; setError(''); setEventFieldErrors({}); };
     const buildQuickEvent = (draft: QuickEventDraft, id = crypto.randomUUID()): CalendarEvent | null => {
         if (!draft.title.trim() || !draft.date)
             return null;
@@ -330,6 +335,7 @@ export function InventoryPage(props: Props) {
             Tab,
             string
         ][]).map(([value, label]) => <button key={value} type="button" className={value === 'history' ? 'inventory-tab-history' : undefined} aria-pressed={tab === value} onClick={() => setTab(value)}>{label}</button>)}</nav>
+    {props.syncCard}
     {tab === 'products' && <><div className="inventory-toolbar"><label>商品検索<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="商品名・カテゴリ"/></label><label className="inventory-check"><input type="checkbox" checked={showInactive} onChange={(event) => setShowInactive(event.target.checked)}/>販売終了も表示</label><button className="health-primary-button" onClick={() => open('product')}>商品を登録</button></div><div className="inventory-grid">{filteredProducts.map(product => {
         const first = props.events.find(event => event.id === product.firstSaleEventId);
         const summary = salesSummaries.get(product.id);

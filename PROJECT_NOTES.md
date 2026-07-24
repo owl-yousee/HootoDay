@@ -2897,3 +2897,9 @@ cleanup後VERIFY結果：
 - DayMemo同期からはworkspace／認証／pairing、operation ID、CAS、read-back、fail-closedなどの基盤と原則だけを再利用する。日付baseline、metadata V5、Recovery Bridge、細分化されたcandidate UIは販売・在庫へそのまま複製しない。
 - 個人利用、2端末、小規模データ、販売記録とmovementの原子性を優先し、Supabaseはworkspace単位の販売・在庫全体snapshot＋operation ledgerを第一候補とする。7配列の個別upsertは部分成功と削除復活を招くため採用しない。
 - S-1ではコード、UI、localStorage、backup、Supabase、SQL、実機データを変更していない。正式な棚卸し、保留項目、S-2〜S-5、Phase E-1／I-4以降への戻り先は`INVENTORY_SYNC_ROADMAP.md`を正本とする。
+# 2026-07-24 販売・在庫 Sync Phase S-4
+
+- 正本は `INVENTORY_SYNC_ROADMAP.md`。販売・在庫画面上部へ、初回同期と通常同期の明示操作カードを追加した。
+- Supabase SQLは適用済み。Codexから実データの送信・取得は実行していない。
+- pending、remote read-back、confirmed baseline、7配列一括適用とrollback、record単位の競合分類を接続した。
+- 非競合mergeの実適用はS-4b、PC／iPhone実機確認はS-5へ保留する。

@@ -664,7 +664,38 @@ pending operationはremote書込み用の`initial_upload`、`push_snapshot`、`r
 - postflightはtable、RPC、RLS、直接policyなし、column構造を静的確認する。
 - APPLY、remote insert／select、RPC呼出し、初回uploadは未実行である。
 
-## 31. Phase E-2 イベント会計アプリ連動基盤
+## 31. Sync Phase S-4 実装結果
+
+### 状態分類と明示操作
+
+- 未確認、初回送信可能、初回取得可能、同期済み、local変更、remote変更、競合、pending確認、同一operation再送可能、要確認を分類する。
+- PC親機はremote未作成・baselineなし・pendingなしの場合だけ初回送信できる。
+- iPhone子機はremote作成済み・baselineなし・7配列が実質空の場合だけ初回取得できる。既存localデータがあればfail-closedで停止する。
+- 通常同期はlocalだけの変更を明示送信、remoteだけの変更を明示取得とする。両側変更はrecord ID単位の論理グループで分類し、自動mergeしない。
+
+### pending、read-back、baseline
+
+- push前にoperation IDを一度だけ生成し、pendingとmetadataをverified保存する。
+- saved／replayed後はremoteを再取得し、workspace、revision、fingerprint、snapshot validatorを確認してからconfirmed baselineへ更新する。
+- pending targetとremoteが一致した場合は再送せずcleanupする。remoteがbaseと一致する場合だけ同じoperation IDで明示再送できる。
+- 不明なRPC結果、壊れたpending、read-back不一致ではpendingを保持し、自動retryしない。
+
+### local一括適用と競合境界
+
+- 7配列は既存localStorage keyへ一括適用し、全件read-back後だけReact stateを更新する。
+- 一括適用失敗は旧7配列へrollbackする。baseline確定失敗時も旧local snapshotへ戻し、rollback不能は要確認として停止する。
+- 編集フォームが開いている間はremote取得結果をlocalへ適用しない。
+- イベント販売、BOOTH家発送、BOOTH倉庫は販売recordと対応movementを同じ論理グループとして3-way比較する。
+- 非競合mergeは分類まで実装し、実際のmerge適用はS-4bへ保留する。自動mergeは行わない。
+
+### 現在地と次工程
+
+- `SUPABASE_INVENTORY_SYNC_APPLY.sql` は実環境へ適用済み。
+- Codexから実データの初回送信・取得は実行していない。
+- 次はSync Phase S-5でPC／iPhone初回同期、通常送受信、削除、offline、replay、競合、現在庫一致を実機確認する。
+- 同期実機確認完了後はPhase E-1へ戻る。Phase E-2の会計アプリ連動方針は維持する。
+
+## 32. Phase E-2 イベント会計アプリ連動基盤
 
 ### 位置づけ
 
