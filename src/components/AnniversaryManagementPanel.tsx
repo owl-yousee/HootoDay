@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Gift } from '@phosphor-icons/react'
 import type {
   AnniversaryCampaign,
+  AnniversaryPlanItemDescriptions,
   AnniversaryShipment,
   AnniversaryShipmentStatus,
 } from '../types/inventory'
@@ -9,6 +10,20 @@ import { createUuidV4 } from '../utils/uuid'
 
 const fixedPlans = ['うさぎ', 'きのこ', 'ねこ'] as const
 type FixedPlan = typeof fixedPlans[number]
+const planKeys: Record<FixedPlan, keyof AnniversaryPlanItemDescriptions> = {
+  うさぎ: 'rabbit',
+  きのこ: 'mushroom',
+  ねこ: 'cat',
+}
+const emptyPlanItemDescriptions = (): AnniversaryPlanItemDescriptions => ({
+  rabbit: '',
+  mushroom: '',
+  cat: '',
+})
+const campaignPlanItems = (campaign?: AnniversaryCampaign | null): AnniversaryPlanItemDescriptions => ({
+  ...emptyPlanItemDescriptions(),
+  ...campaign?.planItemDescriptions,
+})
 type CampaignErrors = Partial<Record<'year' | 'name', string>>
 type ShipmentErrors = Partial<Record<'destinationNumber' | 'itemDescription', string>>
 
@@ -148,6 +163,11 @@ export function AnniversaryManagementPanel(props: Props) {
     const yearText = String(form.get('year') ?? '').trim()
     const year = Number(yearText)
     const name = String(form.get('name') ?? '').trim()
+    const planItemDescriptions: AnniversaryPlanItemDescriptions = {
+      rabbit: String(form.get('rabbitItemDescription') ?? '').trim(),
+      mushroom: String(form.get('mushroomItemDescription') ?? '').trim(),
+      cat: String(form.get('catItemDescription') ?? '').trim(),
+    }
     const errors: CampaignErrors = {}
     if (!/^\d{4}$/.test(yearText) || !Number.isInteger(year) || year < 1900 || year > 9999) {
       errors.year = '対象年は1900〜9999の4桁で入力してください。'
@@ -168,6 +188,7 @@ export function AnniversaryManagementPanel(props: Props) {
     const now = new Date().toISOString()
     const result = props.onSaveCampaign({
       id, year, name,
+      planItemDescriptions,
       completedAt: editingCampaign?.completedAt ?? null,
       createdAt: editingCampaign?.createdAt ?? now,
       updatedAt: now,
@@ -341,6 +362,23 @@ export function AnniversaryManagementPanel(props: Props) {
           <label data-field-error={campaignErrors.name}>周年名
             <input name="name" maxLength={100} required defaultValue={editingCampaign?.name} />
           </label>
+          <fieldset className="inventory-wide inventory-fieldset anniversary-plan-items">
+            <legend>プラン別の標準内容物（任意）</legend>
+            <div className="inventory-form-grid">
+              <label>うさぎの内容物
+                <input name="rabbitItemDescription" maxLength={500}
+                  defaultValue={campaignPlanItems(editingCampaign).rabbit} />
+              </label>
+              <label>きのこの内容物
+                <input name="mushroomItemDescription" maxLength={500}
+                  defaultValue={campaignPlanItems(editingCampaign).mushroom} />
+              </label>
+              <label className="inventory-wide">ねこの内容物
+                <input name="catItemDescription" maxLength={500}
+                  defaultValue={campaignPlanItems(editingCampaign).cat} />
+              </label>
+            </div>
+          </fieldset>
         </div>
         <footer><button type="button" onClick={closeCampaign}>キャンセル</button>
           <button className="health-primary-button" type="submit" disabled={isSubmitting}>{isSubmitting ? '保存中…' : '保存'}</button></footer>
@@ -363,7 +401,10 @@ export function AnniversaryManagementPanel(props: Props) {
           </label>
           <label className="inventory-wide" data-field-error={shipmentErrors.itemDescription}>内容物
             <input name="itemDescription" maxLength={500} required
-              defaultValue={shipmentContext?.shipment?.itemDescription} />
+              defaultValue={shipmentContext?.shipment?.itemDescription ??
+                (shipmentContext && fixedPlans.includes(shipmentContext.plan as FixedPlan)
+                  ? campaignPlanItems(shipmentContext.campaign)[planKeys[shipmentContext.plan as FixedPlan]]
+                  : '')} />
           </label>
           <label>状態
             <select name="status" defaultValue={shipmentContext?.shipment?.status ?? 'unprepared'}>

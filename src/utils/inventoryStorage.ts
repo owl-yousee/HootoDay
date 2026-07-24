@@ -82,8 +82,16 @@ export function isBoothWarehouseSale(value: unknown): value is BoothWarehouseSal
 }
 
 export function isAnniversaryCampaign(value: unknown): value is AnniversaryCampaign {
+  const descriptions = object(value) ? value.planItemDescriptions : undefined
+  const validDescriptions = descriptions === undefined || (
+    object(descriptions) &&
+    text(descriptions.rabbit,500) &&
+    text(descriptions.mushroom,500) &&
+    text(descriptions.cat,500)
+  )
   return object(value) && nonEmptyId(value.id) && integer(value.year,1000) && Number(value.year) <= 9999 &&
-    nonEmptyText(value.name,100) && nullableIso(value.completedAt) && iso(value.createdAt) && iso(value.updatedAt)
+    nonEmptyText(value.name,100) && validDescriptions &&
+    nullableIso(value.completedAt) && iso(value.createdAt) && iso(value.updatedAt)
 }
 
 export function isAnniversaryShipment(value: unknown): value is AnniversaryShipment {

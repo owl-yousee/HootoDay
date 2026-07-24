@@ -1009,3 +1009,15 @@ BOOTHの制度変更へ対応できるよう、特定時点の手数料率や保
 - 通常商品在庫、`InventoryMovement`、イベント、BOOTH、販売・送料集計とは非連動である。周年データは既存の販売・在庫同期snapshotと明示送受信の対象であり、新しい同期経路、自動送受信、自動retry、schemaVersion、RPC、SQLは追加しない。
 - 実機ではPCの3列プラン、campaign作成・編集・全体削除、各プランへの追加、4状態、旧値互換、個人カード編集・削除を確認後、iPhoneの3列表示と同操作、双方向明示同期、在庫・履歴不変を確認する。
 - Phase I-7へ周年全体の完了／完了取消し、商品タブ上部カード、全件発送済み後の表示制御を持ち越す。Phase I-8の通常在庫連携も未実装のまま維持する。
+
+## Phase I-6 プラン別標準内容物とUI調整
+
+- `AnniversaryCampaign`へoptionalな`planItemDescriptions`を追加し、`rabbit`（うさぎ）、`mushroom`（きのこ）、`cat`（ねこ）の標準内容物を保存する。3項目は任意で、前後の空白を除去する。
+- 旧campaignでfieldが欠損している場合は3項目とも空文字として画面表示する。読込だけではstorageへ書き戻さず、campaignを編集保存した時点で新構造を保存する。
+- campaign作成・編集dialogで対象年、周年名、3プランの標準内容物を編集できる。campaign IDと配下shipmentは維持する。
+- 固定プランへの新規個人カード追加時だけ、対応する標準内容物を`itemDescription`の初期値へ入れる。標準が空なら入力欄も空とし、個人カード保存時は従来どおり内容物を必須検証する。
+- 個人カードでは内容物を自由に上書きでき、保存後はshipmentの個別内容を正本とする。既存shipmentの編集では保存済み`itemDescription`を初期表示し、campaignの標準内容物変更を既存shipmentへ自動反映しない。個別内容や準備済み記録を破壊しないため、一括更新や継承状態の追跡は行わない。
+- optional fieldを受け入れるstorage validatorへ後方互換な最小拡張を行う。inventory storage version 2、backup format 3、snapshot schemaVersion 1は変更せず、既存backup／snapshotのfield欠損と、新field付きcampaignの両方を受理する。
+- 新fieldは既存のJSON backup複製とinventory snapshotのdeep clone／fingerprintへ自動的に含まれ、PC・iPhone間の既存明示同期対象となる。RPC、SQL、自動送受信、自動retryは変更しない。
+- 作成ボタンはGiftアイコンの1.3emを維持し、専用inline-flexと1pxの位置補正で文字と中央揃えにする。個人カード一覧はgridの縦stretchを止め、情報と操作間の余白を縮め、44px以上の操作領域とメモ3行制限を維持する。
+- 通常在庫と`InventoryMovement`には引き続き非連動である。実機では新旧campaign表示、3標準内容物の保存・編集、個人追加時の初期値、個別上書き保護、PC／iPhone dialog、Gift位置、短いカードの余白、双方向同期を確認する。

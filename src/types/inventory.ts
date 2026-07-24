@@ -19,8 +19,15 @@ export type BoothWarehouseSaleRecord = {
   memo: string; createdAt: string; updatedAt: string
 }
 
+export type AnniversaryPlanItemDescriptions = {
+  rabbit: string
+  mushroom: string
+  cat: string
+}
 export type AnniversaryCampaign = {
-  id: string; year: number; name: string; completedAt: string | null; createdAt: string; updatedAt: string
+  id: string; year: number; name: string
+  planItemDescriptions?: AnniversaryPlanItemDescriptions
+  completedAt: string | null; createdAt: string; updatedAt: string
 }
 
 export type AnniversaryShipmentStatus = 'unprepared' | 'preparing' | 'prepared' | 'not_shipped' | 'shipped'
