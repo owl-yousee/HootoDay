@@ -799,3 +799,19 @@ HootoDayは商品、イベント持込数、サンプル配布、在庫調整、
 - Phase I-4の実装は完了。実機では新規作成、編集、削除、在庫減算・復元、PC／iPhone表示、PC・iPhone同期を確認する。
 - 現在の本線はPhase I-4の実機確認。完了後の戻り先はPhase I-5「BOOTH家発送拡張」。
 - 保留中のPhase E-1b、Phase I-5〜I-8、Phase E-2、Sync Phase S-4bは維持する。
+
+# Phase I-5 BOOTH家発送拡張 実装記録（2026-07-24）
+
+- Phase I-4は倉庫販売の新規作成、数量編集、削除、在庫減算・復元、受取集計の実機確認完了とする。
+- BOOTH内の「家発送」は既存`BoothSalesRecord`を正本とし、送料`shippingFee`と発送日`shippedAt`をフォーム・一覧へ接続した。
+- 送料は購入者から受け取った送料であり、商品売上とは分離する。`null`は未設定、`0`は0円として区別し、家発送画面の送料集計では`null`を0円として扱う。
+- 発送日は`shipped`でのみ任意入力できる。`pending`または`cancelled`で保存すると`shippedAt`を`null`へ戻す。
+- 新規作成時は`createUuidV4()`でIDを生成し、編集時はrecord IDと`createdAt`を維持する。商品は編集中に変更不可とする。
+- `pending`／`shipped`は数量一致の`boothSale` movementを1件保持し、相互変更で二重減算しない。`cancelled`はmovementを持たず、再開時に1件を再生成する。
+- 新規・編集・削除は家発送record配列とmovement配列をvalidator、2-key write、read-back、rollback付きで原子的に保存し、成功後だけReact stateを更新する。
+- 一覧は日付の新しい順とし、日付、商品、状態、数量、商品売上、送料、注文番号、発送日、メモを表示する。キャンセル記録は一覧へ残すが販売数・商品売上・送料集計から除外する。
+- 家発送上部は有効販売数、商品売上、送料を分離表示する。商品カードの家発送売上には送料を含めない。
+- 在庫履歴では`boothSale`を「BOOTH家発送販売」、`boothWarehouseSale`を「BOOTH倉庫販売」と区別する。
+- inventory storage version 2、backup format 3、snapshot schemaVersion 1、Supabase、SQL、RPC、同期状態分類は変更していない。保存成功後は既存同期経路で`local_changed`となる。
+- 現在の本線はPhase I-5の実機確認。完了後の戻り先はPhase I-6「周年記念基本管理」。
+- Phase E-1b、Phase I-6〜I-8、Phase E-2、Sync Phase S-4b、同期詳細異常系の実機確認は保留のまま維持する。

@@ -248,6 +248,8 @@ export const loadEventSalesRecords = () => load(EVENT_SALES_STORAGE_KEY,isEventS
 export const saveEventSalesRecords = (records: EventSalesRecord[]) => save(EVENT_SALES_STORAGE_KEY,records)
 export const loadBoothSalesRecords = () => load(BOOTH_SALES_STORAGE_KEY,isBoothSale,migrateBoothSaleV1)
 export const saveBoothSalesRecords = (records: BoothSalesRecord[]) => save(BOOTH_SALES_STORAGE_KEY,records)
+export const saveBoothSalesAtomically = (records: BoothSalesRecord[], movements: InventoryMovement[]): EventSalesBatchStorageResult =>
+  saveRelatedRecordsAtomically(BOOTH_SALES_STORAGE_KEY,records,isBoothSale,movements)
 export const loadBoothWarehouseSalesRecords = () => load(BOOTH_WAREHOUSE_SALES_STORAGE_KEY,isBoothWarehouseSale)
 export const saveBoothWarehouseSalesRecords = (records: BoothWarehouseSaleRecord[]) => save(BOOTH_WAREHOUSE_SALES_STORAGE_KEY,records)
 export const saveBoothWarehouseSalesAtomically = (records: BoothWarehouseSaleRecord[], movements: InventoryMovement[]): BoothWarehouseStorageResult =>

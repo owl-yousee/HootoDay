@@ -24,6 +24,7 @@ import {
   saveAnniversaryCampaigns,
   saveAnniversaryShipments,
   saveBoothSalesRecords,
+  saveBoothSalesAtomically,
   saveBoothWarehouseSalesRecords,
   saveBoothWarehouseSalesAtomically,
   saveEventSalesRecords,
@@ -62,8 +63,37 @@ export function useInventory() {
   return {status:'saved' as const}
  }
  const deleteEventSale=(id:string)=>{setEventSalesRecords(c=>c.filter(record=>record.id!==id));setInventoryMovements(c=>c.filter(movement=>movement.eventSalesRecordId!==id))}
- const saveBoothSale=(record:BoothSalesRecord,expectedExistingId:string|null=null):string|null=>{ const product=products.find(x=>x.id===record.productId); if(!product)return '商品が見つかりません。'; const old=boothSalesRecords.find(x=>x.id===record.id); if(expectedExistingId&&(record.id!==expectedExistingId||!old))return '編集対象のBOOTH販売記録が見つかりません。画面を閉じて再確認してください。'; const oldUsed=old&&old.status!=='cancelled'?old.quantity:0; const needed=record.status==='cancelled'?0:record.quantity; const available=calculateCurrentStock(product,inventoryMovements)+oldUsed; if(needed>available)return `在庫が不足しています（販売可能 ${available}個）。`; setBoothSalesRecords(c=>old?c.map(x=>x.id===record.id?record:x):[...c,record]); setInventoryMovements(c=>[...c.filter(x=>x.boothSalesRecordId!==record.id),...(needed?[{id:crypto.randomUUID(),productId:record.productId,date:record.date,type:'boothSale' as const,quantity:needed,eventSalesRecordId:null,boothSalesRecordId:record.id,boothWarehouseSalesRecordId:null,memo:'',createdAt:new Date().toISOString()}]:[])]); return null }
- const deleteBoothSale=(id:string)=>{setBoothSalesRecords(c=>c.filter(record=>record.id!==id));setInventoryMovements(c=>c.filter(movement=>movement.boothSalesRecordId!==id))}
+ const saveBoothSale=(record:BoothSalesRecord,expectedExistingId:string|null=null):string|null=>{
+  const product=products.find(item=>item.id===record.productId)
+  if(!product)return '商品が見つかりません。'
+  const old=boothSalesRecords.find(item=>item.id===record.id)
+  if(expectedExistingId&&(record.id!==expectedExistingId||!old))return '編集対象のBOOTH家発送記録が見つかりません。画面を閉じて再確認してください。'
+  if(old&&old.productId!==record.productId)return '編集中の商品は変更できません。'
+  const oldUsed=old&&old.status!=='cancelled'?old.quantity:0
+  const needed=record.status==='cancelled'?0:record.quantity
+  const available=calculateCurrentStock(product,inventoryMovements)+oldUsed
+  if(needed>available)return `在庫が不足しています（販売可能 ${available}個）。`
+  const nextRecords=old?boothSalesRecords.map(item=>item.id===record.id?record:item):[...boothSalesRecords,record]
+  const movementId=needed?createUuidV4():null
+  if(needed&&!movementId)return '保存に必要なIDを作成できませんでした。入力内容は変更されていません。'
+  const nextMovements=[
+   ...inventoryMovements.filter(item=>item.boothSalesRecordId!==record.id),
+   ...(needed?[{id:movementId!,productId:record.productId,date:record.date,type:'boothSale' as const,quantity:needed,eventSalesRecordId:null,boothSalesRecordId:record.id,boothWarehouseSalesRecordId:null,memo:record.memo,createdAt:new Date().toISOString()}]:[]),
+  ]
+  const storageStatus=saveBoothSalesAtomically(nextRecords,nextMovements)
+  if(storageStatus!=='saved')return storageStatus==='blocked'?'在庫データの保存状態を確認できないため保存できません。':'保存に失敗しました。入力内容は変更されていません。'
+  setBoothSalesRecords(nextRecords);setInventoryMovements(nextMovements)
+  return null
+ }
+ const deleteBoothSale=(id:string):string|null=>{
+  if(!boothSalesRecords.some(record=>record.id===id))return '削除対象のBOOTH家発送記録が見つかりません。'
+  const nextRecords=boothSalesRecords.filter(record=>record.id!==id)
+  const nextMovements=inventoryMovements.filter(movement=>movement.boothSalesRecordId!==id)
+  const storageStatus=saveBoothSalesAtomically(nextRecords,nextMovements)
+  if(storageStatus!=='saved')return storageStatus==='blocked'?'在庫データの保存状態を確認できないため削除できません。':'削除に失敗しました。データは変更されていません。'
+  setBoothSalesRecords(nextRecords);setInventoryMovements(nextMovements)
+  return null
+ }
  const saveBoothWarehouseSale=(record:BoothWarehouseSaleRecord,expectedExistingId:string|null=null):string|null=>{
   const product=products.find(item=>item.id===record.productId)
   if(!product)return '商品が見つかりません。'

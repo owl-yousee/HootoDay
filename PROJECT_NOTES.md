@@ -2910,3 +2910,8 @@ cleanup後VERIFY結果：
 
 - BOOTH倉庫販売の新規作成・編集・削除・在庫連動を実装した。詳細仕様と実機確認項目は`INVENTORY_SYNC_ROADMAP.md`を正本とする。
 - 現在の本線はPhase I-4の実機確認、完了後の戻り先はPhase I-5 BOOTH家発送拡張。
+
+# 2026-07-24 販売・在庫 Phase I-5
+
+- Phase I-4 BOOTH倉庫の実機確認を完了し、既存のBOOTH家発送へ送料・発送日・分離集計・原子的保存を接続した。詳細は`INVENTORY_SYNC_ROADMAP.md`を正本とする。
+- 現在の本線はPhase I-5の実機確認、完了後の戻り先はPhase I-6 周年記念基本管理。
