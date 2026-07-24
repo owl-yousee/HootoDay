@@ -10,6 +10,7 @@ import type {
   Product,
 } from '../types/inventory'
 import { fromDateKey } from './date'
+import { isAnniversaryShippingQrImage } from './anniversaryQrImage'
 
 export const PRODUCTS_STORAGE_KEY = 'hootoDay.products'
 export const INVENTORY_MOVEMENTS_STORAGE_KEY = 'hootoDay.inventoryMovements'
@@ -95,11 +96,16 @@ export function isAnniversaryCampaign(value: unknown): value is AnniversaryCampa
 }
 
 export function isAnniversaryShipment(value: unknown): value is AnniversaryShipment {
+  const validShippingQrImage = object(value) &&
+    (value.shippingQrImage === undefined || (
+      typeof value.id === 'string' &&
+      isAnniversaryShippingQrImage(value.shippingQrImage, value.id)
+    ))
   return object(value) && nonEmptyId(value.id) && nonEmptyId(value.campaignId) &&
     text(value.fanboxPlan,100) && nonEmptyText(value.destinationNumber,100) &&
     nonEmptyText(value.itemDescription,500) && integer(value.quantity,1) &&
     anniversaryStatuses.includes(value.status as AnniversaryShipmentStatus) && nullableDateKey(value.shippedAt) &&
-    text(value.memo,500) &&
+    text(value.memo,500) && validShippingQrImage &&
     iso(value.createdAt) && iso(value.updatedAt)
 }
 

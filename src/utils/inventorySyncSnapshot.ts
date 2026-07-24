@@ -27,6 +27,7 @@ import {
   isProduct,
 } from './inventoryStorage'
 import { isUuidV4 } from './uuid'
+import { anniversaryQrStoragePathMatchesWorkspace } from './anniversaryQrImage'
 
 export type InventorySyncSnapshotInput = {
   workspaceId: string
@@ -235,7 +236,10 @@ export function isInventorySyncSnapshot(value: unknown): value is InventorySyncS
     snapshot.boothWarehouseSalesRecords.some((record) => !productIds.has(record.productId) || !record.productNameSnapshot.trim()) ||
     snapshot.inventoryMovements.some((record) => !productIds.has(record.productId) ||
       !movementReferencesAreValid(record, events, boothSales, warehouseSales)) ||
-    snapshot.anniversaryShipments.some((record) => !campaignIds.has(record.campaignId))) return false
+    snapshot.anniversaryShipments.some((record) =>
+      !campaignIds.has(record.campaignId) ||
+      (record.shippingQrImage !== undefined &&
+        !anniversaryQrStoragePathMatchesWorkspace(record.shippingQrImage.storagePath, snapshot.workspaceId)))) return false
   const stockByProduct = new Map(snapshot.products.map((product) => [product.id, product.initialStock]))
   for (const movement of snapshot.inventoryMovements) {
     const direction = ['restock', 'boothCancellation', 'return', 'adjustmentIncrease'].includes(movement.type) ? 1 : -1

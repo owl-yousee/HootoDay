@@ -1173,3 +1173,18 @@ shippingQrImage?: {
 - Storage policyの安全なpath UUID抽出式、bucket/policy名の実環境衝突、cleanup pendingの保存・同期・backup境界、別workspaceへのbackup復元、HEIC入力、iPhoneの写真／カメラ選択、画像閾値、同時差し替え競合後のorphan処理を未確定とする。
 - 次の作業はI-6b-1の静的設計確認である。既存Supabase構造をread-only PRECHECKし、Storage bucket・policy・参照field・validator・rollbackの具体案をレビューするまで、src、型、localStorage、snapshot schema、Storage、SQL、RPC、RLSを変更しない。
 - Phase I-6の主要実機確認完了記録を維持し、Phase I-7、I-8、I-5b、I-9、E-1b、E-2、Sync Phase S-4bおよび同期詳細異常系を保留のまま残す。
+
+# Phase I-6b-1 Storage・RLS・QR画像参照基盤 実装記録（2026-07-24）
+
+- `AnniversaryShipment`へoptionalな`shippingQrImage`を追加した。参照は`storagePath`、PNG／JPEGの`mimeType`、正の整数の`width`・`height`・`sizeBytes`、ISO形式の`createdAt`・`updatedAt`だけを保持する。
+- 画像未登録の旧shipmentはfield欠損のまま受理し、読込だけで書き戻さない。inventory storage version 2、backup format 3、inventory snapshot schemaVersion 1は変更しない。旧backup format 1／2／3と旧snapshotを引き続き受理する。
+- pathは`{workspaceId}/anniversary-qr/{shipmentId}/{objectId}.{ext}`だけを受理する専用validatorで検証する。先頭slash、`..`、空segment、URL、制御文字、想定外拡張子、MIMEと拡張子の不一致、shipment ID不一致を拒否する。shipment単体ではworkspaceをUUID構文まで検証し、販売・在庫snapshot validatorでsnapshot workspaceとの一致もfail-closedで確認する。
+- 周年shipmentの既存local保存とread-backはobject全体を保持する。JSON backup／restoreは参照情報だけを保持し、画像本体を含めない。既存sync snapshotのdeep clone、canonical content、fingerprintへoptional fieldが含まれるため、独立同期経路や自動送受信は追加しない。
+- private bucket候補は`hooto-day-anniversary-qr`、上限5MB、許可MIMEは`image/png`と`image/jpeg`とする。object pathには個人情報、宛先番号、元ファイル名、bucket名、URL、QR文字列を含めない。
+- `SUPABASE_ANNIVERSARY_QR_STORAGE_PRECHECK.sql`、`APPLY.sql`、`VERIFY.sql`、`ROLLBACK.sql`を追加した。SQLは作成・静的確認のみで、Supabase環境へ未適用である。
+- RLS候補は`storage.objects`の専用bucketだけを対象とし、authenticated userの`auth.uid()`がpath先頭workspaceの`app_workspace_members` owner/memberである場合にSELECT、INSERT、DELETEだけを許可する。UPDATE／upsert policyは作らない。
+- PRECHECKはworkspace/member helper、Storage table、bucket設定、policy名衝突を読み取り確認する。APPLYは依存不足、異設定bucket、既存managed policyをfail-closedで停止し、期待設定bucketは再作成しない。VERIFYはprivate、5MB、MIME、3 policy、UPDATEなし、object件数を確認する。
+- ROLLBACKは今回の3 policyだけを削除し、画像objectを削除しない。既存bucketか今回作成bucketかを事後に安全判定できないためbucketも自動削除せず、由来と空を確認した管理者だけが別途削除する。
+- QR登録、preview、upload、表示、差し替え、画像削除UI、signed URL、cleanup pendingは未実装である。商品在庫、`InventoryMovement`、イベント、BOOTH、売上、送料、周年発送状態は変更しない。
+- I-6b-1の静的完了条件は型チェック、validator fixture、旧／新backup・snapshot保持、fingerprint差分、SQL 4ファイルの整合、UI・在庫処理非変更である。SQL実行前にPRECHECK結果、同名bucket不存在または期待設定、managed policy不存在、Storage管理者権限をユーザーが確認する。
+- 次の作業は、SQLを適用せずPRECHECK／APPLY／VERIFY／ROLLBACKのレビュー結果を確定することである。ユーザーの明示指示と実環境PRECHECK確認後にだけSQL Editorで適用し、I-6b-2の画像登録・表示へ進む。I-6b-3のcleanup pendingは引き続き保留する。

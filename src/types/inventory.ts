@@ -31,8 +31,18 @@ export type AnniversaryCampaign = {
 }
 
 export type AnniversaryShipmentStatus = 'unprepared' | 'preparing' | 'prepared' | 'not_shipped' | 'shipped'
+export type AnniversaryShippingQrImage = {
+  storagePath: string
+  mimeType: 'image/png' | 'image/jpeg'
+  width: number
+  height: number
+  sizeBytes: number
+  createdAt: string
+  updatedAt: string
+}
 export type AnniversaryShipment = {
   id: string; campaignId: string; fanboxPlan: string; destinationNumber: string; itemDescription: string
   quantity: number; status: AnniversaryShipmentStatus; shippedAt: string | null; memo: string
+  shippingQrImage?: AnniversaryShippingQrImage
   createdAt: string; updatedAt: string
 }
