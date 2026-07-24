@@ -704,6 +704,7 @@ pending operationはremote書込み用の`initial_upload`、`push_snapshot`、`r
 - 在庫減少は既存形式どおり`adjustmentDecrease`と正の数量で保持する。UIを「減らす（その他）」＋「数量（正の整数）」へ明確化し、1個減らす場合は数量`1`とする。
 - 0、空欄、小数、指数表記、数字以外、安全な整数範囲外、現在庫超過、理由空欄をfield近傍で拒否し、失敗時は在庫と履歴を変更しない。
 - 二重submitを防止する。同期snapshot、baseline、pending、revision、RPC、SQL、inventory storage version 2、backup format 3は変更しない。
+- 実機で保存ボタンが無反応となる追加事象を確認した。二重submit guardを保存処理中だけ有効にし、validation停止、保存例外、dialog終了・再表示の全経路で解除する。保存例外はdialog内へ表示し、無言で停止しない。
 - 割り込み完了後はSync Phase S-5の削除復旧確認へ戻る。S-1、S-4、I-8、E-2の保留項目は維持する。
 
 ## 33. Phase E-2 イベント会計アプリ連動基盤

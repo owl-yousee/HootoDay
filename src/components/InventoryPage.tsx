@@ -65,6 +65,7 @@ export function InventoryPage(props: Props) {
     const [eventStatus, setEventStatus] = useState<'planned' | 'completed'>('planned');
     const [movementType, setMovementType] = useState<InventoryMovement['type']>('restock');
     const [movementFieldErrors, setMovementFieldErrors] = useState<MovementFieldErrors>({});
+    const [isMovementSubmitting, setIsMovementSubmitting] = useState(false);
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [eventFieldErrors, setEventFieldErrors] = useState<Partial<Record<EventFieldKey, string>>>({});
     const [error, setError] = useState('');
@@ -182,6 +183,7 @@ export function InventoryPage(props: Props) {
         setMovementFieldErrors({});
         setMovementType('restock');
         movementSubmitInProgressRef.current = false;
+        setIsMovementSubmitting(false);
         setQuickEvent(emptyQuickEvent());
         if (next === 'product') {
             const exists = product?.firstSaleEventId && props.events.some((item) => item.id === product.firstSaleEventId);
@@ -198,7 +200,7 @@ export function InventoryPage(props: Props) {
             setIsDialogOpen(true);
         });
     };
-    const close = () => { dialogRef.current?.close(); setIsDialogOpen(false); onEditingStateChange?.(false); setEditingEvent(null); setEditingBooth(null); editingBoothIdRef.current = null; movementSubmitInProgressRef.current = false; setError(''); setEventFieldErrors({}); setMovementFieldErrors({}); };
+    const close = () => { dialogRef.current?.close(); setIsDialogOpen(false); onEditingStateChange?.(false); setEditingEvent(null); setEditingBooth(null); editingBoothIdRef.current = null; movementSubmitInProgressRef.current = false; setIsMovementSubmitting(false); setError(''); setEventFieldErrors({}); setMovementFieldErrors({}); };
     const buildQuickEvent = (draft: QuickEventDraft, id = crypto.randomUUID()): CalendarEvent | null => {
         if (!draft.title.trim() || !draft.date)
             return null;
@@ -301,14 +303,27 @@ export function InventoryPage(props: Props) {
                 fieldErrors.memo = '理由・メモを入力してください。';
             }
             if (Object.keys(fieldErrors).length > 0) {
+                movementSubmitInProgressRef.current = false;
+                setIsMovementSubmitting(false);
                 setMovementFieldErrors(fieldErrors);
                 return;
             }
             if (movementSubmitInProgressRef.current)
                 return;
             movementSubmitInProgressRef.current = true;
-            props.onAddMovement({ id: crypto.randomUUID(), productId, date: String(data.get('date')), type, quantity, eventSalesRecordId: null, boothSalesRecordId: null, boothWarehouseSalesRecordId: null, memo, createdAt: now });
-            close();
+            setIsMovementSubmitting(true);
+            try {
+                props.onAddMovement({ id: crypto.randomUUID(), productId, date: String(data.get('date')), type, quantity, eventSalesRecordId: null, boothSalesRecordId: null, boothWarehouseSalesRecordId: null, memo, createdAt: now });
+                close();
+            }
+            catch {
+                setError('保存に失敗しました。入力内容は変更されていません。もう一度お試しください。');
+                requestAnimationFrame(() => dialogRef.current?.scrollTo({ top: 0, behavior: 'smooth' }));
+            }
+            finally {
+                movementSubmitInProgressRef.current = false;
+                setIsMovementSubmitting(false);
+            }
             return;
         }
         if (mode === 'event') {
@@ -413,6 +428,6 @@ export function InventoryPage(props: Props) {
     <dialog ref={dialogRef} className="inventory-dialog" onCancel={(event) => { event.preventDefault(); close(); }}><form key={`${mode}:${editingProduct?.id ?? ''}:${editingEvent?.id ?? ''}:${editingBooth?.id ?? ''}`} onSubmit={submit} noValidate><header><div><p className="eyebrow">Inventory</p><h2>{mode === 'product' ? (editingProduct ? '商品を編集' : '商品を登録') : mode === 'movement' ? '在庫を調整' : mode === 'event' ? (editingEvent ? 'イベント販売を編集' : 'イベント販売を記録') : (editingBooth ? 'BOOTH販売を編集' : 'BOOTH販売を記録')}</h2></div><button type="button" aria-label="ダイアログを閉じる" onClick={close}>×</button></header>{error && <p className="form-error" role="alert">{error}</p>}{mode === 'event' && <fieldset className="inventory-fieldset inventory-status-choice"><legend>記録状態</legend><label className="inventory-check"><input type="radio" checked={eventStatus === 'planned'} onChange={() => setEventStatus('planned')}/>準備中として保存</label><label className="inventory-check"><input type="radio" checked={eventStatus === 'completed'} onChange={() => setEventStatus('completed')}/>実績を確定</label>{eventStatus === 'planned' && <p>販売数・サンプル数は未入力として保存し、在庫を減らしません。</p>}{editingEvent?.status === 'completed' && eventStatus === 'planned' && <p className="inventory-warning">実績確定を取り消すと、販売・サンプルの在庫減少を戻します。</p>}</fieldset>}
       {mode === 'product' ? <div className="inventory-form-grid"><label>商品名<input name="name" required maxLength={100} defaultValue={editingProduct?.name}/></label><label>初期在庫<input key={editingProduct?.id ?? 'new-product'} name="initialStock" type="number" min="0" step="1" disabled={Boolean(editingProduct)} defaultValue={editingProduct?.initialStock ?? 0}/></label><label>通常価格<input name="defaultPrice" type="number" min="0" step="1" defaultValue={editingProduct?.defaultPrice ?? ''}/></label><label>カテゴリ<input name="category" maxLength={100} defaultValue={editingProduct?.category}/></label><label className="inventory-check"><input name="isActive" type="checkbox" defaultChecked={editingProduct?.isActive ?? true}/>販売中・使用中</label><label className="inventory-wide">商品メモ<textarea name="memo" maxLength={1000} defaultValue={editingProduct?.memo}/></label><fieldset className="inventory-wide inventory-fieldset"><legend>初売りイベント</legend>{editingProduct?.firstSaleEventId && !props.events.some(event => event.id === product.firstSaleEventId) && <p className="form-error">参照先の予定が見つかりません。再設定してください。</p>}{(['none', 'existing', 'new'] as FirstSaleMode[]).map(value => <label className="inventory-check" key={value}><input type="radio" name="firstSaleMode" checked={firstSaleMode === value} onChange={() => setFirstSaleMode(value)}/>{value === 'none' ? '設定しない' : value === 'existing' ? '登録済みの予定から選ぶ' : '新しいイベント予定を作る'}</label>)}{firstSaleMode === 'existing' && (sortedEvents.length ? <label>予定<select value={firstSaleEventId} onChange={(event) => setFirstSaleEventId(event.target.value)}><option value="">選択してください</option>{sortedEvents.map(event => <option key={event.id} value={event.id}>{eventLabel(event)}</option>)}</select></label> : <p>選択できる予定がありません。新しいイベント予定を作成してください。</p>)}{firstSaleMode === 'new' && <EventQuickCreateFields prefix="product-event" value={quickEvent} onChange={setQuickEvent}/>}</fieldset><fieldset className="inventory-wide inventory-fieldset"><legend>BOOTH設定</legend><label className="inventory-check"><input name="boothEnabled" type="checkbox" defaultChecked={editingProduct?.boothEnabled}/>BOOTHで販売中</label><label>BOOTH表示名<input name="boothDisplayName" maxLength={100} defaultValue={editingProduct?.boothDisplayName}/></label><label>BOOTH価格<input name="boothDefaultPrice" type="number" min="0" step="1" defaultValue={editingProduct?.boothDefaultPrice ?? ''}/></label><label>BOOTH販売枠<input name="boothListingQuantity" type="number" min="0" step="1" defaultValue={editingProduct?.boothListingQuantity ?? ''}/></label><label>BOOTH URL<input name="boothUrl" type="url" maxLength={500} defaultValue={editingProduct?.boothUrl}/></label></fieldset></div> : <div className="inventory-form-grid"><label>商品<select name="productId" required defaultValue={editingProduct?.id ?? ''}><option value="">選択してください</option>{props.products.filter(item => item.isActive && (mode !== 'booth' || item.boothEnabled)).map(item => <option key={item.id} value={item.id}>{item.name}（在庫 {stocks.get(item.id) ?? 0}）</option>)}</select></label>{mode === 'movement' ? <><label>調整方法<select name="movementType" value={movementType} onChange={(event) => setMovementType(event.target.value as InventoryMovement['type'])}><option value="restock">増やす（入荷・追加製造）</option><option value="adjustmentIncrease">増やす（その他）</option><option value="adjustmentDecrease">減らす（その他）</option></select></label><label>日付<input name="date" type="date" required defaultValue={nowKey}/></label><label data-field-error={movementFieldErrors.quantity}>数量（正の整数）<input name="quantity" type="text" inputMode="numeric" pattern="[0-9]*" required aria-invalid={Boolean(movementFieldErrors.quantity)} onInput={() => setMovementFieldErrors(current => ({ ...current, quantity: undefined }))}/>{movementType === 'adjustmentDecrease' && <small>減らす数を正数で入力します（1個減らす場合は「1」）。</small>}</label></> : mode === 'event' ? <><label className="inventory-wide">予定<select value={selectedEventId} onChange={(event) => setSelectedEventId(event.target.value)} required><option value="">選択してください</option>{sortedEvents.map(event => <option value={event.id} key={event.id}>{eventLabel(event)}</option>)}</select></label><div className="inventory-wide"><EventQuickCreateFields prefix="sale-event" value={quickEvent} onChange={setQuickEvent}/><button type="button" className="event-action-button secondary" onClick={createEventForSale}>新しいイベント予定を作る</button></div>{selectedFirstSaleProducts.length > 0 && <div className="inventory-wide inventory-recommendations"><strong>このイベントを初売りに設定した商品</strong>{selectedFirstSaleProducts.map(item => <button type="button" key={item.id} onClick={() => setEditingProduct(item)}>{item.name}（在庫 {stocks.get(item.id) ?? 0}）を選択</button>)}</div>}<label>持込数<input name="broughtQuantity" type="number" min="0" step="1" required defaultValue={editingEvent?.broughtQuantity}/></label><label>販売数<input name="soldQuantity" type="number" min="0" step="1" required defaultValue={editingEvent?.soldQuantity}/></label><label>サンプル数<input name="sampleQuantity" type="number" min="0" step="1" required defaultValue={editingEvent?.sampleQuantity}/></label><label>単価<input name="unitPrice" type="number" min="0" step="1" required defaultValue={editingEvent?.unitPriceSnapshot ?? editingProduct?.defaultPrice ?? ''}/></label></> : <><label>日付<input name="date" type="date" required defaultValue={editingBooth?.date ?? nowKey}/></label><label>状態<select name="status" defaultValue={editingBooth?.status ?? 'pending'}><option value="pending">未発送</option><option value="shipped">発送済み</option><option value="cancelled">キャンセル</option></select></label><label>数量<input name="quantity" type="number" min="1" step="1" required defaultValue={editingBooth?.quantity}/></label><label>単価<input name="unitPrice" type="number" min="0" step="1" required defaultValue={editingBooth?.unitPriceSnapshot ?? editingProduct?.boothDefaultPrice ?? ''}/></label><label>注文番号（任意）<input name="orderReference" maxLength={100} defaultValue={editingBooth?.orderReference}/></label></>}<label className="inventory-wide" data-field-error={mode === 'movement' ? movementFieldErrors.memo : undefined}>理由・メモ<textarea name="memo" maxLength={500} defaultValue={editingEvent?.memo ?? editingBooth?.memo} aria-invalid={mode === 'movement' && Boolean(movementFieldErrors.memo)} onInput={() => mode === 'movement' && setMovementFieldErrors(current => ({ ...current, memo: undefined }))}/></label></div>}
       {mode === 'product' && <div className="inventory-form-grid inventory-warehouse-price-fields"><label>BOOTH倉庫・購入者向け価格<input name="boothWarehouseCustomerUnitPrice" type="number" min="0" step="1" inputMode="numeric" defaultValue={editingProduct?.boothWarehouseCustomerUnitPrice ?? ''}/></label><label>BOOTH倉庫・受取単価<input name="boothWarehouseReceiptUnitPrice" type="number" min="0" step="1" inputMode="numeric" defaultValue={editingProduct?.boothWarehouseReceiptUnitPrice ?? ''}/></label></div>}
-      <footer><button type="button" onClick={close}>キャンセル</button><button className="health-primary-button" type="submit">{mode === 'event' ? eventStatus === 'planned' ? editingEvent?.status === 'completed' ? '実績確定を取り消す' : '準備中として保存' : editingEvent ? '変更を保存' : '実績を確定' : '保存'}</button></footer></form></dialog>
+      <footer><button type="button" onClick={close}>キャンセル</button><button className="health-primary-button" type="submit" disabled={mode === 'movement' && isMovementSubmitting}>{mode === 'movement' && isMovementSubmitting ? '保存中…' : mode === 'event' ? eventStatus === 'planned' ? editingEvent?.status === 'completed' ? '実績確定を取り消す' : '準備中として保存' : editingEvent ? '変更を保存' : '実績を確定' : '保存'}</button></footer></form></dialog>
   </div>;
 }
