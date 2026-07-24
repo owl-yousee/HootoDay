@@ -1065,3 +1065,111 @@ BOOTHの制度変更へ対応できるよう、特定時点の手数料率や保
 - 画像本体をlocalStorageや同期snapshotへ直接格納せず、Supabase Storageを第一候補とする。`AnniversaryShipment`には保存先情報だけを保持する候補とし、外部公開用共有リンクは作らない。通常在庫と`InventoryMovement`には連動しない。
 - 最初の作業は実装ではなく、Storage構造、匿名認証とworkspace単位アクセス制御、画像pathの保存場所、PC・iPhone同期、差し替え・個人カード削除・周年全体削除時の旧画像削除、失敗時rollback、backup境界、復元時に画像がない場合の扱い、画像形式・サイズ・圧縮・トリミング、郵便局端末向け表示方法の設計とする。
 - Phase I-7の周年完了・完了取消しと商品タブ上部カード、Phase I-8の通常在庫連携、Phase E-1b、Phase E-2、Sync Phase S-4bおよび同期詳細異常系の保留は維持し、未完了を完了扱いしない。
+
+# Phase I-6b 周年記念発送QR管理 境界設計（2026-07-24）
+
+## 目的と既存基盤
+
+- 個人発送カードごとにBOOTH匿名配送等の発送用QR画像を最大1枚登録し、iPhone画面へ大きく表示して郵便局端末で読み取る運用を対象とする。QR内容は解析せず、文字列も保存しない。
+- 現在のSupabase Authは`signInAnonymously()`で匿名ユーザーを`authenticated` roleとして扱う。workspaceは`app_workspaces`、membershipは`app_workspace_members(workspace_id, user_id, role)`で管理し、roleは`owner`または`member`である。既存RPCは`auth.uid()`と`is_app_workspace_member(workspace_id)`を再検証する。
+- `AnniversaryShipment`は既存の販売・在庫完全snapshot、validator、canonical fingerprint、明示送信・明示取得へ含まれている。QR参照情報もshipmentのoptional fieldとして既存経路へ含め、独立同期、自動送信、自動取得、自動retryは作らない。
+- 現時点でSupabase Storage、画像upload/download、画像縮小・向き補正の既存実装はない。Storage bucket、policy、画像utilityはI-6bで初めて追加する対象であり、本節では設計候補に留める。
+
+## 採用する基本境界
+
+- 画像本体と参照情報を分離する。画像本体はprivate Supabase Storage、参照情報だけを`AnniversaryShipment`、localStorage、JSON backup、販売・在庫同期snapshotへ含める。
+- 専用private bucket `hooto-day-anniversary-qr`を第一候補とする。共通画像bucket案は用途ごとの保持期間・policy・削除責任が曖昧になるため不採用候補とする。実装前PRECHECKで同名bucket・policyの不存在と既存命名との衝突を確認する。
+- object pathは`{workspaceId}/anniversary-qr/{shipmentId}/{objectId}.{ext}`を第一候補とする。workspace IDで認可境界、shipment IDで所有関係、差し替えごとのUUID object IDで不変objectとキャッシュ回避を実現する。氏名、住所、宛先番号、プラン名、周年名、元ファイル名、operation IDはpathへ入れない。
+- bucket名はアプリ設定として固定し、shipmentへ重複保存しない。public URL、signed URL、画像Base64、Blob、QR解析結果は永続データへ保存しない。
+
+## Storage認証・RLS候補
+
+- bucketはpublicにせず、PUBLIC／anonへ操作を許可しない。authenticated userだけが対象workspaceのmemberである場合に限り、`storage.objects`のSELECT、INSERT、DELETEを許可する。
+- policyは`bucket_id = 'hooto-day-anniversary-qr'`、path先頭segmentが正常なworkspace UUID、かつ`app_workspace_members`に`workspace_id = path workspaceId AND user_id = auth.uid() AND role IN ('owner','member')`が存在することを必須とする。bucket一致だけ、クライアントから渡したworkspace文字列だけでは許可しない。
+- immutableな新object path方式のためUPDATE／upsertは使用しない。差し替えはINSERTと旧object DELETEで行う。SELECTは認証付きStorage downloadを第一候補とし、短時間signed URLは必要性が確認された場合の代替案とする。signed URLを保存・ログ出力しない。
+- 既存inventory tableは直接policyなし・SECURITY DEFINER RPC限定だが、Storage SDKの標準操作には`storage.objects` policyが必要となる。この違いを明示し、SQL実装時はbucket作成、policy、rollback、read-only verifyを別ファイルで管理する。既存workspace/member table、helper、RPC、policyは変更しない。
+- policy式のpath UUID変換が不正pathで例外にならない具体式、Storage owner列の扱い、Supabase Storage標準権限との整合は実装前SQL PRECHECKで確定する。ここは未確定であり、まだSQLを作成・適用しない。
+
+## AnniversaryShipment参照情報候補
+
+- 後方互換なoptional fieldを第一候補とする。
+
+```ts
+shippingQrImage?: {
+  storagePath: string
+  mimeType: 'image/png' | 'image/jpeg'
+  width: number
+  height: number
+  sizeBytes: number
+  createdAt: string
+  updatedAt: string
+}
+```
+
+- `storagePath`、安全なmime type、正のwidth／height／sizeBytes、ISO日時をvalidatorで厳格確認する。画像未登録はfield欠損とし、旧shipment・旧snapshot・旧backupをそのまま受理する。`null`との二重表現は作らない。
+- bucket名、元ファイル名、hash、upload operation ID、signed/public URLは保存しない。operation IDが必要な場合はupload lifecycleの一時状態またはcleanup pending側で扱い、shipmentの画像参照へ混ぜない。
+- optional field追加はcanonical fingerprintへ自動的に含まれる。schemaVersionを据え置ける可能性が高いが、既存validator、remote RPCのJSON検証、旧snapshot受理をfixtureで確認してから確定する。schemaVersion据え置きは現時点では推奨案であり未実装である。
+
+## 登録・同期・表示
+
+- 登録は「QR画像を登録」の明示操作だけで開始する。選択、クライアント検証・必要な変換、upload前preview、確定、upload、参照保存read-back、React state更新の順とし、preview取消しではStorageもshipmentも変更しない。
+- PCは`accept`を制限したfile input、iPhoneは写真ライブラリ選択を必須経路とする。カメラ撮影は同じfile inputで端末が提示できる範囲を利用し、`capture`固定で写真ライブラリを隠さない。写真選択と直接撮影の実機挙動は実装前確認事項とする。
+- upload成功後に参照保存が失敗した場合は、新objectを明示削除し、元shipment参照を維持する。削除にも失敗した場合は孤立候補として記録し、成功扱いにしない。
+- PCでは参照保存直後から表示できる。別端末へは既存販売・在庫同期を明示送信し、別端末が明示取得した参照pathからStorageを取得する。画像取得失敗は「同期差異」ではなく「参照はあるが画像を取得できない」と区別する。
+- 同じshipmentをPCとiPhoneで同時差し替えした場合は既存snapshot競合として自動採用・mergeしない。競合解決後に採用されなかったpathが孤立候補になるため、cleanup対象へ引き継ぐ必要がある。
+- 表示は専用dialogまたはfullscreenとし、白背景、十分な白余白、縦横比維持、`object-fit: contain`、filter・ぼかし・不要な角丸や影なしとする。閉じる操作はQRから離し、背景scroll固定、safe-area対応、誤タップで閉じにくい構造とする。Wake Lockは対応差があるため任意補助に留める。
+
+## 画像形式・サイズ・トリミング
+
+- 入力候補はPNGとJPEGを必須対応とし、最大入力5MB、画像全体の最小寸法320×320px、最大長辺1600pxを初期推奨値とする。最小寸法はQR領域そのものを保証しないため、previewで小さすぎないことを利用者が確認する。
+- スクリーンショットPNGは5MB以内かつ最大長辺以内なら再圧縮せず維持する。カメラJPEGは向きを正規化し、必要な場合だけ最大長辺1600px、品質0.92前後で縮小する。QR edgeを損なう強い圧縮・平滑化を避ける。
+- Storage正規形式は`image/png`または`image/jpeg`とする。WebPとHEIC/HEIFは入力・decode・向き補正のブラウザ差があるため初期必須対象にせず、非対応時は安全な案内と再選択を行う。iPhone実機の選択結果mime typeを確認して最終決定する。
+- 初期実装ではアプリ内cropを作らず、端末側でtrim済み画像を選ぶ。upload前previewと「選び直す」を必須とする。crop UIは座標・向き補正・読み取り精度への影響が大きいため後続候補とする。
+- 5MB、320px、1600px、JPEG品質0.92は実画像fixtureと郵便局端末確認前の推奨値であり、実装前にスクリーンショット・iPhone撮影画像で再評価する。
+
+## 差し替え・削除・rollback
+
+- 差し替えは、新objectへupload、upload read-back／metadata検証、shipment参照を新pathへ保存、local read-back、React state更新、旧object削除の順とする。旧画像を先に削除せず、同じpathへ上書きしない。
+- 新参照保存前の失敗は新objectを削除して旧参照を維持する。新参照保存後の旧object削除失敗は新画像を成功状態として維持し、旧pathをcleanup pendingへ記録してユーザーへ明示する。旧参照へ自動rollbackすると別端末同期や新画像との対応が曖昧になるため行わない。
+- QR画像だけの削除は、shipmentから参照を外す保存とread-backを正本操作とし、その後Storage objectを削除する。Storage削除失敗はshipment本体や発送状態を削除せず、cleanup pendingとして明示再試行可能にする。
+- 個人カード削除は、削除対象shipmentと画像pathを開始snapshotへ保持し、既存2-key保存でshipment削除を確定した後にStorage画像を削除する。Storage削除失敗でshipmentを自動復元せず、cleanup pendingと安全な失敗表示を残す。他shipmentは不変とする。
+- 周年全体削除は配下shipmentのpath一覧を重複なしで開始snapshotへ保持し、campaign／shipmentsの既存2-key削除を確定後、Storageを明示的一括削除する。成功・失敗件数を表示し、一部失敗pathだけcleanup pendingへ残す。自動retryとcampaign自動復元は行わない。
+- StorageとlocalStorage／同期snapshotを跨ぐ原子的transactionは作れない。したがって参照の正本操作を先に確定し、画像削除失敗を孤立cleanupへ分離する。cleanup pendingの保存場所、validator、workspace切替時の扱い、backup対象は実装前の未確定事項である。
+
+## 孤立画像
+
+- Storageに存在するがどのshipmentも参照しないobject、shipment削除後の削除失敗、upload後・参照保存前の中断、差し替え後の旧object削除失敗を孤立画像と定義する。
+- 初期Phaseでは各操作内の即時削除と失敗表示、永続cleanup pending、ユーザーの明示再試行までを完了条件候補とする。bucket全走査による自動cleanup、自動retry、推測削除は行わない。
+- orphan scan UIは初期必須にせず、必要性を実機確認後に判断する。pathだけを扱い、画像本体、signed URL、宛先情報をログや診断へ出さない。
+
+## JSON backup・復元
+
+- JSON backupへ画像本体を含めず、shipmentのoptional参照情報だけを含める。既存deep cloneで含まれるが、validatorとformat 1／2／3互換をfixture確認する。
+- 同一workspaceへ復元し、Storage objectが存在すれば再表示する。object不在・権限不足・取得失敗は「画像が見つかりません」と表示するが、shipment本体の復元失敗にはしない。復元時にStorageへ自動upload・複製・削除しない。
+- pathにworkspace IDを含むため別workspaceへの移植は無効となる。現行backupがworkspace IDをenvelopeへ保持しない点も含め、同一workspace復元に限定するか、別workspace復元時にQR参照を明示除外するかは実装前に確定する。別workspaceで元pathを参照させることはRLSで拒否する。
+
+## 発送後削除・オフライン
+
+- 発送完了時に画像を自動削除しない。誤った状態変更やラベル再発行に備え、手動削除を第一候補とする。発送完了時またはカード上で削除を促す案内は可能だが、確認なしの削除は行わない。
+- 初期実装はStorageからの認証付き取得を基本とし、オフライン表示を保証しない。ブラウザcacheだけを保証根拠にせず、郵便局へ行く前に対象画像を開いて通信・表示・明るさを確認する運用注意を表示する。
+- IndexedDB cacheまたは明示的な「端末に準備」は、画像の失効・削除・端末残留・暗号化境界を別途設計する後続候補とする。初期Phaseへ暗黙cacheやService Workerを追加しない。
+
+## セキュリティ・通常在庫境界
+
+- QR画像は発送ラベル発行権限につながり得る機密情報として扱う。public URL、外部共有、画像解析、外部サービス送信、自動clipboard、画像本体やsigned URLのconsole／エラー報告出力を禁止する。
+- 永続データへ氏名、住所、郵便番号、電話番号、メールアドレス、注文者情報、QR文字列を追加しない。Storage pathにもこれらを含めない。端末紛失時の境界はSupabase匿名sessionとworkspace membershipに依存するため、匿名sessionの端末残留リスクを実装前の注意事項とする。
+- 画像登録、差し替え、表示、画像削除で、商品在庫、`InventoryMovement`、イベント、BOOTH倉庫、BOOTH家発送、売上、送料、周年発送状態を変更しない。QR画像だけの削除でshipment本体を削除しない。
+
+## 実装Phase案と完了条件
+
+- I-6b-1：Storage PRECHECK／APPLY／ROLLBACK／VERIFY、private bucket、workspace RLS、optional参照型・validator・旧データ互換を実装する。実環境適用はSQLレビュー後の明示操作とする。
+- I-6b-2：PC／iPhoneの選択、preview、検証・変換、upload、認証付き表示、参照保存と既存明示同期・backupを接続する。
+- I-6b-3：差し替え、QR単体削除、個人カード・周年全体削除、rollback、cleanup pendingと明示再試行を実装する。
+- I-6b-4：PC・iPhone双方向同期、画像欠損・offline案内、郵便局端末での読み取り実機確認と必要な表示調整を行う。郵便局で確認できない場合は実装完了と読み取り実機確認待ちを分けて記録する。
+- 完了条件候補はprivate bucket、workspace単位RLS、個人カード1画像、PC／iPhone登録、参照情報保存、既存明示同期、白背景拡大表示、差し替え・削除、削除失敗の明示再試行、旧データ互換、参照backup、画像欠損表示、通常在庫非連動、読み取り実機確認または確認待ち記録である。
+
+## 実装前の未確定事項と次の作業
+
+- Storage policyの安全なpath UUID抽出式、bucket/policy名の実環境衝突、cleanup pendingの保存・同期・backup境界、別workspaceへのbackup復元、HEIC入力、iPhoneの写真／カメラ選択、画像閾値、同時差し替え競合後のorphan処理を未確定とする。
+- 次の作業はI-6b-1の静的設計確認である。既存Supabase構造をread-only PRECHECKし、Storage bucket・policy・参照field・validator・rollbackの具体案をレビューするまで、src、型、localStorage、snapshot schema、Storage、SQL、RPC、RLSを変更しない。
+- Phase I-6の主要実機確認完了記録を維持し、Phase I-7、I-8、I-5b、I-9、E-1b、E-2、Sync Phase S-4bおよび同期詳細異常系を保留のまま残す。
