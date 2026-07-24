@@ -86,7 +86,7 @@ export type InventorySyncSaveRequest = {
 
 export type InventorySyncSaveResponse =
   | { status: 'saved'; revision: number; contentFingerprint: string }
-  | { status: 'conflict'; currentRevision: number; currentContentFingerprint: string }
+  | { status: 'conflict'; currentRevision: number; currentContentFingerprint: string | null }
   | { status: 'replayed'; revision: number; contentFingerprint: string }
 
 export type InventorySyncStorageResult = {

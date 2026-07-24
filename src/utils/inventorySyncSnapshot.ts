@@ -305,8 +305,8 @@ export function compareInventorySnapshotToBaseline(
 
 export function isInventorySyncRemoteSnapshotResponse(value: unknown): value is InventorySyncRemoteSnapshotResponse {
   if (!object(value) || !nonEmpty(value.workspaceId) || !integer(value.revision)) return false
-  if (value.snapshot === null) return value.contentFingerprint === null
-  return isInventorySyncSnapshot(value.snapshot) && value.snapshot.workspaceId === value.workspaceId &&
+  if (value.snapshot === null) return value.revision === 0 && value.contentFingerprint === null
+  return value.revision >= 1 && isInventorySyncSnapshot(value.snapshot) && value.snapshot.workspaceId === value.workspaceId &&
     value.snapshot.revision === value.revision && value.contentFingerprint === inventoryContentFingerprint(value.snapshot)
 }
 
@@ -321,7 +321,10 @@ export function isInventorySyncSaveRequest(value: unknown): value is InventorySy
 export function isInventorySyncSaveResponse(value: unknown): value is InventorySyncSaveResponse {
   if (!object(value) || !['saved', 'conflict', 'replayed'].includes(String(value.status))) return false
   if (value.status === 'conflict') {
-    return integer(value.currentRevision) && fingerprintPattern.test(String(value.currentContentFingerprint))
+    return integer(value.currentRevision) &&
+      (value.currentRevision === 0
+        ? value.currentContentFingerprint === null
+        : fingerprintPattern.test(String(value.currentContentFingerprint)))
   }
   return integer(value.revision) && fingerprintPattern.test(String(value.contentFingerprint))
 }
