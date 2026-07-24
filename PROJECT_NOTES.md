@@ -2890,3 +2890,10 @@ cleanup後VERIFY結果：
 - 関連commitは`d12906431b121f0039c4bdd747a31669f6889160`（`fix: restore delete recovery after reload`）と`eb689dfa918fb2859c428fb1b7ab7f2dbb6e4c73`（`docs: record sync final reconciliation`）である。
 - 同期機能は正式完成として保守モードへ移行する。以後は実利用で再現した問題だけを既存のfail-closed、verified snapshot、read-back、rollback境界内で最小修正し、理論上の全競合／通信失敗専用UI、新しい細分化stage、確認ボタン、metadata version、SQLは追加しない。
 - candidate未成立の古いテストデータcleanupと理論上の全競合・全通信失敗専用UIは既知制限として残す。必要になった場合だけ実利用の再現事実を基準に扱い、開発の主軸は手帳・健康・在庫管理本体へ戻す。
+
+## 2026-07-24 販売・在庫 Sync Phase S-1 静的棚卸し
+
+- PCとiPhoneで販売実績・在庫を共有する必要性、現行7配列の別key保存、販売記録と在庫移動の対応、現在庫再計算、物理削除、初回同期差異、編集競合、二重減算リスクを静的確認した。
+- DayMemo同期からはworkspace／認証／pairing、operation ID、CAS、read-back、fail-closedなどの基盤と原則だけを再利用する。日付baseline、metadata V5、Recovery Bridge、細分化されたcandidate UIは販売・在庫へそのまま複製しない。
+- 個人利用、2端末、小規模データ、販売記録とmovementの原子性を優先し、Supabaseはworkspace単位の販売・在庫全体snapshot＋operation ledgerを第一候補とする。7配列の個別upsertは部分成功と削除復活を招くため採用しない。
+- S-1ではコード、UI、localStorage、backup、Supabase、SQL、実機データを変更していない。正式な棚卸し、保留項目、S-2〜S-5、Phase E-1／I-4以降への戻り先は`INVENTORY_SYNC_ROADMAP.md`を正本とする。

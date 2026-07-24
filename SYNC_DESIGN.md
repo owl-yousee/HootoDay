@@ -2128,3 +2128,10 @@ Candidate checking now catches unexpected failures into a `failed` result and co
 - 同期工程の追加は実利用で再現した欠落または不具合がある場合に限る。静的監査で確認できる事項を新しい人間向けボタンへ変換せず、同一snapshotの重複full pull、説明だけのnextAction、内部Hook単位のstageを再導入しない。
 - 保守修正でも、破壊操作直前のverified確認、対象外不変、RPC結果検証、verified read-back、compare-and-write、rollback、confirmed tombstone厳格比較、自動retry／自動送信禁止を維持する。
 - candidate未成立の古いテストデータcleanup、理論上の全競合・全通信失敗専用UIは完成条件に含めない。実利用で必要性が確認されるまでは追加せず、HootoDay本体機能を優先する。
+
+## 販売・在庫同期との境界
+
+- DayMemo同期は完成済み・保守モードを維持し、販売・在庫同期の追加によってmetadata V5、日付baseline、candidate、Recovery Bridge、既存RPCを変更しない。
+- 販売・在庫は既存のHootoDay workspace、認証、pairing、operation ID、CAS、read-back、rollback、fail-closedの原則を共有する。一方、payload validator、local metadata、Supabase table／RPCは販売・在庫専用とする。
+- 現行7配列を別々にremoteへ保存すると販売記録とmovementが部分成功し得る。個人利用と小規模データを前提に、workspace単位の検証済み完全snapshotを1 revisionとして保存する方式を第一候補とする。
+- 販売・在庫同期の正式な静的棚卸し、Supabase方式比較、初回／通常同期、競合、削除、migration、Phase分割は`INVENTORY_SYNC_ROADMAP.md`を正本とする。

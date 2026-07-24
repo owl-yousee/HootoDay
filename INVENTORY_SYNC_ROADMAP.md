@@ -1,0 +1,578 @@
+# HootoDay 販売・在庫同期ロードマップ
+
+## 1. 文書の位置づけ
+
+この文書は、HootoDayの販売・在庫データをPCとiPhoneで安全に共有するための正本ロードマップである。
+
+- Sync Phase S-1では静的棚卸しと設計判断だけを行う。
+- 同期実装、Supabase変更、SQL実行、UI変更、localStorage変更は行わない。
+- 調査基準は2026-07-24時点の`main`、commit `074c1b1fa3eb16e79d6114b433c0caf0c35b4d94`とする。
+- DayMemo同期の完成済み実装を無条件に複製しない。再利用できる基盤と、販売・在庫専用に必要な処理を分離する。
+- 本文書の実装Phaseと保留項目は、途中で別の修正が入った場合の戻り先とする。
+
+## 2. 同期が必要な理由と個人利用前提
+
+販売実績は会場でiPhoneから入力し、PCでも同じ商品、販売、在庫を確認・編集する。端末別localStorageのままでは、両端末で現在庫と販売実績が一致せず、在庫の二重減算や削除済み記録の復活が起こり得る。
+
+HootoDayは本人だけが使う個人用アプリである。
+
+- 配布、一般公開、複数ユーザー権限、大規模アクセス、企業向け監査ログは対象外とする。
+- PCを主な編集・管理端末、iPhoneを会場入力端末として想定する。
+- 2端末のどちらかを暗黙に正本と推測しない。
+- 通信はユーザーの明示操作で開始し、自動送信、自動merge、自動retryは行わない。
+- 正常時の操作数は少なくし、異常時の安全停止はアプリ内診断へ集約する。
+
+## 3. 現在の販売・在庫保存構造
+
+### 3.1 保存versionと7つの配列
+
+`src/utils/inventoryStorage.ts`の`INVENTORY_STORAGE_VERSION`は`2`である。次の7配列を別々のlocalStorage keyへ保存する。
+
+| 対象 | 型 | localStorage key |
+| --- | --- | --- |
+| 商品 | `Product[]` | `hootoDay.products` |
+| 在庫移動 | `InventoryMovement[]` | `hootoDay.inventoryMovements` |
+| イベント販売 | `EventSalesRecord[]` | `hootoDay.eventSalesRecords` |
+| BOOTH家発送 | `BoothSalesRecord[]` | `hootoDay.boothSalesRecords` |
+| BOOTH倉庫 | `BoothWarehouseSaleRecord[]` | `hootoDay.boothWarehouseSalesRecords` |
+| 周年記念campaign | `AnniversaryCampaign[]` | `hootoDay.anniversaryCampaigns` |
+| 周年記念発送対象 | `AnniversaryShipment[]` | `hootoDay.anniversaryShipments` |
+
+各keyは`{ version: 2, records: [...] }`で保存される。読込時は型validatorを全件通し、同一IDがあれば`updatedAt`が新しい方を残す。`InventoryMovement`には`updatedAt`がないため、同一ID重複時の比較時刻を持たない。
+
+### 3.2 型ごとの識別子・時刻・revision相当情報
+
+| 型 | ID | 作成時刻 | 更新時刻 | revision | deletedAt |
+| --- | --- | --- | --- | --- | --- |
+| `Product` | `id` | `createdAt` | `updatedAt` | なし | なし |
+| `InventoryMovement` | `id` | `createdAt` | なし | なし | なし |
+| `EventSalesRecord` | `id` | なし | `updatedAt` | なし | なし |
+| `BoothSalesRecord` | `id` | `createdAt` | `updatedAt` | なし | なし |
+| `BoothWarehouseSaleRecord` | `id` | `createdAt` | `updatedAt` | なし | なし |
+| `AnniversaryCampaign` | `id` | `createdAt` | `updatedAt` | なし | なし |
+| `AnniversaryShipment` | `id` | `createdAt` | `updatedAt` | なし | なし |
+
+現行validatorはIDを「空でない文字列」として検証する。新規UIでは主に`crypto.randomUUID()`を使うが、型・storage層はUUID形式を要求しない。
+
+### 3.3 React stateと永続化
+
+`src/hooks/useInventory.ts`は7配列を7個のReact stateとして保持し、それぞれ別の`useEffect`でlocalStorageへ保存する。
+
+- 7配列をまとめた原子的なlocal保存ではない。
+- React更新が同じ操作内で行われても、localStorage writeは別々に実行される。
+- タブ終了、quota、storage例外などがwrite間に起きると、販売記録だけ、または在庫移動だけが残る可能性がある。
+- `inventoryStorage.ts`は不正なkeyをwrite-blockするが、7配列全体の整合性を判定する仕組みはない。
+
+### 3.4 JSONバックアップ
+
+`src/utils/jsonBackup.ts`の`HOOTODAY_BACKUP_FORMAT_VERSION`は`3`である。
+
+- 7配列はすべてバックアップ対象である。
+- restoreは全keyの旧値を保持して順番に書き込み、失敗時に全keyのrollbackを試みる。
+- 在庫同期を追加する際も、現行backup format 3を直ちに壊す必要はない。
+- 新しい同期metadataや統合local snapshotを永続化する場合は、バックアップ対象とするかをS-2で決定する。
+
+## 4. 現在庫の正本
+
+現在庫そのものを保存するフィールドはない。`src/utils/inventoryCalculation.ts`の`calculateCurrentStock()`が次で再計算する。
+
+`Product.initialStock + 増加movement合計 - 減少movement合計`
+
+増加は`restock`、`boothCancellation`、`return`、`adjustmentIncrease`、減少はその他のmovement typeである。
+
+### 正式判断
+
+- 現在庫を独立した同期対象へ追加しない。
+- `Product.initialStock`と`InventoryMovement[]`を正本とし、同期後も現在庫を再計算する。
+- 現在庫の計算結果だけを同期すると、販売記録由来movementとの二重反映や不一致を隠すため採用しない。
+- 同期後は、販売記録と対応movementの参照整合、および両端末の再計算結果一致を検証する。
+
+## 5. 販売記録と在庫移動の対応
+
+### 5.1 イベント販売
+
+`EventSalesRecord.status === 'completed'`のとき、同じ販売記録IDを参照する次のmovementを生成する。
+
+- 販売数：`eventSale`
+- サンプル数：`eventSample`
+
+編集時は同じ`EventSalesRecord.id`を維持し、`eventSalesRecordId`が一致する既存movementを除外して再生成する。準備中へ戻す、または記録を削除すると対応movementを除外する。
+
+### 5.2 BOOTH家発送
+
+`pending`と`shipped`は有効販売、`cancelled`は売上・在庫対象外である。
+
+- 有効販売は`boothSale` movementを1件生成する。
+- 編集時は同じ`BoothSalesRecord.id`を維持し、`boothSalesRecordId`が一致するmovementを置換する。
+- キャンセルまたは削除時は対応movementを除外する。
+
+### 5.3 BOOTH倉庫
+
+型と`boothWarehouseSale` movement参照欄は存在するが、S-1時点で入力・編集・削除UIとhook操作は未実装である。将来実装では`BoothWarehouseSaleRecord.id`と`InventoryMovement.boothWarehouseSalesRecordId`を同じ論理操作で保存・置換・削除する必要がある。
+
+### 5.4 周年記念
+
+型と保存配列は存在するが、操作UIは空画面である。通常在庫との連携は未確定であり、S-2で「在庫連携なし」を初期値とし、必要性が確認された場合だけ別Phaseで追加する。
+
+## 6. 現行削除方式と復活リスク
+
+販売・在庫データの削除は物理削除である。
+
+- イベント販売削除：販売記録配列と対応movement配列から対象IDを除外する。
+- BOOTH家発送削除：販売記録配列と対応movement配列から対象IDを除外する。
+- 商品、手動movement、BOOTH倉庫、周年記念にはS-1時点で共通の同期削除表現がない。
+- 各recordに`deletedAt`はなく、削除専用記録やtombstoneもない。
+
+端末Aで削除し、古いrecordを保持する端末Bが後から同期すると、単純な配列和集合やupdatedAt優先では削除情報が存在しないためrecordが復活する。
+
+### 正式判断
+
+個別record方式を採用する場合はtombstoneが必須である。ただし本ロードマップの推奨方式では、workspace単位の完全snapshotをCAS更新し、「snapshot内に存在しない」ことを最新revisionの正式状態として扱う。これにより、個別recordへ`deletedAt`を追加せず削除を表現できる。
+
+## 7. 現行編集・保存の不整合リスク
+
+### 7.1 部分保存
+
+販売記録とmovementは別state、別localStorage keyである。現行ローカル操作はUI上では一操作でも永続化は原子的ではない。
+
+- 販売記録だけ保存：売上に加算されるが在庫が減らない。
+- movementだけ保存：販売一覧に記録がないのに在庫だけ減る。
+- 削除時に片方だけ成功：削除済み売上または孤立movementが残る。
+
+### 7.2 編集競合
+
+多くのrecordには`updatedAt`があるがrevision、baseline、端末識別、compare-and-writeがない。
+
+- 同一recordをPCとiPhoneで編集した場合、単純な最終時刻優先は時計ずれに弱い。
+- `InventoryMovement`には`updatedAt`がなく、編集系譜を時刻で比較できない。
+- 販売recordとmovementを別々に競合解決すると、同じ論理操作の片方だけを採用し得る。
+
+### 7.3 二重在庫減算
+
+同じ販売を別IDで両端末が登録すると、内容が同じでも別recordとして扱われ、対応movementも2組になる。record IDだけでは、実際に同一販売か別販売かを安全に推測できない。
+
+- 同一operationの再送は同じoperation IDで冪等化する。
+- 別operation、別record IDの同内容は自動で統合しない。
+- 重複入力の可能性は差異として表示し、ユーザーが記録単位で判断する。
+
+## 8. 初回同期で起こり得る差異
+
+PCとiPhoneに別々のlocalStorageが存在する可能性がある。
+
+- 同じID・同じ内容
+- 同じID・異なる内容
+- PCだけの商品、販売記録、movement
+- iPhoneだけの商品、販売記録、movement
+- 販売記録だけ存在し、対応movementが欠落
+- movementだけ存在し、参照先販売記録が欠落
+- 同一販売を別IDで両端末が登録
+- 削除済み端末と古いrecordを保持する端末
+- 空のiPhoneとデータを持つPC
+
+初回同期で端末を自動的に正本と推測しない。現在の運用ではPCが主端末であるため、最初の正式導入は「PCの検証済み完全snapshotを明示送信し、空または明示破棄を確認したiPhoneが取得する」方式を推奨する。
+
+両端末に有効データがある場合は、ID単位の静的比較と参照整合診断を先に行う。自動和集合は行わない。
+
+## 9. 既存DayMemo同期からの再利用分類
+
+| 要素 | 分類 | 判断 |
+| --- | --- | --- |
+| Supabase client、匿名認証 | A：そのまま再利用 | 接続基盤は共通で使える |
+| workspace、owner/member、parent/child、pairing | A：そのまま再利用 | 同じHootoDay workspaceへ在庫snapshotを紐づける |
+| `SyncConnection`と接続localStorage | A：そのまま再利用 | 新しい在庫専用接続情報を重複保存しない |
+| UUID v4生成utility | A：そのまま再利用 | operation ID生成に利用できる |
+| 明示操作、fail-closed、read-back、rollback原則 | A：そのまま再利用 | `HOOTOSYNC_RULES.md`を共通規範とする |
+| compare-and-write、local snapshot fingerprint | B：共通utility化後に再利用 | DayMemo metadata型へ固定された部分は分離する |
+| RPC戻り値normalizerの単一行・厳格検証パターン | B：共通utility化後に再利用 | inventory専用result型とvalidatorが必要 |
+| full pullのpagination、重複・sequence検証パターン | B：共通utility化後に再利用 | 現関数は`day_memo` payloadと日付IDへ固定されている |
+| operation ledger、revision、CAS、idempotencyの概念 | C：概念だけ再利用 | inventory専用table/RPCが必要 |
+| DayMemo metadata V5 | E：再利用しない | 日付baseline、delete intent、body mismatch状態は在庫snapshotに不適合 |
+| DayMemo candidate／adoption／Recovery Bridgeの細分UI | E：再利用しない | 個人用在庫同期には過剰で、正常操作を複雑化する |
+| DayMemo本文validator、日付entity ID、tombstone比較 | D：在庫では不要 | inventory snapshot validatorへ置き換える |
+
+DayMemo同期の安全原則は再利用するが、非常に細かいstageと確認ボタンをそのまま持ち込まない。
+
+## 10. Supabase既存構造の確認
+
+リポジトリ内のSQLと現行コードから確認できる範囲は次のとおりである。
+
+- `app_workspaces`、`app_workspace_members`とmembership helperを共有する設計である。
+- `hooto_day_sync_records`と`hooto_day_sync_operations`がある。
+- 現行recordとRPCは`entity_type = 'day_memo'`へ固定されている。
+- upsert/delete/pull RPC、operation ID、revision、change sequence、operation result read-backが存在する。
+- RLSを有効化し、直接table accessを許可せず、認証済みRPCからworkspace membershipを検証する。
+- current recordとoperation履歴を分離し、CASと冪等再送を行う。
+
+これらのSQLファイルはDayMemo専用であり、inventoryをそのまま書き込めない。S-1ではSupabaseへ接続せず、実環境の適用状態や行データは確認していない。S-3前にinspection SQLで実環境を再確認する。
+
+## 11. Supabase保存方式の比較
+
+### 案A：種類ごとの専用table
+
+商品、movement、各販売、周年記念を別tableにする。
+
+- 長所：DB制約、検索、record単位競合、将来の集計に強い。
+- 短所：table、RPC、RLS、validator、tombstoneが多く、販売recordとmovementのtransaction設計も種類ごとに必要。
+- 個人用としては実装量と保守量が大きい。
+
+### 案B：record共通table
+
+`record_type`、`record_id`、`payload`、`revision`、`deleted_at`を持つ。
+
+- 長所：DayMemoに近いCAS、tombstone、pullを共通化しやすい。
+- 短所：record typeごとの厳格payload validatorが必要。販売recordと複数movementを一つのtransactionに束ねる専用RPCも必要。
+- 7種類を単純に別々にupsertすると、部分成功と二重減算を防げない。
+
+### 案C：workspace単位の販売・在庫全体snapshot
+
+7配列を検証済みの一つのpayloadとして、workspaceごとに1行保存する。
+
+- 長所：販売recordとmovementを常に同じrevisionで保存できる。削除は最新snapshotからの欠落として確定し、個別tombstone不要。RPC、operation、read-back、rollbackが最小で済む。
+- 短所：異なるrecordの同時編集でもworkspace snapshot競合になる。payload全体を送受信する。大規模データには向かない。
+
+### 推奨
+
+個人利用、PC＋iPhoneの2端末、現在のデータ量、月次締めなし、record間参照と在庫原子性を優先し、**案Cのworkspace単位snapshot**を推奨する。
+
+異なるrecordの同時編集はrevision競合として検出し、最新remoteとlocal baselineを使って「互いに変更していないrecordだけ」をCodex側fixtureで検証可能な純粋関数により再構成する。自動保存はせず、差異概要を確認してから明示送信する。同一record変更、削除対変更、参照不整合は自動mergeしない。
+
+## 12. 推奨table構造
+
+実名はS-3のSQL reviewで確定する。概念構造は次とする。
+
+### `hooto_day_inventory_snapshots`
+
+- `workspace_id uuid primary key`
+- `payload jsonb not null`
+- `schema_version integer not null`
+- `revision bigint not null`
+- `change_sequence bigint not null`
+- `server_updated_at timestamptz not null`
+- `client_updated_at timestamptz`
+- `updated_by uuid`
+- `source_device_id text`
+
+payloadは7配列とpayload自身のformat versionを含む。validatorは各recordの既存storage validator相当、ID一意性、参照整合、販売recordとmovementの一致、現在庫非負を一括検証する。
+
+### `hooto_day_inventory_sync_operations`
+
+- `operation_id uuid primary key`
+- `workspace_id uuid not null`
+- `operation_kind text`（初期は`snapshot_upsert`のみ）
+- `requested_by uuid`
+- `request_base_revision bigint`
+- `request_fingerprint text`
+- `result_status text`（`applied`または`conflict`）
+- result revision、change sequence、server updated time
+- `created_at timestamptz`
+
+operation IDを同じpayload、同じbase revisionへ束縛し、同一IDの別request利用を拒否する。
+
+## 13. 推奨RPC構造
+
+### inventory snapshot取得
+
+- workspace membershipを確認する。
+- 現在のsnapshotを最大1行返す。
+- payload、schema version、revision、change sequence、server updated timeを返す。
+- 読取だけでoperationを作らない。
+
+### inventory snapshot保存
+
+- 認証、workspace membership、payload schema、全参照整合を検証する。
+- `base_revision`によるcompare-and-setを行う。
+- `operation_id`を必須にする。
+- snapshot更新とoperation result保存を同一transactionで行う。
+- conflictではremoteを変更しない。
+- 成功時だけrevisionとchange sequenceを進める。
+- 再送は同じoperation resultを返し、二重適用しない。
+
+### operation result取得
+
+- operation ID、workspace、kind、request userを照合する。
+- 保存済み結果だけをread-onlyで返す。
+- 結果不存在時にsnapshotを更新しない。
+
+個別の販売追加RPC、movement追加RPC、削除RPCは初期実装では作らない。全payloadを一つのCASで保存するためである。
+
+## 14. operation ID、revision、updatedAt
+
+- operation IDはremote保存直前の明示操作時に1回だけ生成する。
+- 確認・preview・pullだけでは生成しない。
+- 結果不明時の再確認と冪等再送は同じoperation IDを使う。
+- 新しい送信試行で同じoperation IDを別payloadへ使わない。
+- remote revisionを競合判定の正本とする。
+- local recordの`updatedAt`は差異説明と非競合merge判定に利用できるが、remote CASの代替にはしない。
+- `InventoryMovement`は`updatedAt`を持たないため、ID＋全内容のcanonical fingerprintで比較する。
+- 端末時計だけで勝者を決めない。
+
+## 15. 削除表現
+
+推奨snapshot方式では個別record tombstoneを追加しない。
+
+- 最新remote snapshotにrecordがないことが削除の正本である。
+- 送信前baselineに存在し、local snapshotから除外されたIDを削除差異として表示する。
+- 別端末が古いsnapshotを送る場合はbase revision不一致で停止するため、削除済みrecordを上書き復活させない。
+- rebase時にremoteで削除、localで未変更なら削除を維持する。
+- remote削除後にlocal内容を編集していた場合は削除対変更競合として明示判断を求める。
+- snapshot全体を消す「全削除」は通常同期操作として用意しない。
+
+## 16. 初回同期方式
+
+### 推奨する最初の導入
+
+1. PCでJSONバックアップを取得する。
+2. PCの7配列、ID一意性、参照整合、現在庫をread-only検証する。
+3. iPhone側の販売・在庫が空であることを明示確認する。
+4. PC snapshotの件数と現在庫概要を表示する。
+5. ユーザーの明示操作でPC snapshotをrevision 0から送信する。
+6. RPC結果を検証し、remote snapshotをread-backする。
+7. iPhoneで明示取得し、local保存前後のread-backを行う。
+8. 両端末の7配列signature、参照整合、商品別現在庫を比較する。
+
+PCまたはiPhoneのどちらかを自動で正本と推測しない。両端末にデータがある場合は初回送信を停止し、差異診断へ分岐する。
+
+## 17. 通常同期方式
+
+正常時は細かい確認ボタンを増やさず、次の2操作を基本とする。
+
+1. **同期状態を確認**：remote snapshotをread-only取得し、local、baseline、remoteを比較する。
+2. **変更を同期**：差異概要の確認後、最新remote revisionとlocal鮮度を再確認して1回送信し、read-backする。
+
+### 差異の扱い
+
+- localのみ変更：local snapshot送信候補。
+- remoteのみ変更：remote snapshotのlocal反映候補。
+- 別recordを双方が変更：baselineを基準に非競合merge候補を純粋関数で作るが、自動保存しない。
+- 同一recordを双方が変更：競合として対象型、ID、更新時刻、差異分類を表示し、local／remoteを明示選択する。
+- 販売recordと対応movementは別々に選択しない。同じ論理record群として整合後の完全snapshotを作る。
+- 参照切れ、現在庫負数、record重複、validator失敗はfail-closed。
+
+## 18. 同一record競合と別record同時追加
+
+### 同一record
+
+- IDが同じでbaselineからlocal・remote双方が変化した場合は自動mergeしない。
+- 商品、販売記録、周年記念などrecord単位でlocal／remoteを選択する。
+- 販売記録を選択した場合は、対応movementを選択結果から再構築・検証し、片方の端末の孤立movementを混ぜない。
+
+### 別record同時追加
+
+- IDが異なり、双方のrecordと参照がvalidで、既存IDと衝突しない場合だけmerge候補へ含められる。
+- 内容が似ていても同一販売と推測しない。
+- 商品IDが片側にしかない販売・movementは、商品を含む完全な参照集合としてのみ採用する。
+- merge後の全ID一意性、販売とmovement、在庫非負を一括検証する。
+
+## 19. offlineと再送
+
+- offlineではlocal編集を許可するが、remote成功扱いにしない。
+- 同期確認または送信が失敗した場合はlocalデータを維持する。
+- 自動retryしない。
+- RPC結果不明時は同じoperation IDを保持し、operation result読取を優先する。
+- 同一operationの再送は同じID、同じfingerprint、同じbase revisionに限定する。
+- remote適用済みを推測して新operationで送り直さない。
+- pending operationはlocalの在庫同期metadataへ永続化し、再読み込み後も結果確認できるようにする。
+
+## 20. 必要なlocal型・保存変更
+
+S-1では変更しない。S-2で次を設計・実装する。
+
+- 7配列を一括検証する`InventoryDataSnapshot`型。
+- canonical serializeとfingerprint。
+- ID一意性、参照整合、販売recordとmovement一致、現在庫非負のvalidator。
+- local baseline snapshotまたはbaseline fingerprint。
+- remote revision、change sequence、server updated time。
+- pending inventory sync operation。
+- push blockとlast successful sync time。
+- 7つの既存keyから一括snapshotを構築するread-only adapter。
+
+localStorageの原子性を改善する場合は、既存7keyを即削除せず、統合snapshot keyを正本へ移す明示migrationとverified rollbackを別Phaseにする。
+
+## 21. migrationとbackup方針
+
+- S-1では`INVENTORY_STORAGE_VERSION = 2`とbackup format 3を変更しない。
+- S-2で新しい同期metadataだけを追加する案と、統合local snapshotへ移行する案を比較する。
+- 既存7配列は読込可能なまま維持し、migration前にJSONバックアップを必須とする。
+- migrationはread-only診断と明示実行を分離する。
+- 書込み後read-backし、失敗時は7keyと新keyの両方をrollbackする。
+- 古いbackup format 3は引き続き読めるようにする。
+- 新しい同期metadataはremote内容を再取得できるため、通常バックアップへ含めるかはS-2で判断する。local pendingがある場合は復旧に必要なので無条件除外しない。
+
+## 22. 安全条件
+
+- workspace binding、認証、membershipを確認する。
+- 7配列すべての型、ID一意性、参照整合を確認する。
+- 販売recordとmovementを同じ論理操作として検証する。
+- 現在庫を両端末で再計算し、負数を許可しない。
+- remote保存直前に最新revisionを再取得する。
+- local snapshotが確認時から変化していないことを確認する。
+- operation IDは1回だけ生成する。
+- RPC戻り値を厳格検証する。
+- remote read-backとlocal read-backを行う。
+- 結果不明、競合、validator失敗、参照切れはfail-closed。
+- 自動同期、自動送信、自動retry、自動merge、自動削除を行わない。
+- UIには件数、対象型、状態、revisionなど安全な情報だけを表示し、raw payload、UUID、operation ID、tokenを表示しない。
+
+## 23. Sync Phase
+
+### 完了済み
+
+- Phase I-1：型、inventory storage version 2、migration、backup format 3基盤。
+- Phase I-2：商品、イベント、BOOTH、周年記念、在庫履歴の5タブ化。
+- Phase I-3：商品カード再編とBOOTH倉庫価格設定。
+- Sync Phase S-1：販売・在庫同期の静的棚卸しと正式ロードマップ。
+
+### 今後
+
+#### Sync Phase S-2：同期方式確定とlocal基盤
+
+- `InventoryDataSnapshot`、validator、canonical fingerprint。
+- 参照整合と在庫再計算fixture。
+- local sync metadata、baseline、pending operation。
+- 既存7key read-only adapter。
+- migration／backup変更案の確定。
+- Supabase操作なし。
+
+#### Sync Phase S-3：Supabase基盤
+
+- 現行workspace/auth/RLSのinspection。
+- inventory snapshot／operation table。
+- pull、CAS upsert、operation result RPC。
+- APPLY、VERIFY、ROLLBACK SQLを分離。
+- CodexはSQLを自動実行しない。
+
+#### Sync Phase S-4：初回同期と通常同期
+
+- PC snapshot明示送信。
+- iPhone明示取得。
+- read-backと両端末signature／現在庫一致。
+- 通常の確認、local送信、remote反映。
+- 同一record競合と非競合record merge候補。
+
+#### Sync Phase S-5：往復実機確認と在庫固有安全確認
+
+- PCから1件追加しiPhoneへ反映。
+- iPhoneで1件変更しPCへ反映。
+- 1件削除し両端末から消える。
+- 販売recordとmovementの対応一致。
+- 商品別現在庫一致。
+- offline、結果不明、冪等再送、revision conflict。
+
+### 同期完了後の本体Phase
+
+- Phase E-1：イベント複数商品一括入力。
+- Phase I-4：BOOTH倉庫。
+- Phase I-5：BOOTH家発送拡張。
+- Phase I-6：周年記念基本管理。
+- Phase I-7：周年記念完了と商品タブ上部カード。
+- Phase I-8：必要な場合のみ周年記念と通常在庫の連携。
+
+## 24. 各PhaseでCodexが行う自動検証
+
+- 型validatorの正常・異常fixture。
+- 7配列canonical serializationの順序安定性。
+- ID重複、参照切れ、販売recordとmovement不一致の拒否。
+- 商品別現在庫再計算。
+- 同一operationの冪等性。
+- stale revision conflict。
+- 同一record競合、別record同時追加、削除対変更。
+- partial local writeとrollback。
+- RPC response normalizer。
+- read-back完全一致。
+- offlineとresponse unknown。
+- migrationと旧backup読込。
+
+ユーザーによる実機確認は、初回同期基盤完成時の「PC送信 → iPhone表示 → iPhone変更 → PC反映 → 削除 → 両端末消去 → 現在庫一致」に限定する。途中Phaseで大量のスクリーンショットや細かな確認を要求しない。
+
+## 25. 確定済み本体仕様と保留
+
+### 確定済み
+
+- 商品、イベント販売、BOOTH家発送の現行保存形式。
+- BOOTH倉庫と周年記念の型・保存配列。
+- イベント販売はplanned／completed。
+- completedだけが販売・サンプルmovementを持つ。
+- BOOTH家発送はpending／shippedが有効、cancelledは在庫・売上対象外。
+- 編集は既存record IDを維持する。
+- 削除は対応movementも除外する。
+- 現在庫はinitialStockとmovementから再計算する。
+- BOOTH倉庫は数量と受取単価snapshotを保持する。
+- 周年記念は販売・売上へ含めず、個人情報を保存しない。
+
+### 保留
+
+- BOOTH倉庫の入力・編集・削除UI。
+- 周年記念の操作UIと完了処理。
+- 周年記念発送で通常商品在庫を減らすか。
+- local統合snapshot keyへのmigration時期。
+- inventory sync metadataをJSONバックアップへ含める範囲。
+- 非競合merge候補をどこまで自動構築し、どの概要を表示するか。
+- operation履歴の保持期間。
+
+## 26. 枝分かれ作業の記録規則
+
+同期実装中に不具合修正やUI変更が必要になった場合は、次を記録する。
+
+- 現在の本線Phase。
+- 割り込み作業名と理由。
+- 割り込み前の未完了条件。
+- 割り込み完了条件。
+- 本線へ戻るPhaseと再開条件。
+
+Phaseを完了していない場合は「完了」と記録せず、「保留」と「戻り先」を残す。
+
+## 27. S-1の完了条件
+
+- 現行7配列、保存version、backup formatを確認済み。
+- 現在庫の正本をmovement再計算と確定。
+- 販売recordとmovementの原子性不足を特定。
+- 物理削除と削除復活リスクを特定。
+- 同一record競合、別record追加、初回同期差異を整理。
+- DayMemo同期の再利用範囲をA〜Eで分類。
+- Supabase 3案を比較し、workspace単位snapshotを推奨。
+- S-2〜S-5と本体Phaseへの戻り先を記録。
+- コード、UI、localStorage、Supabase、SQL、実機データを変更していない。
+
+## 28. S-1で確認した実在ファイル
+
+### 販売・在庫
+
+- `src/components/InventoryPage.tsx`
+- `src/hooks/useInventory.ts`
+- `src/utils/inventoryCalculation.ts`
+- `src/utils/inventoryStorage.ts`
+- `src/types/inventory.ts`
+- `src/types/backup.ts`
+- `src/utils/jsonBackup.ts`
+- `src/App.tsx`
+
+### 接続・DayMemo同期
+
+- `src/types/sync.ts`
+- `src/types/dayMemoSync.ts`
+- `src/utils/syncConnectionStorage.ts`
+- `src/utils/uuid.ts`
+- `src/utils/dayMemoSyncPull.ts`
+- `src/utils/dayMemoSyncStorage.ts`
+- `src/utils/dayMemoSyncUpsertResult.ts`
+- `src/utils/dayMemoSyncOperationResult.ts`
+- `src/hooks/useSupabaseWorkspace.ts`
+- `src/hooks/useDayMemoInitialUpload.ts`
+- `src/hooks/useDayMemoUpdateUpload.ts`
+- `src/hooks/useDayMemoLocalOperationSend.ts`
+- `src/hooks/useDayMemoSyncRecoveryCheck.ts`
+- `src/hooks/useDayMemoSyncRecoveryApply.ts`
+- `src/lib/supabaseClient.ts`
+
+### SQL・正式文書
+
+- `SUPABASE_HOOTO_DAY_SYNC_PRECHECK.sql`
+- `SUPABASE_HOOTO_DAY_SYNC_APPLY.sql`
+- `SUPABASE_HOOTO_DAY_SYNC_VERIFY.sql`
+- `SUPABASE_HOOTO_DAY_SYNC_ROLLBACK.sql`
+- `SUPABASE_HOOTO_DAY_OPERATION_RESULT_READ_APPLY.sql`
+- `PROJECT_NOTES.md`
+- `SYNC_DESIGN.md`
+- `HOOTOSYNC_RULES.md`
+
+`HOOTOSYNC_RULES.md`の明示操作、read-back、rollback、fail-closed、自動処理禁止は在庫同期にも十分適用できるため、S-1では重複追記していない。
