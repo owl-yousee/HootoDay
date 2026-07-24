@@ -205,13 +205,17 @@ export function AnniversaryManagementPanel(props: Props) {
     qrSelectionShipmentIdRef.current = shipmentId
     const input = source === 'camera' ? qrCameraInputRef.current : qrLibraryInputRef.current
     if (!input) return
-    input.value = ''
     input.click()
   }
   const receiveQrImage = (event: React.ChangeEvent<HTMLInputElement>) => {
     const shipmentId = qrSelectionShipmentIdRef.current
-    const file = event.currentTarget.files?.[0]
-    if (!shipmentId || !file) return
+    const input = event.currentTarget
+    const file = input.files?.[0]
+    input.value = ''
+    if (!shipmentId || !file) {
+      qr.reportEmptySelection(shipmentId)
+      return
+    }
     void qr.selectFile(shipmentId, file)
   }
   const closeQrPreview = () => {
@@ -405,6 +409,8 @@ export function AnniversaryManagementPanel(props: Props) {
                           onQrRegister={() => chooseQrImage(shipment.id, 'library')}
                           onQrCamera={() => chooseQrImage(shipment.id, 'camera')}
                           onQrDisplay={() => void qr.downloadImage(shipment.id)}
+                          qrError={qr.errorShipmentId === shipment.id ? qr.error : ''}
+                          onDismissQrError={qr.clearError}
                           onDelete={() => {
                             if (rejectQrAttachedDeletion([shipment])) return
                             if (!window.confirm(`宛先番号「${shipment.destinationNumber}」の発送記録を削除しますか？`)) return
@@ -424,6 +430,8 @@ export function AnniversaryManagementPanel(props: Props) {
                       onQrRegister={() => chooseQrImage(shipment.id, 'library')}
                       onQrCamera={() => chooseQrImage(shipment.id, 'camera')}
                       onQrDisplay={() => void qr.downloadImage(shipment.id)}
+                      qrError={qr.errorShipmentId === shipment.id ? qr.error : ''}
+                      onDismissQrError={qr.clearError}
                       onDelete={() => {
                         if (rejectQrAttachedDeletion([shipment])) return
                         if (!window.confirm(`宛先番号「${shipment.destinationNumber}」の発送記録を削除しますか？`)) return
@@ -439,9 +447,9 @@ export function AnniversaryManagementPanel(props: Props) {
     <input ref={qrLibraryInputRef} className="visually-hidden" type="file"
       accept="image/png,image/jpeg" onChange={receiveQrImage} />
     <input ref={qrCameraInputRef} className="visually-hidden" type="file"
-      accept="image/png,image/jpeg" capture="environment" onChange={receiveQrImage} />
+      accept="image/jpeg" capture="environment" onChange={receiveQrImage} />
     {qr.message && <p className="anniversary-qr-message" role="status">{qr.message}</p>}
-    {qr.error && !qr.preview && !qr.display &&
+    {qr.error && qr.errorShipmentId === null && !qr.preview && !qr.display &&
       <p className="form-error anniversary-qr-error" role="alert">{qr.error}</p>}
 
     <dialog ref={qrPreviewDialogRef} className="inventory-dialog anniversary-qr-dialog"
@@ -579,7 +587,10 @@ export function AnniversaryManagementPanel(props: Props) {
   </section>
 }
 
-function ShipmentCard({ shipment, showPlan = false, onEdit, onDelete, onQrRegister, onQrCamera, onQrDisplay }: {
+function ShipmentCard({
+  shipment, showPlan = false, onEdit, onDelete, onQrRegister, onQrCamera, onQrDisplay,
+  qrError, onDismissQrError,
+}: {
   shipment: AnniversaryShipment
   showPlan?: boolean
   onEdit: () => void
@@ -587,6 +598,8 @@ function ShipmentCard({ shipment, showPlan = false, onEdit, onDelete, onQrRegist
   onQrRegister: () => void
   onQrCamera: () => void
   onQrDisplay: () => void
+  qrError: string
+  onDismissQrError: () => void
 }) {
   return <article className="anniversary-shipment-card">
     <span className={`anniversary-status ${statusGroup(shipment.status)}`}>{displayStatus(shipment.status)}</span>
@@ -609,6 +622,10 @@ function ShipmentCard({ shipment, showPlan = false, onEdit, onDelete, onQrRegist
             <button type="button" className="anniversary-qr-camera-button" onClick={onQrCamera}>カメラで撮る</button>
           </>}
     </div>
+    {qrError && <div className="anniversary-qr-card-error" role="alert">
+      <span>{qrError}</span>
+      <button type="button" aria-label="QR画像エラーを閉じる" onClick={onDismissQrError}>×</button>
+    </div>}
     <div className="inventory-row-actions">
       <button type="button" onClick={onEdit}>編集</button>
       <button type="button" className="inventory-danger-button" onClick={onDelete}>削除</button>

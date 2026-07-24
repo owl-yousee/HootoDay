@@ -15,7 +15,11 @@ export type AnniversaryQrFileDetails = {
 
 export type AnniversaryQrFileValidation =
   | { ok: true; details: AnniversaryQrFileDetails }
-  | { ok: false; reason: 'empty' | 'mime' | 'size' | 'decode' | 'dimensions' }
+  | {
+      ok: false
+      reason: 'empty_file' | 'empty_mime' | 'unsupported_mime' | 'file_too_large' |
+        'decode_failed' | 'object_url_failed' | 'dimensions_too_small' | 'dimensions_too_large'
+    }
 
 const allowedMimeTypes = new Set<AnniversaryShippingQrImage['mimeType']>([
   'image/png',
@@ -39,38 +43,64 @@ export function createAnniversaryQrStoragePath(input: {
   return isAnniversaryQrStoragePath(path, input.mimeType, input.shipmentId) ? path : null
 }
 
-export async function decodeAnniversaryQrImage(blob: Blob): Promise<{ width: number; height: number } | null> {
-  const objectUrl = URL.createObjectURL(blob)
+type ImageDecodeResult =
+  | { ok: true; width: number; height: number }
+  | { ok: false; reason: 'decode_failed' | 'object_url_failed' }
+
+async function decodeAnniversaryQrImageResult(blob: Blob): Promise<ImageDecodeResult> {
+  let objectUrl: string
+  try {
+    objectUrl = URL.createObjectURL(blob)
+  } catch {
+    return { ok: false, reason: 'object_url_failed' }
+  }
   try {
     const image = new Image()
-    const decoded = new Promise<{ width: number; height: number } | null>((resolve) => {
-      image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight })
-      image.onerror = () => resolve(null)
+    const decoded = new Promise<ImageDecodeResult>((resolve) => {
+      image.onload = () => resolve({
+        ok: true,
+        width: image.naturalWidth,
+        height: image.naturalHeight,
+      })
+      image.onerror = () => resolve({ ok: false, reason: 'decode_failed' })
     })
-    image.src = objectUrl
+    try {
+      image.src = objectUrl
+    } catch {
+      return { ok: false, reason: 'decode_failed' }
+    }
     return await decoded
   } finally {
     URL.revokeObjectURL(objectUrl)
   }
 }
 
+export async function decodeAnniversaryQrImage(blob: Blob): Promise<{ width: number; height: number } | null> {
+  const result = await decodeAnniversaryQrImageResult(blob)
+  return result.ok ? { width: result.width, height: result.height } : null
+}
+
 export async function validateAnniversaryQrFile(file: File): Promise<AnniversaryQrFileValidation> {
-  if (file.size <= 0) return { ok: false, reason: 'empty' }
+  if (file.size <= 0) return { ok: false, reason: 'empty_file' }
+  if (!file.type) return { ok: false, reason: 'empty_mime' }
   if (!allowedMimeTypes.has(file.type as AnniversaryShippingQrImage['mimeType'])) {
-    return { ok: false, reason: 'mime' }
+    return { ok: false, reason: 'unsupported_mime' }
   }
-  if (file.size > ANNIVERSARY_QR_MAX_BYTES) return { ok: false, reason: 'size' }
-  const dimensions = await decodeAnniversaryQrImage(file)
-  if (!dimensions) return { ok: false, reason: 'decode' }
-  if (!validateAnniversaryQrDimensions(dimensions.width, dimensions.height)) {
-    return { ok: false, reason: 'dimensions' }
+  if (file.size > ANNIVERSARY_QR_MAX_BYTES) return { ok: false, reason: 'file_too_large' }
+  const decoded = await decodeAnniversaryQrImageResult(file)
+  if (!decoded.ok) return decoded
+  if (decoded.width < ANNIVERSARY_QR_MIN_EDGE || decoded.height < ANNIVERSARY_QR_MIN_EDGE) {
+    return { ok: false, reason: 'dimensions_too_small' }
+  }
+  if (Math.max(decoded.width, decoded.height) > ANNIVERSARY_QR_MAX_EDGE) {
+    return { ok: false, reason: 'dimensions_too_large' }
   }
   return {
     ok: true,
     details: {
       mimeType: file.type as AnniversaryShippingQrImage['mimeType'],
-      width: dimensions.width,
-      height: dimensions.height,
+      width: decoded.width,
+      height: decoded.height,
       sizeBytes: file.size,
     },
   }

@@ -1201,3 +1201,5 @@ shippingQrImage?: {
 - QR参照付き個人カードと、そのshipmentを含む周年全体の削除は、Storage cleanup未実装による孤立画像を防ぐためI-6b-3まで一時停止する。差し替え、QR単体削除、個人／周年削除時のStorage cleanup、cleanup pending、自動または手動再試行はI-6b-3へ持ち越す。
 - 通常の商品在庫、`InventoryMovement`、イベント、BOOTH倉庫、BOOTH家発送、売上、送料、周年発送状態・発送日・内容物・メモはQR操作で変更しない。
 - PC実機ではPNG／JPEG選択、preview、upload、登録済み表示、大画面表示、明示同期を確認する。iPhone実機では写真ライブラリ／カメラ入力、safe-area、横overflow、private download、大画面表示、PCとの参照同期を確認する。郵便局端末での本番読み取りはI-6b-4へ持ち越す。
+- iPhone写真ライブラリ選択でpreviewへ進まない実機事象を受け、選択エラーがキャンペーン一覧末尾に表示されて現在カードから見えなかった配置と、Object URL生成例外が未分類だった処理を修正した。Fileは`onChange`内で同期的に退避してからinputをresetし、以後の非同期検証ではDOM inputを参照しない。写真用inputはcaptureなしのPNG／JPEG、カメラ用inputは背面capture付きとして分離する。
+- 空File、空MIME、PNG／JPEG以外（HEIC／HEIFを含む）、5MB超過、縦横320px未満、最長辺1600px超過、decode失敗、Object URL生成失敗、選択処理中断を分類し、対象個人カード内へユーザーが閉じるか再選択するまで残るエラーとして表示する。有効なPNG／JPEGのpreview遷移、iPhone写真ライブラリで返るMIME・寸法、エラー表示と再選択は実機再確認を必要とする。

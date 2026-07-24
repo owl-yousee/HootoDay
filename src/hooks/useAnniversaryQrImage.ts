@@ -36,11 +36,14 @@ type Input = {
 }
 
 const selectionError = {
-  empty: '空の画像ファイルは登録できません。',
-  mime: 'PNGまたはJPEG画像を選んでください。',
-  size: '画像は5MB以下にしてください。',
-  decode: '画像を安全に読み込めませんでした。別の画像を選んでください。',
-  dimensions: '画像は縦横320px以上、最長辺1600px以下にしてください。',
+  empty_file: '空の画像ファイルは登録できません。',
+  empty_mime: '画像形式を確認できませんでした。PNGまたはJPEGを選んでください。',
+  unsupported_mime: 'この画像形式にはまだ対応していません。PNGまたはJPEGを選んでください。',
+  file_too_large: '画像は5MB以下にしてください。',
+  decode_failed: '画像を安全に読み込めませんでした。別のPNGまたはJPEGを選んでください。',
+  object_url_failed: '選択した画像のプレビューを準備できませんでした。もう一度選んでください。',
+  dimensions_too_small: '画像は縦横320px以上にしてください。',
+  dimensions_too_large: '画像の最長辺は1600px以下にしてください。',
 } as const
 
 export function useAnniversaryQrImage(input: Input) {
@@ -64,6 +67,16 @@ export function useAnniversaryQrImage(input: Input) {
   const [isDownloading, setIsDownloading] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
+  const [errorShipmentId, setErrorShipmentId] = useState<string | null>(null)
+
+  const showError = useCallback((shipmentId: string | null, value: string) => {
+    setErrorShipmentId(shipmentId)
+    setError(value)
+  }, [])
+  const clearError = useCallback(() => {
+    setError('')
+    setErrorShipmentId(null)
+  }, [])
 
   useEffect(() => {
     shipmentsRef.current = shipments
@@ -86,8 +99,8 @@ export function useAnniversaryQrImage(input: Input) {
       if (current) URL.revokeObjectURL(current.objectUrl)
       return null
     })
-    setError('')
-  }, [])
+    clearError()
+  }, [clearError])
 
   const clearDisplay = useCallback(() => {
     if (runningRef.current) return
@@ -95,37 +108,55 @@ export function useAnniversaryQrImage(input: Input) {
       if (current) URL.revokeObjectURL(current.objectUrl)
       return null
     })
-    setError('')
-  }, [])
+    clearError()
+  }, [clearError])
 
   const selectFile = useCallback(async (shipmentId: string, file: File) => {
     if (runningRef.current) return
     const attempt = ++selectionAttemptRef.current
     setMessage('')
-    setError('')
+    clearError()
     const shipment = shipmentsRef.current.find((item) => item.id === shipmentId)
     if (!shipment || shipment.shippingQrImage) {
-      setError('現在の発送カードへQR画像を登録できません。画面を確認してください。')
+      showError(shipmentId, '現在の発送カードへQR画像を登録できません。画面を確認してください。')
       return
     }
-    const result = await validateAnniversaryQrFile(file)
+    let result
+    try {
+      result = await validateAnniversaryQrFile(file)
+    } catch {
+      if (attempt === selectionAttemptRef.current) {
+        showError(shipmentId, '画像選択処理を完了できませんでした。もう一度選んでください。')
+      }
+      return
+    }
     if (attempt !== selectionAttemptRef.current) return
     if (!result.ok) {
-      setError(selectionError[result.reason])
+      showError(shipmentId, selectionError[result.reason])
       return
     }
     const currentShipment = shipmentsRef.current.find((item) => item.id === shipmentId)
     if (!currentShipment || currentShipment.shippingQrImage ||
       currentShipment.updatedAt !== shipment.updatedAt) {
-      setError('対象の発送カードが変化したため画像選択を停止しました。')
+      showError(shipmentId, '対象の発送カードが変化したため画像選択を停止しました。')
       return
     }
-    const objectUrl = URL.createObjectURL(file)
+    let objectUrl: string
+    try {
+      objectUrl = URL.createObjectURL(file)
+    } catch {
+      showError(shipmentId, selectionError.object_url_failed)
+      return
+    }
     setPreview((current) => {
       if (current) URL.revokeObjectURL(current.objectUrl)
       return { shipmentId, shipmentUpdatedAt: shipment.updatedAt, file, objectUrl, ...result.details }
     })
-  }, [])
+  }, [clearError, showError])
+
+  const reportEmptySelection = useCallback((shipmentId: string | null) => {
+    showError(shipmentId, '画像が選択されませんでした。もう一度選んでください。')
+  }, [showError])
 
   const prerequisitesAreValid = useCallback((shipmentId: string) =>
     Boolean(supabaseClient && isConfigured && isSignedIn &&
@@ -137,20 +168,20 @@ export function useAnniversaryQrImage(input: Input) {
     const currentPreview = previewRef.current
     if (!currentPreview || runningRef.current) return
     setMessage('')
-    setError('')
+    clearError()
     if (!prerequisitesAreValid(currentPreview.shipmentId) || !supabaseClient || !workspaceId) {
-      setError('認証またはworkspaceの状態を安全に確認できないため登録できません。')
+      showError(currentPreview.shipmentId, '認証またはworkspaceの状態を安全に確認できないため登録できません。')
       return
     }
     const shipment = shipmentsRef.current.find((item) => item.id === currentPreview.shipmentId)
     if (!shipment || shipment.shippingQrImage ||
       shipment.updatedAt !== currentPreview.shipmentUpdatedAt) {
-      setError('対象の発送カードが変化したため登録を停止しました。')
+      showError(currentPreview.shipmentId, '対象の発送カードが変化したため登録を停止しました。')
       return
     }
     const objectId = createUuidV4()
     if (!objectId) {
-      setError('画像登録に必要なIDを作成できませんでした。')
+      showError(currentPreview.shipmentId, '画像登録に必要なIDを作成できませんでした。')
       return
     }
     const path = createAnniversaryQrStoragePath({
@@ -160,7 +191,7 @@ export function useAnniversaryQrImage(input: Input) {
       mimeType: currentPreview.mimeType,
     })
     if (!path) {
-      setError('安全な画像保存先を作成できませんでした。')
+      showError(currentPreview.shipmentId, '安全な画像保存先を作成できませんでした。')
       return
     }
 
@@ -175,7 +206,7 @@ export function useAnniversaryQrImage(input: Input) {
       )
       if (upload.error || upload.data.path !== path) {
         if (upload.data) await supabaseClient.storage.from(ANNIVERSARY_QR_BUCKET).remove([path])
-        setError('QR画像のアップロードに失敗しました。自動再試行は行いません。')
+        showError(currentPreview.shipmentId, 'QR画像のアップロードに失敗しました。自動再試行は行いません。')
         return
       }
       uploaded = true
@@ -194,10 +225,10 @@ export function useAnniversaryQrImage(input: Input) {
         const rollback = await supabaseClient.storage.from(ANNIVERSARY_QR_BUCKET).remove([path])
         if (rollback.error) {
           orphanedPathRef.current = path
-          setError('QR画像の参照情報を作成できず、画像の取り消しにも失敗しました。孤立画像が残った可能性があります。')
+          showError(currentPreview.shipmentId, 'QR画像の参照情報を作成できず、画像の取り消しにも失敗しました。孤立画像が残った可能性があります。')
         } else {
           uploaded = false
-          setError('QR画像の参照情報を安全に作成できなかったため、画像を取り消しました。')
+          showError(currentPreview.shipmentId, 'QR画像の参照情報を安全に作成できなかったため、画像を取り消しました。')
         }
         return
       }
@@ -210,10 +241,10 @@ export function useAnniversaryQrImage(input: Input) {
         const rollback = await supabaseClient.storage.from(ANNIVERSARY_QR_BUCKET).remove([path])
         if (rollback.error) {
           orphanedPathRef.current = path
-          setError('参照情報を保存できず、画像の取り消しにも失敗しました。孤立画像が残った可能性があります。自動再試行は行いません。')
+          showError(currentPreview.shipmentId, '参照情報を保存できず、画像の取り消しにも失敗しました。孤立画像が残った可能性があります。自動再試行は行いません。')
         } else {
           uploaded = false
-          setError('参照情報を保存できなかったため、アップロードした画像を取り消しました。')
+          showError(currentPreview.shipmentId, '参照情報を保存できなかったため、アップロードした画像を取り消しました。')
         }
         return
       }
@@ -228,30 +259,30 @@ export function useAnniversaryQrImage(input: Input) {
         const rollback = await supabaseClient.storage.from(ANNIVERSARY_QR_BUCKET).remove([path])
         if (rollback.error) {
           orphanedPathRef.current = path
-          setError('登録処理に失敗し、画像の取り消しにも失敗しました。孤立画像が残った可能性があります。自動再試行は行いません。')
+          showError(currentPreview.shipmentId, '登録処理に失敗し、画像の取り消しにも失敗しました。孤立画像が残った可能性があります。自動再試行は行いません。')
         } else {
-          setError('登録処理に失敗したため、アップロードした画像を取り消しました。')
+          showError(currentPreview.shipmentId, '登録処理に失敗したため、アップロードした画像を取り消しました。')
         }
       } else {
-        setError('QR画像の登録処理に失敗しました。自動再試行は行いません。')
+        showError(currentPreview.shipmentId, 'QR画像の登録処理に失敗しました。自動再試行は行いません。')
       }
     } finally {
       runningRef.current = false
       setIsUploading(false)
     }
-  }, [onSaveReference, prerequisitesAreValid, workspaceId])
+  }, [clearError, onSaveReference, prerequisitesAreValid, showError, workspaceId])
 
   const downloadImage = useCallback(async (shipmentId: string) => {
     if (runningRef.current) return
     setMessage('')
-    setError('')
+    clearError()
     const shipment = shipmentsRef.current.find((item) => item.id === shipmentId)
     const reference = shipment?.shippingQrImage
     if (!shipment || !reference || !workspaceId || !supabaseClient ||
       !isConfigured || !isSignedIn || !workspaceConnected ||
       !isAnniversaryShippingQrImage(reference, shipment.id) ||
       !anniversaryQrStoragePathMatchesWorkspace(reference.storagePath, workspaceId)) {
-      setError('QR画像の参照、認証、またはworkspaceを安全に確認できません。')
+      showError(shipmentId, 'QR画像の参照、認証、またはworkspaceを安全に確認できません。')
       return
     }
     runningRef.current = true
@@ -259,11 +290,11 @@ export function useAnniversaryQrImage(input: Input) {
     try {
       const result = await supabaseClient.storage.from(ANNIVERSARY_QR_BUCKET).download(reference.storagePath)
       if (result.error || !result.data) {
-        setError('QR画像が見つかりません。参照情報はありますが画像を取得できません。')
+        showError(shipmentId, 'QR画像が見つかりません。参照情報はありますが画像を取得できません。')
         return
       }
       if (!await validateDownloadedAnniversaryQrImage(result.data, reference)) {
-        setError('取得したQR画像を安全に確認できませんでした。')
+        showError(shipmentId, '取得したQR画像を安全に確認できませんでした。')
         return
       }
       const objectUrl = URL.createObjectURL(result.data)
@@ -272,12 +303,12 @@ export function useAnniversaryQrImage(input: Input) {
         return { shipmentId, objectUrl }
       })
     } catch {
-      setError('通信状態を確認してください。QR画像を取得できませんでした。')
+      showError(shipmentId, '通信状態を確認してください。QR画像を取得できませんでした。')
     } finally {
       runningRef.current = false
       setIsDownloading(false)
     }
-  }, [isConfigured, isSignedIn, workspaceConnected, workspaceId])
+  }, [clearError, isConfigured, isSignedIn, showError, workspaceConnected, workspaceId])
 
   return {
     preview,
@@ -286,7 +317,10 @@ export function useAnniversaryQrImage(input: Input) {
     isDownloading,
     message,
     error,
+    errorShipmentId,
     selectFile,
+    reportEmptySelection,
+    clearError,
     uploadPreview,
     downloadImage,
     clearPreview,
