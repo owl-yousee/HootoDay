@@ -2904,3 +2904,4 @@ cleanup後VERIFY結果：
 - pending、remote read-back、confirmed baseline、7配列一括適用とrollback、record単位の競合分類を接続した。
 - 非競合mergeの実適用はS-4b、PC／iPhone実機確認はS-5へ保留する。
 - 販売・在庫同期のSync Phase S-5を主要PC／iPhone往復、InventoryMovement往復、BOOTH削除往復の実機確認完了として閉じ、Phase E-1「イベント複数商品一括入力」へ移行した。詳細・保留・次工程は`INVENTORY_SYNC_ROADMAP.md`を正本とする。
+- Phase E-1cでイベント販売の表示語を`売上未入力`／`売上入力済み`へ統一し、イベント単位カードを主表示へ整理した。内部status、保存形式、在庫計算、同期仕様は変更せず、次工程は`INVENTORY_SYNC_ROADMAP.md`記載のPhase I-4とする。

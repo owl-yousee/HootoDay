@@ -151,7 +151,7 @@ export function EventSalesBatchDialog(props: Props) {
       }
       if (result.status === 'invalid') {
         setErrors(result.errors)
-        setSummaryError(`${props.mode === 'complete' ? '実績を確定' : '保存'}できませんでした。${Object.keys(result.errors).length}件の入力内容を確認してください。`)
+        setSummaryError(`${props.mode === 'complete' ? '売上を保存できませんでした。売上入力' : '保存できませんでした。入力'}の内容を確認してください。${Object.keys(result.errors).length}件に修正が必要です。`)
         requestAnimationFrame(() => dialogRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.scrollIntoView({ block: 'center' }))
       } else {
         setSummaryError('保存に失敗しました。入力内容は変更されていません。')
@@ -165,10 +165,10 @@ export function EventSalesBatchDialog(props: Props) {
   }
   return <dialog ref={dialogRef} className="inventory-dialog inventory-event-batch-dialog" onCancel={(event) => { event.preventDefault(); close() }}>
     <form onSubmit={submit} noValidate>
-      <header><div><p className="eyebrow">Inventory</p><h2>{props.mode === 'complete' ? '販売実績をまとめて入力' : props.records.some((record) => record.eventId === eventId) ? '販売実績をまとめて編集' : 'イベント商品をまとめて登録'}</h2></div><button type="button" aria-label="閉じる" onClick={close}>×</button></header>
+      <header><div><p className="eyebrow">Inventory</p><h2>{props.mode === 'complete' ? '売上をまとめて入力' : props.records.some((record) => record.eventId === eventId) ? 'イベント商品をまとめて編集' : 'イベント商品をまとめて登録'}</h2></div><button type="button" aria-label="閉じる" onClick={close}>×</button></header>
       {summaryError && <p className="form-error" role="alert">{summaryError}</p>}
       <label className="inventory-batch-event">イベント<select value={eventId} disabled={props.mode === 'complete'} onChange={(event) => loadEvent(event.target.value)}><option value="">選択してください</option>{props.events.map((item) => <option key={item.id} value={item.id}>{item.date} {item.title}</option>)}</select></label>
-      {props.mode === 'complete' ? <p className="inventory-batch-mode">準備中の商品をまとめて実績確定します。</p> : <fieldset className="inventory-fieldset inventory-status-choice"><legend>記録状態</legend><label className="inventory-check"><input type="radio" checked={status === 'planned'} onChange={() => setStatus('planned')}/>準備中</label><label className="inventory-check"><input type="radio" checked={status === 'completed'} onChange={() => setStatus('completed')}/>実績確定済み</label></fieldset>}
+      {props.mode === 'complete' ? <p className="inventory-batch-mode">売上未入力の商品へ、販売数とサンプル数をまとめて入力します。</p> : <fieldset className="inventory-fieldset inventory-status-choice"><legend>記録状態</legend><label className="inventory-check"><input type="radio" checked={status === 'planned'} onChange={() => setStatus('planned')}/>売上未入力</label><label className="inventory-check"><input type="radio" checked={status === 'completed'} onChange={() => setStatus('completed')}/>売上入力済み</label></fieldset>}
       <div className="inventory-batch-rows">{rows.map((row, index) => {
         const rowErrors = errors[row.rowId] ?? {}
         return <section className="inventory-batch-row" key={row.rowId}>
@@ -189,7 +189,7 @@ export function EventSalesBatchDialog(props: Props) {
       })}</div>
       {props.mode === 'create' && <button type="button" className="inventory-batch-add" onClick={add}>商品を追加</button>}
       {status === 'completed' && <div className="inventory-batch-totals"><span>販売合計 <strong>{totals.valid ? `${totals.sold.toLocaleString('ja-JP')}個` : '—'}</strong></span><span>サンプル合計 <strong>{totals.valid ? `${totals.sample.toLocaleString('ja-JP')}個` : '—'}</strong></span><span>売上合計 <strong>{totals.valid ? `${totals.amount.toLocaleString('ja-JP')}円` : '—'}</strong></span></div>}
-      <footer><button type="button" onClick={close}>キャンセル</button><button className="health-primary-button" type="submit" disabled={submitting}>{submitting ? (props.mode === 'complete' ? '確定中…' : '保存中…') : (props.mode === 'complete' ? '実績をまとめて確定' : 'まとめて保存')}</button></footer>
+      <footer><button type="button" onClick={close}>キャンセル</button><button className="health-primary-button" type="submit" disabled={submitting}>{submitting ? '保存中…' : (props.mode === 'complete' ? '売上をまとめて保存' : 'まとめて保存')}</button></footer>
     </form>
   </dialog>
 }
